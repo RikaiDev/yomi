@@ -58,7 +58,7 @@ your shell's PATH (find yours with `which bunx`):
 
 Once connected, just say:
 
-> *"Log into LINE — my number is +8869XXXXXXXX, region TW."*
+> *"Log into LINE — my number is +8869XXXXXXXX."*
 
 Approve the device on your phone (see [Logging in](#logging-in)), and:
 
@@ -120,6 +120,9 @@ fabricates a fallback, a placeholder, or a fake success.
 (*Settings › Account › Allow login on other devices*). Without it LINE never offers
 this device a sign-in prompt — this is the single most common reason a first login
 appears to hang.
+
+You only need to give the agent your phone number in E.164 form — it supplies the
+region itself (e.g. `TW` for a `+886` number) when it calls the tool.
 
 Yomi drives LINE's **passwordless (secondary-device)** flow. How the login surfaces
 depends on your MCP client:
