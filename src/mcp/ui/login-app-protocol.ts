@@ -26,13 +26,10 @@
  * Build the transport/handshake JS, parameterized by yomi's own version so
  * `ui/initialize`'s `clientInfo.version` reports it.
  *
- * @param version - Read once in ../login-app.ts from ../../../package.json
- * (the one place this number is owned) via `node:module`'s `createRequire`
- * — a static `import … from '../../../package.json'` would resolve outside
- * tsconfig's `rootDir: "src"` and fail the build, so this repo has no
- * "clean" static-import path to it; `createRequire` is the standard ESM
- * escape hatch for exactly this case and is used here rather than
- * hardcoding a number that would silently drift from package.json.
+ * @param version - `YOMI_VERSION` from ../../version.ts, a build-time
+ * constant (not a runtime package.json read — that fails inside a `bun
+ * build --compile` binary's virtual filesystem). version.test.ts asserts
+ * it stays equal to package.json's "version" field so the two can't drift.
  */
 export function buildLoginAppProtocolJs(version: string): string {
   const versionLiteral = JSON.stringify(version);

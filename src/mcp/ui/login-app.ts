@@ -45,19 +45,10 @@
  * HTML/JS source, so there is exactly one place (../handlers-login.ts,
  * sourced from ../../line/auth/pwless/index.ts) that owns each number.
  */
-import { createRequire } from 'node:module';
 import { buildLoginAppProtocolJs } from './login-app-protocol.js';
 import { LOGIN_APP_CSS } from './login-app-styles.js';
 import { LOGIN_APP_VIEW_JS } from './login-app-view.js';
-
-// `import … from '../../../package.json'` would resolve outside tsconfig's
-// `rootDir: "src"` and fail the build — there is no clean static-import
-// path to the repo's own package.json from here. `createRequire` is the
-// standard ESM escape hatch for exactly this: a runtime `require` call,
-// resolved relative to this file, not subject to `rootDir`.
-const require = createRequire(import.meta.url);
-const packageJson = require('../../../package.json');
-const YOMI_VERSION = String(packageJson.version);
+import { YOMI_VERSION } from '../../version.js';
 
 export const LOGIN_APP_HTML = `<!DOCTYPE html>
 <html lang="en">
