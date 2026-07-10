@@ -21,7 +21,7 @@
     "chat"
   ],
   "bin": {
-    "yomi": "./run.mjs"
+    "yomi": "run.mjs"
   },
   "files": [
     "run.mjs",
