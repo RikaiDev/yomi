@@ -1,0 +1,25 @@
+{
+  "name": "yomi",
+  "version": "0.1.0",
+  "description": "Yomi (読み) — reads your LINE (decrypting Letter-Sealing E2EE) and sends on your behalf, via a stdio MCP server, so an agent can catch up on your LINE for you.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "yomi": "./run.mjs"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "bun dist/mcp/server.js"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "curve25519-js": "^0.0.4",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
