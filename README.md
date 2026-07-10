@@ -30,41 +30,33 @@ on your own account.
 
 ## Quickstart
 
-You need [**bun**](https://bun.sh) and a LINE account.
+You need [**bun**](https://bun.sh) (macOS, Linux, or Windows) and a LINE account.
+Yomi runs straight from npm via `bunx` — no clone, no build step.
+
+**Claude Code** (one line, any OS):
 
 ```bash
-git clone <this-repo> yomi && cd yomi
-bun install
+claude mcp add yomi -- bunx @rikaidev/yomi
 ```
 
-Yomi is a stdio MCP server — your client launches it for you (you don't run it by
-hand; there's no build step). Point your agent at `bun run.mjs` — pick whichever
-client you use.
-
-**Claude Code** (one line):
-
-```bash
-claude mcp add yomi -- bun /absolute/path/to/yomi/run.mjs
-```
-
-**Claude Desktop** — edit
-`~/Library/Application Support/Claude/claude_desktop_config.json` with **absolute**
-paths (Desktop launches MCP servers without your shell's PATH), then fully quit and
-reopen it:
+**Claude Desktop** — edit the config
+(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows), then fully quit and
+reopen it. Use an **absolute** path to `bunx` — Desktop launches servers without
+your shell's PATH (find yours with `which bunx`):
 
 ```json
 {
   "mcpServers": {
     "yomi": {
-      "command": "/opt/homebrew/bin/bun",
-      "args": ["/absolute/path/to/yomi/run.mjs"],
-      "cwd": "/absolute/path/to/yomi"
+      "command": "/opt/homebrew/bin/bunx",
+      "args": ["@rikaidev/yomi"]
     }
   }
 }
 ```
 
-Point `command` at your bun (`which bun`). Once connected, just say:
+Once connected, just say:
 
 > *"Log into LINE — my number is +8869XXXXXXXX, region TW."*
 
@@ -173,6 +165,11 @@ LINE session from the macOS Keychain (service `com.yomi.credentials`, account
 - **Backward compatibility.** If no session is found under `com.yomi.credentials`,
   Yomi reads the legacy `com.inboxd.credentials` entry once, migrates it forward,
   and never deletes it. An existing session keeps working with no re-login.
+- **Platform note.** On macOS the session lives in the login Keychain. On **Linux
+  and Windows** Yomi currently falls back to a local JSON file — functional, but
+  less protected than an OS secret store, and less exercised than the macOS path.
+  Native secure-storage backends (libsecret / DPAPI) are planned; until then, treat
+  a non-macOS install accordingly.
 
 Every tool except `login` and the offline scope/search tools returns an honest error
 when there is no session. Yomi is otherwise a pure query server — it never polls,

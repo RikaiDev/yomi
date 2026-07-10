@@ -1,15 +1,43 @@
 {
-  "name": "yomi",
+  "name": "@rikaidev/yomi",
   "version": "0.1.0",
   "description": "Yomi (読み) — reads your LINE (decrypting Letter-Sealing E2EE) and sends on your behalf, via a stdio MCP server, so an agent can catch up on your LINE for you.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/RikaiDev/yomi#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RikaiDev/yomi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RikaiDev/yomi/issues"
+  },
+  "keywords": [
+    "line",
+    "mcp",
+    "model-context-protocol",
+    "e2ee",
+    "messaging",
+    "chat"
+  ],
   "bin": {
     "yomi": "./run.mjs"
   },
+  "files": [
+    "run.mjs",
+    "src",
+    "README.md",
+    "NOTICE",
+    "LICENSE",
+    "PRIVACY.md",
+    "tsconfig.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
-    "start": "bun dist/mcp/server.js"
+    "start": "bun run.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
