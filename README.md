@@ -1,3 +1,8 @@
+<!-- rikai-logo -->
+<p align="center">
+  <img src=".github/assets/logo.svg" alt="yomi" width="96" height="96">
+</p>
+
 # Yomi (読み)
 
 **Read your LINE from an AI agent — and reply, send images, and search across every conversation — without a browser and without LINE's own client.**
