@@ -1,6 +1,9 @@
 <!-- rikai-logo -->
 <p align="center">
-  <img src=".github/assets/logo.svg" alt="yomi" width="96" height="96">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+    <img src=".github/assets/logo.svg" alt="yomi" width="96" height="96">
+  </picture>
 </p>
 
 # Yomi (読み)
