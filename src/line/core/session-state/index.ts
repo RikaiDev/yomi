@@ -183,13 +183,11 @@ export class LineSessionState {
    * @returns Promise that resolves when keys are persisted
    */
   async saveE2EEKeys(keys: any[]): Promise<void> {
+    // Only the `line_e2ee_keys` blob is ever read back (auth-session-runtime
+    // restore). The former per-keyId and per-mid entries had no reader, so they
+    // only churned the OS keychain and emitted one store-complete debug log per
+    // key on every login/token refresh — dropped.
     await this.credentialStore.set('line_e2ee_keys', JSON.stringify(keys));
-    for (const key of keys) {
-      await this.credentialStore.set(`line_e2ee_self_by_keyid:${key.keyId}`, JSON.stringify(key));
-    }
-    if (this.mid && keys[0]) {
-      await this.credentialStore.set(`line_e2ee_self_by_mid:${this.mid}`, JSON.stringify(keys[0]));
-    }
   }
 
   /**

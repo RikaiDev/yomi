@@ -205,6 +205,11 @@ async function deriveAndCacheGroupKey(
  * @param receiverKeyId - Local receiver key ID
  * @param senderMid - Sender MID
  * @param senderKeyId - Sender key ID
+ * @param allowMint - Register a new group shared key when LINE reports none.
+ *   Send path only. MUST stay false on the decrypt/read path: minting a group
+ *   key is an account-visible write that binds the group to whatever self key
+ *   this device holds, which can strand the user's other devices — reading
+ *   must never mutate account key state.
  * @returns Group key or undefined when unavailable
  */
 export async function getGroupKey(
@@ -213,6 +218,7 @@ export async function getGroupKey(
   receiverKeyId: string | null,
   senderMid: string | null,
   senderKeyId: string | null,
+  allowMint = false,
 ): Promise<GroupKey | undefined> {
   if (!receiverKeyId) {
     const cachedLatest = await lookupCachedGroupKey(ctx, chatMid, null);
@@ -240,7 +246,7 @@ export async function getGroupKey(
 
   const fetchPromise = (async () => {
     const client = ctx.getClient();
-    let shared;
+    let shared: any;
     let resolutionSource = 'server_fetch';
     try {
       shared = await client?.getLastE2EEGroupSharedKey?.(2, chatMid);
@@ -256,7 +262,12 @@ export async function getGroupKey(
       resolutionSource = 'register_fallback';
     }
     if (!shared) {
-      shared = await tryRegisterE2EEGroupKey(ctx, chatMid);
+      if (allowMint) {
+        shared = await tryRegisterE2EEGroupKey(ctx, chatMid);
+      }
+      else {
+        ctx.logGroupKeyEvent('e2ee.group_key.mint_suppressed', { chat: chatMid, receiver_key_id: receiverKeyId });
+      }
     }
     if (!shared) {
       ctx.logGroupKeyEvent('e2ee.group_key.unavailable', { chat: chatMid, receiver_key_id: receiverKeyId, source: resolutionSource });

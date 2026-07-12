@@ -93,7 +93,7 @@ export async function encryptE2EEMessage(
     sharedSecret = computeSharedSecret(selfKey.privateKey, publicKey.keyData);
   }
   else {
-    const groupKey = await getGroupKey(ctx, to, null, selfMid, selfKey.keyId);
+    const groupKey = await getGroupKey(ctx, to, null, selfMid, selfKey.keyId, true);
     if (!groupKey) {
       throw new Error(`Failed to resolve LINE group E2EE key for ${to}`);
     }

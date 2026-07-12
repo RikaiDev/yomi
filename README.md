@@ -204,9 +204,16 @@ an exact term and a meaning-match together. The response's `mode` field always
 reports which methods contributed.
 
 Semantic ranking uses **`Xenova/bge-small-zh-v1.5`** (BAAI general embedding, small,
-Chinese-primary but multilingual) via **transformers.js**, running entirely offline
-in-process. The model (~90 MB) auto-downloads on the first collect and is cached
-locally thereafter.
+Chinese-primary but multilingual) via **transformers.js**. Embedding **inference runs
+fully in-process on CPU — your message text is never sent anywhere.**
+
+The one caveat is a **one-time model download**: on the first `collect_messages` or
+`search_messages`, transformers.js fetches the model (~90 MB) from **`huggingface.co`**
+and caches it locally; every run afterwards is fully offline. That first fetch is an
+outbound HTTPS request to HuggingFace for the model weights — it carries your IP and
+which model is being downloaded, **but no message content and no LINE data**. If you
+need Yomi fully air-gapped, pre-populate the transformers.js cache (or point it at a
+local model directory) before the first search so no network call is ever made.
 
 ---
 
@@ -214,8 +221,18 @@ locally thereafter.
 
 Yomi runs as a **secondary device** on your account. That shapes what it can see:
 
-- **Group chats are plaintext at the LINE server** — full history and media, no
-  restriction.
+- **Group chats *without* Letter Sealing are plaintext at the LINE server** — full
+  history and media, no restriction.
+- **Group chats *with* Letter Sealing are E2EE, and there the epoch matters.** Such a
+  group is encrypted with a shared *group key* that rotates (on membership changes, or
+  when a client provisions a new one). LINE only ever hands a device the **current**
+  group key — there is no API to fetch a superseded one. So a secondary device decrypts
+  messages from the epoch whose key it holds onward; messages sent under an **older
+  epoch — before Yomi obtained the current key — can come back undecryptable**, even in
+  a group whose earlier history it *can* read. This is inherent to Letter Sealing's
+  per-epoch group keys, not a bug here. It can also cut sideways: the epoch your phone
+  holds and the epoch Yomi holds need not be the same, so the **two devices can each
+  read a different slice** of the very same group.
 - **1:1 media** uses the account-level E2EE keychain, which a secondary device fully
   possesses (LINE syncs it during pairing) — Yomi **can** decrypt 1:1 images/files it
   can see.
@@ -236,7 +253,9 @@ error — never a fake card or placeholder. Silence is honest; a fabricated resu
 bun install                 # install dependencies
 bun run.mjs                 # run the stdio MCP server
 bun run.mjs login           # run the login flow in a terminal
-npm run build               # tsc — type-check + compile src/ to dist/
+npm run build               # tsc --noEmit — type-check only (Yomi ships & runs from src/)
+npm test                    # bun test
+npm version patch           # bump + sync src/version.ts + tag (see RELEASING.md)
 ```
 
 The build only type-checks and compiles; this repo does not talk to live LINE
@@ -267,7 +286,10 @@ any path the server can reach.
 By default Yomi indexes **all** your conversations into the local, on-device search
 index so an agent can search across them — a capture-all default, opt-out per chat.
 Nothing is ever uploaded; the only data that leaves your device is whatever the agent
-itself surfaces in its replies. [`PRIVACY.md`](PRIVACY.md) is the canonical policy,
+itself surfaces in its replies. (The one non-LINE network call Yomi itself makes is the
+**one-time embedding-model download from HuggingFace** on the first search — model
+weights in, no message content out; see [Search](#search).) [`PRIVACY.md`](PRIVACY.md)
+is the canonical policy,
 and Yomi surfaces that same text to the agent on connect (and via `get_scope_policy`)
 so it can disclose the default before any bulk read.
 
