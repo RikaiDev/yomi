@@ -8,9 +8,15 @@
 #     Workflow filename:     publish.yml
 #     Environment:           (leave blank)
 #
-# Then publishing is: bump "version" in package.json, tag it, and create a
-# GitHub Release for that tag — this workflow runs and publishes, credential-
-# free, with a provenance attestation attached automatically.
+# Releasing is documented in RELEASING.md. In short: `npm version <bump>` (which
+# also syncs src/version.ts), push with tags, then create a GitHub Release for
+# that tag — this workflow runs and publishes, credential-free, with a
+# provenance attestation attached automatically.
+#
+# Before it publishes, this workflow REFUSES to ship anything inconsistent:
+# the release tag must equal package.json's version, the test suite (which
+# includes the version.ts <-> package.json drift guard) must pass, and tsc
+# must build cleanly. A drift fails the release instead of shipping it.
 name: publish
 
 on:
@@ -30,6 +36,23 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Verify package version matches the release tag
+        run: |
+          PKG="$(node -p "require('./package.json').version")"
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
+          echo "package.json=$PKG  release-tag=$TAG"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::package.json version ($PKG) does not match release tag ($TAG). Bump with 'npm version' and retag."
+            exit 1
+          fi
+
+      - run: bun install --frozen-lockfile
+      - run: npm test          # bun test ./src — includes the version.ts <-> package.json drift guard
+      - run: npm run build     # tsc must compile cleanly before we publish
+
       # Trusted publishing requires npm >= 11.5.1; the runner's bundled npm
       # may be older, so upgrade before publishing.
       - run: npm install -g npm@latest

@@ -1,6 +1,6 @@
 {
   "name": "@rikaidev/yomi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Yomi (読み) — reads your LINE (decrypting Letter-Sealing E2EE) and sends on your behalf, via a stdio MCP server, so an agent can catch up on your LINE for you.",
   "type": "module",
   "license": "MIT",
@@ -36,8 +36,11 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "bun run.mjs"
+    "build": "tsc --noEmit",
+    "start": "bun run.mjs",
+    "test": "bun test",
+    "version": "node scripts/sync-version.mjs && git add src/version.ts",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
