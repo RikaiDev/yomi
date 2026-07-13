@@ -5,3 +5,4 @@ data/
 credentials/
 *.pem
 .DS_Store
+build/

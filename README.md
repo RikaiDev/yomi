@@ -44,13 +44,6 @@ anything. Run `node --version` first: if the command is missing or reports a ver
 below 24, install the current Node.js release and reopen your terminal before
 continuing.
 
-> **Tried Yomi before and it silently did nothing?** That was a bug in Yomi, not
-> anything you did. Releases 0.1.0–0.1.2 shipped TypeScript sources instead of
-> compiled JavaScript and could not start at all once installed — the server
-> crashed immediately, so clients just showed no tools. Those versions have been
-> removed from npm; `npx @rikaidev/yomi` now always gets a working build. Fixed in
-> [v0.1.3](https://github.com/RikaiDev/yomi/releases/tag/v0.1.3).
-
 > **⚠️ Yomi needs a client that runs it on your own machine.**
 > Cloud-only tools (ChatGPT, Claude.ai web) cannot run Yomi. Configure Yomi in
 > Claude Desktop or Claude Code and it works in both chat and Cowork, because

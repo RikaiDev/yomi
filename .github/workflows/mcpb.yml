@@ -1,0 +1,69 @@
+# Builds the drag-and-drop Desktop Extension (.mcpb) for each platform, on that
+# platform, and STARTS it there.
+#
+# Each bundle carries native binaries (onnxruntime-node, sharp), so a bundle is
+# only meaningfully verified on the OS it targets — a Windows bundle built on
+# macOS can be inspected but not executed. Building on the target runner and
+# completing a real MCP initialize handshake is the only check that means
+# anything. (See RELEASING.md: a green build says nothing about whether the
+# artifact runs — that is exactly how 0.1.0-0.1.2 shipped unstartable.)
+#
+# On a release, the bundles are attached to it so a GUI-only user can install
+# Yomi by downloading one file and dragging it into Claude Desktop — no
+# terminal, no Node install, no hand-edited claude_desktop_config.json.
+name: mcpb
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+
+permissions:
+  contents: write # attaching bundles to a release
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target_os: win32
+            cpu: x64
+          - os: macos-latest
+            target_os: darwin
+            cpu: arm64
+          - os: ubuntu-latest
+            target_os: linux
+            cpu: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build the bundle for ${{ matrix.target_os }}-${{ matrix.cpu }}
+        run: node scripts/build-mcpb.mjs --os ${{ matrix.target_os }} --cpu ${{ matrix.cpu }}
+
+      - name: Start the bundle and complete an initialize handshake
+        shell: bash
+        run: node scripts/smoke-mcp.mjs "build/mcpb-${{ matrix.target_os }}-${{ matrix.cpu }}/run.mjs"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yomi-${{ matrix.target_os }}-${{ matrix.cpu }}.mcpb
+          path: build/mcpb-${{ matrix.target_os }}-${{ matrix.cpu }}/yomi-${{ matrix.target_os }}-${{ matrix.cpu }}.mcpb
+
+      - name: Attach the bundle to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "build/mcpb-${{ matrix.target_os }}-${{ matrix.cpu }}/yomi-${{ matrix.target_os }}-${{ matrix.cpu }}.mcpb" --clobber
