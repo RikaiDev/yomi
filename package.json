@@ -25,18 +25,18 @@
   },
   "files": [
     "run.mjs",
-    "src",
+    "dist",
     "README.md",
     "NOTICE",
     "LICENSE",
-    "PRIVACY.md",
-    "tsconfig.json"
+    "PRIVACY.md"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node run.mjs",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",

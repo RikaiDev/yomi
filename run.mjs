@@ -10,17 +10,36 @@
  *   yomi version        Print version
  */
 
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+// Load the compiled `dist/` build when it exists (this is what the npm
+// tarball ships), and fall back to the TypeScript sources for a repo
+// checkout that has not been built yet.
+//
+// The fallback CANNOT rescue an installed package: Node refuses to strip
+// types for files under node_modules (ERR_UNSUPPORTED_NODE_MODULES_TYPE_
+// STRIPPING), which is exactly how every 0.1.x release failed to start.
+// `files` in package.json must therefore always ship `dist/`.
+const distUrl = new URL('./dist/', import.meta.url);
+const built = existsSync(fileURLToPath(new URL('mcp/server.js', distUrl)));
+const base = built ? distUrl : new URL('./src/', import.meta.url);
+const ext = built ? '.js' : '.ts';
+
+/** Import a module by its path under src/, resolved to dist/ when built. */
+const load = (path) => import(new URL(path + ext, base).href);
+
 const args = process.argv.slice(2);
 const cmd = args[0] ?? 'serve';
 
 switch (cmd) {
   case 'login': {
-    const { cliLogin } = await import('./src/cli/login.ts');
+    const { cliLogin } = await load('cli/login');
     const code = await cliLogin(args.slice(1));
     process.exit(code);
   }
   case 'serve':
-    await import('./src/mcp/server.ts');
+    await load('mcp/server');
     break;
   case 'help':
   case '--help':
@@ -42,7 +61,7 @@ Examples:
   case 'version':
   case '--version':
   case '-v': {
-    const { YOMI_VERSION } = await import('./src/version.ts');
+    const { YOMI_VERSION } = await load('version');
     console.log(YOMI_VERSION);
     break;
   }

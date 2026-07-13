@@ -1,9 +1,16 @@
-# Verifies that Yomi installs and starts via npx on every platform.
+# Verifies that Yomi, packaged exactly as npm ships it, installs and STARTS.
 #
-# GitHub Actions runners ship with Node.js pre-installed, so this workflow
-# tests the "Node.js already present" path.  The install scripts also cover
-# the "Node.js missing" path — that branch can only be verified in a clean
-# VM or container (outside CI) or by manual one-click install testing.
+# This tests the tarball built from THIS commit, installed into node_modules,
+# started as a real MCP stdio server. Anything less fails to reproduce what
+# users actually get:
+#
+#   - `npx @rikaidev/yomi` downloads the LAST PUBLISHED version, so a PR's own
+#     code is never exercised.
+#   - `--help` proves nothing: it prints a literal string and imports no
+#     application code. Every 0.1.x release passed that check while being unable
+#     to start at all (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING — Node will
+#     not strip types for files under node_modules, and the package shipped .ts
+#     sources instead of compiled JS).
 name: install-smoke
 
 on:
@@ -12,19 +19,58 @@ on:
   pull_request:
 
 jobs:
-  npx:
+  tarball:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
       - uses: actions/setup-node@v5
         with:
           node-version: 24
 
-      - name: Verify npx can resolve @rikaidev/yomi
-        run: npx @rikaidev/yomi --help
+      - run: bun install --frozen-lockfile
+
+      - name: Build (must emit dist/ — the tarball ships JS, not TS)
+        run: bun run build
+
+      - name: Pack the tarball npm would publish
+        run: npm pack
+
+      - name: Install the tarball into a clean project
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cp rikaidev-yomi-*.tgz "$RUNNER_TEMP/smoke/"
+          cd "$RUNNER_TEMP/smoke"
+          npm init -y >/dev/null
+          npm install ./rikaidev-yomi-*.tgz --omit=dev --no-audit --no-fund
+
+      - name: Reject a tarball that ships TypeScript sources
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/smoke/node_modules/@rikaidev/yomi"
+          if [ ! -f dist/mcp/server.js ]; then
+            echo "::error::tarball has no dist/mcp/server.js — the build did not emit"
+            exit 1
+          fi
+          if [ -d src ]; then
+            echo "::error::tarball ships src/; Node cannot strip types under node_modules"
+            exit 1
+          fi
+
+      - name: Print version from the installed package
+        shell: bash
+        run: node "$RUNNER_TEMP/smoke/node_modules/@rikaidev/yomi/run.mjs" version
+
+      - name: Start it as an MCP server and complete an initialize handshake
+        shell: bash
+        run: node scripts/smoke-mcp.mjs "$RUNNER_TEMP/smoke/node_modules/@rikaidev/yomi/run.mjs"
 
   shell-script:
     runs-on: ubuntu-latest
