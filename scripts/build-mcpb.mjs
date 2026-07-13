@@ -63,7 +63,11 @@ const run = (cmd, cmdArgs, cwd = ROOT) => {
 // The bundle ships compiled JS. Shipping src/*.ts would reproduce the bug that
 // made 0.1.0-0.1.2 unstartable (Node will not strip types under node_modules).
 console.log('\n=== build dist/ ===')
-run('npx', ['tsc'])
+// Run TypeScript's own entry point directly, NOT `npx tsc`. On Windows npx
+// failed to resolve the local binary and silently fetched an unrelated
+// squatter package named "tsc" (tsc@2.0.4, deprecated) from the registry —
+// a broken build in the best case and a supply-chain hazard in the worst.
+run(process.execPath, [join(ROOT, 'node_modules/typescript/bin/tsc')])
 if (!existsSync(join(ROOT, 'dist/mcp/server.js'))) {
   throw new Error('tsc did not emit dist/mcp/server.js')
 }
