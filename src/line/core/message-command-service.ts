@@ -1,12 +1,12 @@
-import crypto from 'node:crypto';
-import { requireLineClient } from './client-runtime.js';
-import { CONTENT_TYPE } from './constants.js';
-import { encryptLineMediaBytes } from './media-encrypt.js';
-import { uploadLineObsMediaObject } from '../client/obs-media-client.js';
-import { i32Field } from './thrift/fields/builders.js';
+import crypto from 'node:crypto'
+import { uploadLineObsMediaObject } from '../client/obs-media-client.js'
+import { requireLineClient } from './client-runtime.js'
+import { CONTENT_TYPE } from './constants.js'
+import { encryptLineMediaBytes } from './media-encrypt.js'
+import { i32Field } from './thrift/fields/builders.js'
 
 /** LINE OBS service namespace for image media. */
-const OBS_SID_IMAGE = 'emi';
+const OBS_SID_IMAGE = 'emi'
 
 /**
  * Acquire the encrypted access token the OBS upload gateway requires (the
@@ -17,12 +17,14 @@ const OBS_SID_IMAGE = 'emi';
  * @returns Encrypted access token segment for X-Line-Access on uploads.
  */
 async function acquireUploadAccessToken(client: any): Promise<string> {
-  const result = await client.sendTalk('acquireEncryptedAccessToken', [i32Field(2, 2)]);
-  const token = result?.fields?.[0];
+  const result = await client.sendTalk('acquireEncryptedAccessToken', [
+    i32Field(2, 2),
+  ])
+  const token = result?.fields?.[0]
   if (typeof token !== 'string' || !token.includes('\x1e')) {
-    throw new Error('Failed to acquire encrypted access token for media upload');
+    throw new Error('Failed to acquire encrypted access token for media upload')
   }
-  return token.split('\x1e')[1];
+  return token.split('\x1e')[1]
 }
 
 /**
@@ -33,8 +35,8 @@ async function acquireUploadAccessToken(client: any): Promise<string> {
  * @returns Lowercase extension without the leading dot.
  */
 function resolveImageExtension(fileName: string | null | undefined): string {
-  const match = /\.([a-zA-Z0-9]+)$/.exec(fileName ?? '');
-  return match ? match[1].toLowerCase() : 'jpg';
+  const match = /\.([a-zA-Z0-9]+)$/.exec(fileName ?? '')
+  return match ? match[1].toLowerCase() : 'jpg'
 }
 
 /**
@@ -67,7 +69,7 @@ export function createMessageCommandService(getClient, e2eeManager) {
           to,
           text.text,
           text.contentType ?? 0,
-        );
+        )
         return requireLineClient(getClient).sendMessage({
           to,
           text: null,
@@ -77,7 +79,7 @@ export function createMessageCommandService(getClient, e2eeManager) {
             : encrypted.contentMetadata,
           chunks: encrypted.chunks,
           relatedMessageId: text.relatedMessageId ?? null,
-        });
+        })
       }
 
       // Plaintext path, extended to carry contentMetadata (e.g. mentions)
@@ -89,10 +91,10 @@ export function createMessageCommandService(getClient, e2eeManager) {
           to,
           text: text.text ?? null,
           contentMetadata: text.contentMetadata,
-        });
+        })
       }
 
-      return requireLineClient(getClient).sendMessage(to, text);
+      return requireLineClient(getClient).sendMessage(to, text)
     },
 
     /**
@@ -120,15 +122,17 @@ export function createMessageCommandService(getClient, e2eeManager) {
      * @returns The sent message id and the uploaded object id.
      */
     async sendImage(to, imageBytes: Buffer, fileName: string | null) {
-      const client = requireLineClient(getClient);
-      const mid = e2eeManager.getProfileMid?.();
+      const client = requireLineClient(getClient)
+      const mid = e2eeManager.getProfileMid?.()
       if (!mid) {
-        throw new Error('Cannot send image without an authenticated LINE profile MID');
+        throw new Error(
+          'Cannot send image without an authenticated LINE profile MID',
+        )
       }
-      const extension = resolveImageExtension(fileName);
-      const accessToken = await acquireUploadAccessToken(client);
-      const keyMaterial = crypto.randomBytes(32).toString('base64');
-      const encryptedFile = await encryptLineMediaBytes(imageBytes, keyMaterial);
+      const extension = resolveImageExtension(fileName)
+      const accessToken = await acquireUploadAccessToken(client)
+      const keyMaterial = crypto.randomBytes(32).toString('base64')
+      const encryptedFile = await encryptLineMediaBytes(imageBytes, keyMaterial)
 
       const { oid } = await uploadLineObsMediaObject({
         accessToken,
@@ -137,7 +141,7 @@ export function createMessageCommandService(getClient, e2eeManager) {
         objectPath: `reqid-${crypto.randomUUID()}`,
         params: { name: fileName ?? `image.${extension}`, type: 'file' },
         sid: OBS_SID_IMAGE,
-      });
+      })
 
       // The preview object is required by the LINE protocol even though
       // Yomi has no separate thumbnail to offer — upload the same
@@ -149,16 +153,25 @@ export function createMessageCommandService(getClient, e2eeManager) {
         objectPath: `${oid}__ud-preview`,
         params: {},
         sid: OBS_SID_IMAGE,
-      });
+      })
 
-      const encrypted = await e2eeManager.encryptE2EEMessage(to, { keyMaterial }, CONTENT_TYPE.IMAGE);
+      const encrypted = await e2eeManager.encryptE2EEMessage(
+        to,
+        { keyMaterial },
+        CONTENT_TYPE.IMAGE,
+      )
       const contentMetadata = {
         ...encrypted.contentMetadata,
         e2eeVersion: '2',
-        MEDIA_CONTENT_INFO: JSON.stringify({ animated: false, category: 'original', extension, fileSize: encryptedFile.length }),
+        MEDIA_CONTENT_INFO: JSON.stringify({
+          animated: false,
+          category: 'original',
+          extension,
+          fileSize: encryptedFile.length,
+        }),
         OID: oid,
         SID: OBS_SID_IMAGE,
-      };
+      }
 
       const sent = await client.sendMessage({
         chunks: encrypted.chunks,
@@ -167,9 +180,9 @@ export function createMessageCommandService(getClient, e2eeManager) {
         relatedMessageId: null,
         text: null,
         to,
-      });
+      })
 
-      return { messageId: sent?.id ?? null, oid, sent: true };
+      return { messageId: sent?.id ?? null, oid, sent: true }
     },
-  };
+  }
 }

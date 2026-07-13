@@ -6,4 +6,7 @@
  * compatibility with the LINE protocol core.
  */
 
-export { CredentialStore as FileCredentialStore, InMemoryStore } from '../../auth/credential-store.js';
+export {
+  CredentialStore as FileCredentialStore,
+  InMemoryStore,
+} from '../../auth/credential-store.js'

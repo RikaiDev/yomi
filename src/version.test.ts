@@ -1,6 +1,6 @@
-import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import { YOMI_VERSION } from './version.js';
+import { expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { YOMI_VERSION } from './version.js'
 
 /**
  * `YOMI_VERSION` is a hand-maintained build-time constant (see version.ts's
@@ -11,6 +11,8 @@ import { YOMI_VERSION } from './version.js';
  * version.ts to match.
  */
 test('YOMI_VERSION matches package.json version', () => {
-  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
-  expect(YOMI_VERSION).toBe(packageJson.version);
-});
+  const packageJson = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+  )
+  expect(YOMI_VERSION).toBe(packageJson.version)
+})

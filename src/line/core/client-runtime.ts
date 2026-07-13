@@ -10,9 +10,9 @@
  * @returns Connected LINE client instance
  */
 export function requireLineClient(getClient) {
-  const client = getClient();
+  const client = getClient()
   if (!client) {
-    throw new Error('Not connected');
+    throw new Error('Not connected')
   }
-  return client;
+  return client
 }

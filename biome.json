@@ -20,6 +20,13 @@
       "preset": "recommended",
       "correctness": {
         "noUnusedImports": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noConfusingVoidType": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
       }
     }
   },

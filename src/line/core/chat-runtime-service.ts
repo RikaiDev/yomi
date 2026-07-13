@@ -11,8 +11,8 @@
  * yomi/README.md for the full extraction rationale.
  */
 
-import { createMessageCommandService } from './message-command-service.js';
-import { createMessageQueryService } from './message-query-service.js';
+import { createMessageCommandService } from './message-command-service.js'
+import { createMessageQueryService } from './message-query-service.js'
 
 /**
  * Create the chat/runtime capability bound to one LINE protocol service.
@@ -39,8 +39,15 @@ export function createChatRuntimeService(service: any) {
      * JSDoc on message-command-service.ts's `sendMessage` E2EE branch.
      * @returns LINE sendMessage result (includes the sent message id).
      */
-    async sendMessage(to: string, text: string, contentMetadata?: Record<string, string>): Promise<any> {
-      return createMessageCommandService(() => service.client, service.e2eeManager).sendMessage(to, { e2ee: true, text, contentMetadata });
+    async sendMessage(
+      to: string,
+      text: string,
+      contentMetadata?: Record<string, string>,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendMessage(to, { e2ee: true, text, contentMetadata })
     },
 
     /**
@@ -55,8 +62,15 @@ export function createChatRuntimeService(service: any) {
      * @param fileName - Original filename, used to derive the extension.
      * @returns `{ sent, messageId, oid }` describing the delivered image.
      */
-    async sendImage(to: string, imageBytes: Buffer, fileName: string | null): Promise<any> {
-      return createMessageCommandService(() => service.client, service.e2eeManager).sendImage(to, imageBytes, fileName);
+    async sendImage(
+      to: string,
+      imageBytes: Buffer,
+      fileName: string | null,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendImage(to, imageBytes, fileName)
     },
 
     /**
@@ -67,7 +81,10 @@ export function createChatRuntimeService(service: any) {
      * @returns Recent LINE messages.
      */
     async getRecentMessages(chatId: string, count = 50): Promise<any[]> {
-      return createMessageQueryService(() => service.client, service.e2eeManager).getRecentMessages(chatId, count);
+      return createMessageQueryService(
+        () => service.client,
+        service.e2eeManager,
+      ).getRecentMessages(chatId, count)
     },
 
     /**
@@ -83,7 +100,10 @@ export function createChatRuntimeService(service: any) {
       count = 50,
       before: { messageId?: string; deliveredTime?: number } = {},
     ): Promise<any[]> {
-      return createMessageQueryService(() => service.client, service.e2eeManager).getPreviousMessages(chatId, count, before);
+      return createMessageQueryService(
+        () => service.client,
+        service.e2eeManager,
+      ).getPreviousMessages(chatId, count, before)
     },
 
     /**
@@ -93,8 +113,14 @@ export function createChatRuntimeService(service: any) {
      * @param requestId - Optional request identifier.
      * @returns Original message content bytes.
      */
-    async downloadMessageContent(messageId: string, requestId?: string): Promise<Buffer> {
-      return createMessageQueryService(() => service.client, service.e2eeManager).downloadMessageContent(messageId, requestId);
+    async downloadMessageContent(
+      messageId: string,
+      requestId?: string,
+    ): Promise<Buffer> {
+      return createMessageQueryService(
+        () => service.client,
+        service.e2eeManager,
+      ).downloadMessageContent(messageId, requestId)
     },
 
     /**
@@ -104,8 +130,14 @@ export function createChatRuntimeService(service: any) {
      * @param requestId - Optional request identifier.
      * @returns Preview content bytes.
      */
-    async downloadMessageContentPreview(messageId: string, requestId?: string): Promise<Buffer> {
-      return createMessageQueryService(() => service.client, service.e2eeManager).downloadMessageContentPreview(messageId, requestId);
+    async downloadMessageContentPreview(
+      messageId: string,
+      requestId?: string,
+    ): Promise<Buffer> {
+      return createMessageQueryService(
+        () => service.client,
+        service.e2eeManager,
+      ).downloadMessageContentPreview(messageId, requestId)
     },
 
     /**
@@ -119,17 +151,25 @@ export function createChatRuntimeService(service: any) {
      * @param messageId - Optional message id to mark read up to.
      * @returns Result describing whether a read receipt was sent.
      */
-    async markChatRead(chatId: string, messageId?: string): Promise<{ marked: boolean; chatId?: string; lastMessageId?: string; reason?: string }> {
-      let lastMessageId = messageId ?? null;
+    async markChatRead(
+      chatId: string,
+      messageId?: string,
+    ): Promise<{
+      marked: boolean
+      chatId?: string
+      lastMessageId?: string
+      reason?: string
+    }> {
+      let lastMessageId = messageId ?? null
       if (!lastMessageId) {
-        const recent = await service.getRecentMessages(chatId, 1);
-        lastMessageId = recent?.[0]?.id ? String(recent[0].id) : null;
+        const recent = await service.getRecentMessages(chatId, 1)
+        lastMessageId = recent?.[0]?.id ? String(recent[0].id) : null
       }
       if (!lastMessageId) {
-        return { marked: false, reason: 'no message to mark read' };
+        return { marked: false, reason: 'no message to mark read' }
       }
-      await service.client.sendChatChecked(chatId, lastMessageId, 0);
-      return { marked: true, chatId, lastMessageId };
+      await service.client.sendChatChecked(chatId, lastMessageId, 0)
+      return { marked: true, chatId, lastMessageId }
     },
-  };
+  }
 }

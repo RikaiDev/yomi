@@ -1,6 +1,9 @@
-import type { KeyManagerContext, PeerPublicKeyCandidate } from './key-types.js';
-import { Buffer } from 'node:buffer';
-import { normalizeGroupPublicKeys, normalizeNegotiatedPublicKey } from './key-payload.js';
+import { Buffer } from 'node:buffer'
+import {
+  normalizeGroupPublicKeys,
+  normalizeNegotiatedPublicKey,
+} from './key-payload.js'
+import type { KeyManagerContext, PeerPublicKeyCandidate } from './key-types.js'
 
 /**
  * Resolve and cache a peer public key by MID and key ID.
@@ -9,40 +12,60 @@ import { normalizeGroupPublicKeys, normalizeNegotiatedPublicKey } from './key-pa
  * @param keyId - Expected peer key ID
  * @returns Peer public key bytes
  */
-export async function getPeerPublicKey(ctx: KeyManagerContext, mid: string, keyId: string): Promise<Buffer> {
-  const cacheKey = `peer:${keyId}`;
+export async function getPeerPublicKey(
+  ctx: KeyManagerContext,
+  mid: string,
+  keyId: string,
+): Promise<Buffer> {
+  const cacheKey = `peer:${keyId}`
   if (ctx.peerPublicKeys.has(cacheKey)) {
-    ctx.logGroupKeyEvent('e2ee.peer_key.cache_hit', { mid, key_id: keyId, source: 'memory' });
-    return ctx.peerPublicKeys.get(cacheKey) as Buffer;
+    ctx.logGroupKeyEvent('e2ee.peer_key.cache_hit', {
+      mid,
+      key_id: keyId,
+      source: 'memory',
+    })
+    return ctx.peerPublicKeys.get(cacheKey) as Buffer
   }
 
-  const store = ctx.getStore();
-  const persisted = await store?.get?.(`line_e2ee_public_by_keyid:${keyId}`);
+  const store = ctx.getStore()
+  const persisted = await store?.get?.(`line_e2ee_public_by_keyid:${keyId}`)
   if (persisted) {
-    const parsed = JSON.parse(persisted);
-    const data = Buffer.from(parsed.keyData, 'base64');
-    ctx.peerPublicKeys.set(cacheKey, data);
-    ctx.logGroupKeyEvent('e2ee.peer_key.cache_hit', { mid, key_id: keyId, source: 'persisted' });
-    return data;
+    const parsed = JSON.parse(persisted)
+    const data = Buffer.from(parsed.keyData, 'base64')
+    ctx.peerPublicKeys.set(cacheKey, data)
+    ctx.logGroupKeyEvent('e2ee.peer_key.cache_hit', {
+      mid,
+      key_id: keyId,
+      source: 'persisted',
+    })
+    return data
   }
 
-  const client = ctx.getClient();
-  const publicKey = normalizeNegotiatedPublicKey(await client?.negotiateE2EEPublicKey?.(mid));
-  const negotiatedKeyId = publicKey?.keyId;
-  const keyData = publicKey?.keyData;
+  const client = ctx.getClient()
+  const publicKey = normalizeNegotiatedPublicKey(
+    await client?.negotiateE2EEPublicKey?.(mid),
+  )
+  const negotiatedKeyId = publicKey?.keyId
+  const keyData = publicKey?.keyData
   if (!keyData || String(negotiatedKeyId) !== String(keyId)) {
     ctx.logGroupKeyEvent('e2ee.peer_key.fetch_failed', {
       mid,
       key_id: keyId,
       negotiated_key_id: negotiatedKeyId ?? null,
-    });
-    throw new Error(`Peer E2EE key mismatch for ${mid}: expected=${keyId}, actual=${String(negotiatedKeyId)}`);
+    })
+    throw new Error(
+      `Peer E2EE key mismatch for ${mid}: expected=${keyId}, actual=${String(negotiatedKeyId)}`,
+    )
   }
 
-  ctx.peerPublicKeys.set(cacheKey, keyData);
-  ctx.logGroupKeyEvent('e2ee.peer_key.resolved', { mid, key_id: keyId, source: 'server_fetch' });
-  await persistPeerPublicKey(ctx, mid, String(keyId), keyData);
-  return keyData;
+  ctx.peerPublicKeys.set(cacheKey, keyData)
+  ctx.logGroupKeyEvent('e2ee.peer_key.resolved', {
+    mid,
+    key_id: keyId,
+    source: 'server_fetch',
+  })
+  await persistPeerPublicKey(ctx, mid, String(keyId), keyData)
+  return keyData
 }
 
 /**
@@ -53,35 +76,43 @@ export async function getPeerPublicKey(ctx: KeyManagerContext, mid: string, keyI
  * @param keyId - Public key id
  * @param data - 32-byte public key
  */
-export async function persistPeerPublicKey(ctx: KeyManagerContext, mid: string, keyId: string, data: Buffer): Promise<void> {
-  const store = ctx.getStore();
-  const record = JSON.stringify({ mid, keyId, keyData: data.toString('base64') });
+export async function persistPeerPublicKey(
+  ctx: KeyManagerContext,
+  mid: string,
+  keyId: string,
+  data: Buffer,
+): Promise<void> {
+  const store = ctx.getStore()
+  const record = JSON.stringify({
+    mid,
+    keyId,
+    keyData: data.toString('base64'),
+  })
 
-  const existing = await store?.get?.(`line_e2ee_public_by_keyid:${keyId}`);
+  const existing = await store?.get?.(`line_e2ee_public_by_keyid:${keyId}`)
   if (existing !== record) {
-    await store?.set?.(`line_e2ee_public_by_keyid:${keyId}`, record);
+    await store?.set?.(`line_e2ee_public_by_keyid:${keyId}`, record)
   }
 
-  const historyKey = `line_e2ee_public_history_by_mid:${mid}`;
-  const rawHistory = await store?.get?.(historyKey);
-  let history: Array<{ mid: string; keyId: string; keyData: string }> = [];
+  const historyKey = `line_e2ee_public_history_by_mid:${mid}`
+  const rawHistory = await store?.get?.(historyKey)
+  let history: Array<{ mid: string; keyId: string; keyData: string }> = []
   if (rawHistory) {
     try {
-      const parsed = JSON.parse(rawHistory);
+      const parsed = JSON.parse(rawHistory)
       if (Array.isArray(parsed)) {
-        history = parsed.filter(Boolean);
+        history = parsed.filter(Boolean)
       }
-    }
-    catch {
-      history = [];
+    } catch {
+      history = []
     }
   }
 
   const nextHistory = [
     { mid, keyId, keyData: data.toString('base64') },
-    ...history.filter(entry => String(entry?.keyId) !== keyId),
-  ].slice(0, 8);
-  await store?.set?.(historyKey, JSON.stringify(nextHistory));
+    ...history.filter((entry) => String(entry?.keyId) !== keyId),
+  ].slice(0, 8)
+  await store?.set?.(historyKey, JSON.stringify(nextHistory))
 }
 
 /**
@@ -101,22 +132,22 @@ async function appendLiveSenderCandidate(
   candidates: PeerPublicKeyCandidate[],
 ): Promise<void> {
   if (!senderKey) {
-    return;
+    return
   }
-  const data = senderKey.keyData;
-  ctx.peerPublicKeys.set(`peer:${senderKey.keyId}`, data);
-  await persistPeerPublicKey(ctx, senderMid, String(senderKey.keyId), data);
+  const data = senderKey.keyData
+  ctx.peerPublicKeys.set(`peer:${senderKey.keyId}`, data)
+  await persistPeerPublicKey(ctx, senderMid, String(senderKey.keyId), data)
   ctx.logGroupKeyEvent('e2ee.peer_key.resolved', {
     mid: senderMid,
     key_id: senderKey.keyId,
     source: 'group_member_key_map',
     chat: chatMid,
-  });
+  })
   candidates.push({
     keyId: String(senderKey.keyId),
     keyData: data,
     source: 'group_member_key_map',
-  });
+  })
 }
 
 /**
@@ -131,26 +162,33 @@ async function appendHistoricalSenderCandidates(
   senderMid: string,
   candidates: PeerPublicKeyCandidate[],
 ): Promise<void> {
-  const store = ctx.getStore();
-  const rawHistory = await store?.get?.(`line_e2ee_public_history_by_mid:${senderMid}`);
-  const parsed: unknown = rawHistory ? JSON.parse(rawHistory) : null;
-  const entries = Array.isArray(parsed) ? parsed : [];
+  const store = ctx.getStore()
+  const rawHistory = await store?.get?.(
+    `line_e2ee_public_history_by_mid:${senderMid}`,
+  )
+  const parsed: unknown = rawHistory ? JSON.parse(rawHistory) : null
+  const entries = Array.isArray(parsed) ? parsed : []
   for (const entry of entries) {
-    const keyData = (entry as any)?.keyData;
+    const keyData = (entry as any)?.keyData
     if (typeof keyData !== 'string') {
-      continue;
+      continue
     }
-    const buffer = Buffer.from(keyData, 'base64');
-    const historyKeyId = String((entry as any)?.keyId || '');
+    const buffer = Buffer.from(keyData, 'base64')
+    const historyKeyId = String((entry as any)?.keyId || '')
     if (!historyKeyId) {
-      continue;
+      continue
     }
-    if (!candidates.some(candidate => candidate.keyId === historyKeyId || candidate.keyData.equals(buffer))) {
+    if (
+      !candidates.some(
+        (candidate) =>
+          candidate.keyId === historyKeyId || candidate.keyData.equals(buffer),
+      )
+    ) {
       candidates.push({
         keyId: historyKeyId,
         keyData: buffer,
         source: 'history',
-      });
+      })
     }
   }
 }
@@ -175,17 +213,24 @@ export async function getGroupSenderPublicKeyCandidates(
     chat: chatMid,
     sender: senderMid,
     strategy: 'group_member_key_map_then_history',
-  });
+  })
 
-  const client = ctx.getClient();
-  const keyMap = normalizeGroupPublicKeys(await client?.getLastE2EEPublicKeys?.(chatMid));
-  const senderKey = keyMap.get(senderMid);
-  const candidates: PeerPublicKeyCandidate[] = [];
-  await appendLiveSenderCandidate(ctx, chatMid, senderMid, senderKey, candidates);
+  const client = ctx.getClient()
+  const keyMap = normalizeGroupPublicKeys(
+    await client?.getLastE2EEPublicKeys?.(chatMid),
+  )
+  const senderKey = keyMap.get(senderMid)
+  const candidates: PeerPublicKeyCandidate[] = []
+  await appendLiveSenderCandidate(
+    ctx,
+    chatMid,
+    senderMid,
+    senderKey,
+    candidates,
+  )
   try {
-    await appendHistoricalSenderCandidates(ctx, senderMid, candidates);
-  }
-  catch {
+    await appendHistoricalSenderCandidates(ctx, senderMid, candidates)
+  } catch {
     // Ignore malformed history and continue with currently known keys only.
   }
 
@@ -196,8 +241,8 @@ export async function getGroupSenderPublicKeyCandidates(
       sender_key_id: null,
       receiver_key_id: null,
       strategy: 'group_member_key_map_miss',
-    });
-    throw new Error(`Missing group sender key for ${senderMid} in ${chatMid}`);
+    })
+    throw new Error(`Missing group sender key for ${senderMid} in ${chatMid}`)
   }
-  return candidates;
+  return candidates
 }

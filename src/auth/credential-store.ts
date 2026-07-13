@@ -18,7 +18,7 @@
  * as a fallback and migrated forward, never written to or deleted.
  */
 
-import { getKeychainService } from './keychain.js';
+import { getKeychainService } from './keychain.js'
 
 /**
  * Parse a JSON blob into the cache map. Ignores corrupt blobs silently.
@@ -28,12 +28,11 @@ import { getKeychainService } from './keychain.js';
  */
 function hydrateCacheFromBlob(blob: string, cache: Map<string, any>): void {
   try {
-    const obj = JSON.parse(blob);
+    const obj = JSON.parse(blob)
     for (const [k, v] of Object.entries(obj)) {
-      cache.set(k, v);
+      cache.set(k, v)
     }
-  }
-  catch {
+  } catch {
     // Corrupt blob — start fresh, will be overwritten on next write
   }
 }
@@ -46,23 +45,22 @@ function hydrateCacheFromBlob(blob: string, cache: Map<string, any>): void {
  */
 function parseCredentialBlob(blob: string | null): Record<string, any> {
   if (!blob) {
-    return {};
+    return {}
   }
   try {
-    const parsed = JSON.parse(blob);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  }
-  catch {
-    return {};
+    const parsed = JSON.parse(blob)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
   }
 }
 
 /** In-memory credential store for testing and non-persistent scenarios. */
 export class InMemoryStore {
-  public store: Map<string, any>;
+  public store: Map<string, any>
 
   constructor() {
-    this.store = new Map();
+    this.store = new Map()
   }
 
   /**
@@ -71,7 +69,7 @@ export class InMemoryStore {
    * @returns Stored value or null.
    */
   async get(key: string) {
-    return this.store.get(key) ?? null;
+    return this.store.get(key) ?? null
   }
 
   /**
@@ -80,7 +78,7 @@ export class InMemoryStore {
    * @param value - Value to store.
    */
   async set(key: string, value: any) {
-    this.store.set(key, value);
+    this.store.set(key, value)
   }
 
   /**
@@ -88,12 +86,12 @@ export class InMemoryStore {
    * @param key - Credential key to delete.
    */
   async delete(key: string) {
-    this.store.delete(key);
+    this.store.delete(key)
   }
 
   /** Wipes all credentials. */
   async clearAll() {
-    this.store.clear();
+    this.store.clear()
   }
 }
 
@@ -105,24 +103,26 @@ export class InMemoryStore {
  * @param fallbackFilePath - File path used on non-macOS platforms.
  */
 export class CredentialStore {
-  public loaded: boolean;
-  public cache: Map<string, any>;
-  public filePath: string;
-  public keychainService: any;
-  public secureStorageEnabled: boolean;
-  private readonly keychainAccount: string;
-  private lastPersistedBlob: string | null;
-  private persistQueue: Promise<void>;
+  public loaded: boolean
+  public cache: Map<string, any>
+  public filePath: string
+  public keychainService: any
+  public secureStorageEnabled: boolean
+  private readonly keychainAccount: string
+  private lastPersistedBlob: string | null
+  private persistQueue: Promise<void>
 
   constructor(namespace: string, fallbackFilePath: string) {
-    this.filePath = fallbackFilePath;
-    this.cache = new Map();
-    this.loaded = false;
-    this.secureStorageEnabled = process.platform === 'darwin';
-    this.keychainService = this.secureStorageEnabled ? getKeychainService() : null;
-    this.keychainAccount = namespace;
-    this.lastPersistedBlob = null;
-    this.persistQueue = Promise.resolve();
+    this.filePath = fallbackFilePath
+    this.cache = new Map()
+    this.loaded = false
+    this.secureStorageEnabled = process.platform === 'darwin'
+    this.keychainService = this.secureStorageEnabled
+      ? getKeychainService()
+      : null
+    this.keychainAccount = namespace
+    this.lastPersistedBlob = null
+    this.persistQueue = Promise.resolve()
   }
 
   /**
@@ -131,19 +131,20 @@ export class CredentialStore {
    */
   private async readPersistedBlob(): Promise<string | null> {
     if (this.secureStorageEnabled && this.keychainService) {
-      const result = await this.keychainService.getCredential(this.keychainAccount);
+      const result = await this.keychainService.getCredential(
+        this.keychainAccount,
+      )
       if (result.success && result.password) {
-        return result.password;
+        return result.password
       }
-      return null;
+      return null
     }
 
     try {
-      const fs = await import('node:fs/promises');
-      return await fs.readFile(this.filePath, 'utf-8');
-    }
-    catch {
-      return null;
+      const fs = await import('node:fs/promises')
+      return await fs.readFile(this.filePath, 'utf-8')
+    } catch {
+      return null
     }
   }
 
@@ -154,19 +155,18 @@ export class CredentialStore {
    */
   async load(options: { force?: boolean } = {}) {
     if (this.loaded && !options.force) {
-      return;
+      return
     }
 
-    const blob = await this.readPersistedBlob();
-    this.cache.clear();
+    const blob = await this.readPersistedBlob()
+    this.cache.clear()
     if (blob) {
-      hydrateCacheFromBlob(blob, this.cache);
-      this.lastPersistedBlob = blob;
+      hydrateCacheFromBlob(blob, this.cache)
+      this.lastPersistedBlob = blob
+    } else {
+      this.lastPersistedBlob = null
     }
-    else {
-      this.lastPersistedBlob = null;
-    }
-    this.loaded = true;
+    this.loaded = true
   }
 
   /**
@@ -176,24 +176,23 @@ export class CredentialStore {
    */
   private async persistBlob(blob: string): Promise<void> {
     if (blob === this.lastPersistedBlob) {
-      return;
+      return
     }
 
     if (this.secureStorageEnabled && this.keychainService) {
-      await this.keychainService.setCredential(this.keychainAccount, blob);
-      this.lastPersistedBlob = blob;
-      return;
+      await this.keychainService.setCredential(this.keychainAccount, blob)
+      this.lastPersistedBlob = blob
+      return
     }
 
     try {
-      const fs = await import('node:fs/promises');
-      const dir = this.filePath.substring(0, this.filePath.lastIndexOf('/'));
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(this.filePath, blob);
-      this.lastPersistedBlob = blob;
-    }
-    catch (error) {
-      console.error('[Yomi] Failed to save credentials:', error);
+      const fs = await import('node:fs/promises')
+      const dir = this.filePath.substring(0, this.filePath.lastIndexOf('/'))
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(this.filePath, blob)
+      this.lastPersistedBlob = blob
+    } catch (error) {
+      console.error('[Yomi] Failed to save credentials:', error)
     }
   }
 
@@ -202,21 +201,25 @@ export class CredentialStore {
    *
    * @param mutatePersisted - Optional mutation applied inside the write queue.
    */
-  async save(mutatePersisted?: (persisted: Record<string, any>) => Record<string, any> | void) {
+  async save(
+    mutatePersisted?: (
+      persisted: Record<string, any>,
+    ) => Record<string, any> | void,
+  ) {
     this.persistQueue = this.persistQueue.then(async () => {
       if (mutatePersisted) {
-        const persisted = parseCredentialBlob(await this.readPersistedBlob());
-        const next = mutatePersisted(persisted) || persisted;
-        const blob = JSON.stringify(next);
-        this.cache = new Map(Object.entries(next));
-        await this.persistBlob(blob);
-        return;
+        const persisted = parseCredentialBlob(await this.readPersistedBlob())
+        const next = mutatePersisted(persisted) || persisted
+        const blob = JSON.stringify(next)
+        this.cache = new Map(Object.entries(next))
+        await this.persistBlob(blob)
+        return
       }
 
-      const blob = JSON.stringify(Object.fromEntries(this.cache));
-      await this.persistBlob(blob);
-    });
-    await this.persistQueue;
+      const blob = JSON.stringify(Object.fromEntries(this.cache))
+      await this.persistBlob(blob)
+    })
+    await this.persistQueue
   }
 
   /**
@@ -225,8 +228,8 @@ export class CredentialStore {
    * @returns Stored value or null.
    */
   async get(key: string) {
-    await this.load({ force: true });
-    return this.cache.get(key) ?? null;
+    await this.load({ force: true })
+    return this.cache.get(key) ?? null
   }
 
   /**
@@ -244,13 +247,16 @@ export class CredentialStore {
    */
   async set(key: string, value: any) {
     if (value === undefined || value === null) {
-      throw new Error(`CredentialStore.set('${key}'): refusing to persist ${value === undefined ? 'undefined' : 'null'} — this would silently drop the key from the stored blob`);
+      throw new Error(
+        `CredentialStore.set('${key}'): refusing to persist ${value === undefined ? 'undefined' : 'null'} — this would silently drop the key from the stored blob`,
+      )
     }
-    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+    const stringValue =
+      typeof value === 'string' ? value : JSON.stringify(value)
     await this.save((persisted) => {
-      persisted[key] = stringValue;
-      return persisted;
-    });
+      persisted[key] = stringValue
+      return persisted
+    })
   }
 
   /**
@@ -259,27 +265,26 @@ export class CredentialStore {
    */
   async delete(key: string) {
     await this.save((persisted) => {
-      delete persisted[key];
-      return persisted;
-    });
+      delete persisted[key]
+      return persisted
+    })
   }
 
   /** Wipe all credentials atomically — one keychain delete covers everything. */
   async clearAll() {
-    this.cache.clear();
-    this.loaded = false;
-    this.lastPersistedBlob = null;
+    this.cache.clear()
+    this.loaded = false
+    this.lastPersistedBlob = null
 
     if (this.secureStorageEnabled && this.keychainService) {
-      await this.keychainService.deleteCredential(this.keychainAccount);
-      return;
+      await this.keychainService.deleteCredential(this.keychainAccount)
+      return
     }
 
     try {
-      const fs = await import('node:fs/promises');
-      await fs.unlink(this.filePath);
-    }
-    catch {
+      const fs = await import('node:fs/promises')
+      await fs.unlink(this.filePath)
+    } catch {
       // File already gone — that's fine
     }
   }

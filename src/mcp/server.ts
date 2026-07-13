@@ -58,17 +58,19 @@
  * surface, under the project's 200-scc-line cap for MCP server files.
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-import { supportsMcpApps } from './ui/capability.js';
-import { LOGIN_UI_RESOURCE_CONTENTS, LOGIN_UI_RESOURCE_LISTING, LOGIN_UI_RESOURCE_URI } from './ui/resource.js';
-import { toolsForClient } from './ui/tools-with-ui.js';
+} from '@modelcontextprotocol/sdk/types.js'
+import type { Mention } from '../line/core/mention.js'
+import { LineProtocolService } from '../line/core/service.js'
+import { startCapture } from '../search/capture.js'
+import { getDefaultEmbedder } from '../search/default-embedder.js'
+import { createCliLogger } from '../util/log.js'
 import {
   handleFindContact,
   handleGetChatMessages,
@@ -84,40 +86,53 @@ import {
   NO_CREDENTIALS_MESSAGE,
   sessionRequiredError,
   toolError,
-} from './handlers.js';
-import { handleLogin, handleLoginComplete } from './handlers-login.js';
-import { handleCollectMessages, handleSearchMessages } from './search-handlers.js';
-import { getPrivacyPolicyText } from './policy.js';
-import { handleExcludeChats, handleGetScopePolicy, handleIncludeChats, handleListExcludedChats } from './scope-handlers.js';
-import { TOOLS } from './tools.js';
-import type { Mention } from '../line/core/mention.js';
-import { LineProtocolService } from '../line/core/service.js';
-import { startCapture } from '../search/capture.js';
-import { getDefaultEmbedder } from '../search/default-embedder.js';
-import { createCliLogger } from '../util/log.js';
+} from './handlers.js'
+import { handleLogin, handleLoginComplete } from './handlers-login.js'
+import { getPrivacyPolicyText } from './policy.js'
+import {
+  handleExcludeChats,
+  handleGetScopePolicy,
+  handleIncludeChats,
+  handleListExcludedChats,
+} from './scope-handlers.js'
+import {
+  handleCollectMessages,
+  handleSearchMessages,
+} from './search-handlers.js'
+import { TOOLS } from './tools.js'
+import { supportsMcpApps } from './ui/capability.js'
+import {
+  LOGIN_UI_RESOURCE_CONTENTS,
+  LOGIN_UI_RESOURCE_LISTING,
+  LOGIN_UI_RESOURCE_URI,
+} from './ui/resource.js'
+import { toolsForClient } from './ui/tools-with-ui.js'
 
-const log = createCliLogger('Yomi');
+const log = createCliLogger('Yomi')
 
 /**
  * Build and start the Yomi MCP server over stdio.
  */
 async function main(): Promise<void> {
-  const service = new LineProtocolService();
+  const service = new LineProtocolService()
   // A Node EventEmitter with zero 'error' listeners turns any emit('error')
   // into an uncaught exception that kills this process (see pwless-login-flow.ts,
   // auth-session-service.ts). This listener must exist for the lifetime of the
   // service so a login/session error surfaces as a log line, not a crash — the
   // real failure still reaches callers through the normal throw/rejection path.
-  service.on('error', (error: any) => log.warn('service.error', { error: error?.message ?? String(error) }));
-  const resumed = await service.resumeSession();
+  service.on('error', (error: any) =>
+    log.warn('service.error', { error: error?.message ?? String(error) }),
+  )
+  const resumed = await service.resumeSession()
   if (!resumed) {
-    log.warn('session.resume_failed', { message: NO_CREDENTIALS_MESSAGE });
-  }
-  else {
-    log.info('session.resumed', { mid: service.profile?.mid ?? null });
+    log.warn('session.resume_failed', { message: NO_CREDENTIALS_MESSAGE })
+  } else {
+    log.info('session.resumed', { mid: service.profile?.mid ?? null })
     startCapture(service, getDefaultEmbedder()).catch((error: any) => {
-      log.error('capture.start_failed', { error: error?.message ?? String(error) });
-    });
+      log.error('capture.start_failed', {
+        error: error?.message ?? String(error),
+      })
+    })
   }
 
   // `instructions` is surfaced by the MCP SDK to the client/model on
@@ -125,55 +140,57 @@ async function main(): Promise<void> {
   // notice, not decoration. A short model directive precedes the canonical
   // policy prose, which lives ONLY in PRIVACY.md (see ./policy.ts) so the
   // disclosure is single-sourced and never drifts from get_scope_policy.
-  const instructions
-    = 'PRIVACY DISCLOSURE (say ONCE per session) — the first time this session '
-      + 'does a bulk read (collect_messages/search_messages), tell the user once, in '
-      + 'plain language, that Yomi captures all conversations by default, keeps the data '
-      + 'on this machine, and that they can exclude conversations. Do not bury it, and do '
-      + 'NOT repeat it on every call — once per session is enough. The full policy text '
-      + 'is included below, so you do NOT need to call get_scope_policy just to recite the '
-      + 'policy; call get_scope_policy only when the user asks to see the policy again or '
-      + 'wants the current exclusion list. Policy follows:\n\n'
-      + getPrivacyPolicyText();
+  const instructions =
+    'PRIVACY DISCLOSURE (say ONCE per session) — the first time this session ' +
+    'does a bulk read (collect_messages/search_messages), tell the user once, in ' +
+    'plain language, that Yomi captures all conversations by default, keeps the data ' +
+    'on this machine, and that they can exclude conversations. Do not bury it, and do ' +
+    'NOT repeat it on every call — once per session is enough. The full policy text ' +
+    'is included below, so you do NOT need to call get_scope_policy just to recite the ' +
+    'policy; call get_scope_policy only when the user asks to see the policy again or ' +
+    'wants the current exclusion list. Policy follows:\n\n' +
+    getPrivacyPolicyText()
 
   const server = new Server(
     { name: 'yomi', version: '0.1.0' },
     { capabilities: { tools: {}, resources: {} }, instructions },
-  );
+  )
 
   // Ground truth for whether a connected client actually supports
   // elicitation (needed by the `login` tool) — observe it, don't assume it.
   server.oninitialized = () => {
-    const capabilities = server.getClientCapabilities();
-    log.info('client.capabilities', { capabilities: JSON.stringify(capabilities ?? null) });
-  };
+    const capabilities = server.getClientCapabilities()
+    log.info('client.capabilities', {
+      capabilities: JSON.stringify(capabilities ?? null),
+    })
+  }
 
   // MCP Apps UI resource (the `login` view) is only advertised to clients
   // that negotiated support for it (see ./ui/capability.ts) — a client
   // without it must see `resources/list` return empty and `login`'s schema
   // stay byte-for-byte what it always was.
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const supportsUi = supportsMcpApps(server.getClientCapabilities());
-    const count = supportsUi ? 1 : 0;
-    log.info('resources.list', { supportsUi, count });
-    return { resources: supportsUi ? [LOGIN_UI_RESOURCE_LISTING] : [] };
-  });
+    const supportsUi = supportsMcpApps(server.getClientCapabilities())
+    const count = supportsUi ? 1 : 0
+    log.info('resources.list', { supportsUi, count })
+    return { resources: supportsUi ? [LOGIN_UI_RESOURCE_LISTING] : [] }
+  })
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    log.info('resources.read', { uri: request.params.uri });
+    log.info('resources.read', { uri: request.params.uri })
     if (request.params.uri !== LOGIN_UI_RESOURCE_URI) {
-      throw new Error(`Unknown resource: ${request.params.uri}`);
+      throw new Error(`Unknown resource: ${request.params.uri}`)
     }
-    return { contents: [LOGIN_UI_RESOURCE_CONTENTS] };
-  });
+    return { contents: [LOGIN_UI_RESOURCE_CONTENTS] }
+  })
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const supportsUi = supportsMcpApps(server.getClientCapabilities());
-    return { tools: toolsForClient(TOOLS, supportsUi) };
-  });
+    const supportsUi = supportsMcpApps(server.getClientCapabilities())
+    return { tools: toolsForClient(TOOLS, supportsUi) }
+  })
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+    const { name, arguments: args } = request.params
 
     // `login` is the one tool allowed without an existing session — it is
     // how a session gets created. `search_messages` also runs without a
@@ -183,69 +200,140 @@ async function main(): Promise<void> {
     // over ../search/scope.ts and likewise need no live client (list's name
     // resolution just degrades to null without one). Everything else needs
     // a live client.
-    const noSessionExempt = name === 'login' || name === 'login_complete' || name === 'search_messages'
-      || name === 'exclude_chats' || name === 'include_chats' || name === 'list_excluded_chats'
-      || name === 'get_scope_policy';
+    const noSessionExempt =
+      name === 'login' ||
+      name === 'login_complete' ||
+      name === 'search_messages' ||
+      name === 'exclude_chats' ||
+      name === 'include_chats' ||
+      name === 'list_excluded_chats' ||
+      name === 'get_scope_policy'
     if (!noSessionExempt && !service.client) {
-      return sessionRequiredError();
+      return sessionRequiredError()
     }
 
     try {
       switch (name) {
         case 'login':
-          return await handleLogin(server, service, (args ?? {}) as { phone?: string; region?: string });
+          return await handleLogin(
+            server,
+            service,
+            (args ?? {}) as { phone?: string; region?: string },
+          )
         case 'login_complete':
-          return await handleLoginComplete();
+          return await handleLoginComplete()
         case 'list_conversations':
-          return await handleListConversations(service, (args ?? {}) as { limit?: number });
+          return await handleListConversations(
+            service,
+            (args ?? {}) as { limit?: number },
+          )
         case 'get_chat_messages':
-          return await handleGetChatMessages(service, (args ?? {}) as { chatId: string; count?: number; before?: { messageId?: string; deliveredTime?: number } });
+          return await handleGetChatMessages(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              count?: number
+              before?: { messageId?: string; deliveredTime?: number }
+            },
+          )
         case 'get_message_image':
-          return await handleGetMessageImage(service, (args ?? {}) as { chatId: string; messageId: string; preview?: boolean });
+          return await handleGetMessageImage(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              messageId: string
+              preview?: boolean
+            },
+          )
         case 'get_message_media':
-          return await handleGetMessageMedia(service, (args ?? {}) as { chatId: string; messageId: string; preview?: boolean });
+          return await handleGetMessageMedia(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              messageId: string
+              preview?: boolean
+            },
+          )
         case 'get_unread_digest':
-          return await handleGetUnreadDigest(service, (args ?? {}) as { perChat?: number; limit?: number });
+          return await handleGetUnreadDigest(
+            service,
+            (args ?? {}) as { perChat?: number; limit?: number },
+          )
         case 'mark_read':
-          return await handleMarkRead(service, (args ?? {}) as { chatId: string; messageId?: string });
+          return await handleMarkRead(
+            service,
+            (args ?? {}) as { chatId: string; messageId?: string },
+          )
         case 'send_message':
-          return await handleSendMessage(service, (args ?? {}) as { chatId: string; text: string; mentions?: Mention[] });
+          return await handleSendMessage(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              text: string
+              mentions?: Mention[]
+            },
+          )
         case 'send_image':
-          return await handleSendImage(service, (args ?? {}) as { chatId: string; imagePath?: string; imageBase64?: string });
+          return await handleSendImage(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              imagePath?: string
+              imageBase64?: string
+            },
+          )
         case 'find_contact':
-          return await handleFindContact(service, (args ?? {}) as { name: string });
+          return await handleFindContact(
+            service,
+            (args ?? {}) as { name: string },
+          )
         case 'list_contacts':
-          return await handleListContacts(service);
+          return await handleListContacts(service)
         case 'get_group_members':
-          return await handleGetGroupMembers(service, (args ?? {}) as { chatId: string });
+          return await handleGetGroupMembers(
+            service,
+            (args ?? {}) as { chatId: string },
+          )
         case 'collect_messages':
-          return await handleCollectMessages(service, (args ?? {}) as { chatIds?: string[]; perChat?: number });
+          return await handleCollectMessages(
+            service,
+            (args ?? {}) as { chatIds?: string[]; perChat?: number },
+          )
         case 'search_messages':
-          return await handleSearchMessages(service, (args ?? {}) as { query: string; limit?: number });
+          return await handleSearchMessages(
+            service,
+            (args ?? {}) as { query: string; limit?: number },
+          )
         case 'exclude_chats':
-          return await handleExcludeChats((args ?? {}) as { chatIds?: string[] });
+          return await handleExcludeChats(
+            (args ?? {}) as { chatIds?: string[] },
+          )
         case 'include_chats':
-          return await handleIncludeChats((args ?? {}) as { chatIds?: string[] });
+          return await handleIncludeChats(
+            (args ?? {}) as { chatIds?: string[] },
+          )
         case 'list_excluded_chats':
-          return await handleListExcludedChats(service);
+          return await handleListExcludedChats(service)
         case 'get_scope_policy':
-          return await handleGetScopePolicy(service);
+          return await handleGetScopePolicy(service)
         default:
-          return toolError(`Unknown tool: ${name}`);
+          return toolError(`Unknown tool: ${name}`)
       }
+    } catch (error: any) {
+      log.error('tool.failed', {
+        error: error?.message ?? String(error),
+        tool: name,
+      })
+      return toolError(error?.message ?? String(error))
     }
-    catch (error: any) {
-      log.error('tool.failed', { error: error?.message ?? String(error), tool: name });
-      return toolError(error?.message ?? String(error));
-    }
-  });
+  })
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  log.info('server.started', { tools: TOOLS.length });
+  const transport = new StdioServerTransport()
+  await server.connect(transport)
+  log.info('server.started', { tools: TOOLS.length })
 }
 
 main().catch((error) => {
-  log.error('server.fatal', { error: error?.message ?? String(error) });
-  process.exit(1);
-});
+  log.error('server.fatal', { error: error?.message ?? String(error) })
+  process.exit(1)
+})

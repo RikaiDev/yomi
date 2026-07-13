@@ -6,27 +6,27 @@
  */
 
 export interface ParsedMessage {
-  id: string | null;
-  from: string | null;
-  to: string | null;
-  toType: number;
-  createdTime: number | null;
-  deliveredTime: number | null;
-  text: string | null;
-  contentType: number;
-  contentMetadata: Record<string, any>;
-  chunks: any;
+  id: string | null
+  from: string | null
+  to: string | null
+  toType: number
+  createdTime: number | null
+  deliveredTime: number | null
+  text: string | null
+  contentType: number
+  contentMetadata: Record<string, any>
+  chunks: any
 }
 
 export interface ParsedOperation {
-  revision: number;
-  createdTime: number;
-  type: number;
-  reqSeq: number;
-  param1: string | null;
-  param2: string | null;
-  param3: string | null;
-  message: ParsedMessage | null;
+  revision: number
+  createdTime: number
+  type: number
+  reqSeq: number
+  param1: string | null
+  param2: string | null
+  param3: string | null
+  message: ParsedMessage | null
 }
 
 /**
@@ -37,7 +37,7 @@ export interface ParsedOperation {
  */
 export function parseMessage(msg: any): ParsedMessage | null {
   if (!msg || typeof msg !== 'object') {
-    return null;
+    return null
   }
   return {
     id: msg[4] || null,
@@ -45,14 +45,17 @@ export function parseMessage(msg: any): ParsedMessage | null {
     to: msg[2] || null,
     toType: msg[3],
     createdTime: typeof msg[5] === 'bigint' ? Number(msg[5]) : msg[5],
-    deliveredTime: typeof msg[6] === 'bigint'
-      ? Number(msg[6])
-      : (typeof msg[7] === 'bigint' ? Number(msg[7]) : (msg[6] ?? msg[7])),
+    deliveredTime:
+      typeof msg[6] === 'bigint'
+        ? Number(msg[6])
+        : typeof msg[7] === 'bigint'
+          ? Number(msg[7])
+          : (msg[6] ?? msg[7]),
     text: msg[10] || null,
     contentType: msg[15] || 0,
     contentMetadata: msg[18] || {},
     chunks: msg[20] || null,
-  };
+  }
 }
 
 /**
@@ -63,12 +66,12 @@ export function parseMessage(msg: any): ParsedMessage | null {
  */
 export function parseMessages(data: any): ParsedMessage[] {
   if (Array.isArray(data)) {
-    return data.map(m => parseMessage(m)).filter(Boolean) as ParsedMessage[];
+    return data.map((m) => parseMessage(m)).filter(Boolean) as ParsedMessage[]
   }
   if (data && typeof data === 'object') {
-    return [parseMessage(data)].filter(Boolean) as ParsedMessage[];
+    return [parseMessage(data)].filter(Boolean) as ParsedMessage[]
   }
-  return [];
+  return []
 }
 
 /**
@@ -79,7 +82,7 @@ export function parseMessages(data: any): ParsedMessage[] {
  */
 export function parseOperation(op: any): ParsedOperation | null {
   if (!op || typeof op !== 'object') {
-    return null;
+    return null
   }
   return {
     revision: typeof op[1] === 'bigint' ? Number(op[1]) : op[1],
@@ -90,5 +93,5 @@ export function parseOperation(op: any): ParsedOperation | null {
     param2: op[11] || null,
     param3: op[12] || null,
     message: op[20] && typeof op[20] === 'object' ? parseMessage(op[20]) : null,
-  };
+  }
 }

@@ -1,4 +1,4 @@
-import { requireLineClient } from './client-runtime.js';
+import { requireLineClient } from './client-runtime.js'
 
 /**
  * Build the LINE group query boundary for a connected runtime.
@@ -15,7 +15,7 @@ export function createGroupQueryService(getClient) {
      * @returns LINE group profile
      */
     async getGroup(groupId) {
-      return requireLineClient(getClient).getGroup(groupId);
+      return requireLineClient(getClient).getGroup(groupId)
     },
-  };
+  }
 }

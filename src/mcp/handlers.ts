@@ -9,29 +9,33 @@
  * below is shared by both files.
  */
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { buildMentionMetadata, type Mention } from '../line/core/mention.js';
-import { decryptLineMessage } from '../line/core/message-query-service.js';
-import { LineProtocolService } from '../line/core/service.js';
-import { getExcludedChatIds } from '../search/scope.js';
-import { createCliLogger } from '../util/log.js';
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { buildMentionMetadata, type Mention } from '../line/core/mention.js'
+import { decryptLineMessage } from '../line/core/message-query-service.js'
+import type { LineProtocolService } from '../line/core/service.js'
+import { getExcludedChatIds } from '../search/scope.js'
+import { createCliLogger } from '../util/log.js'
 import {
   fetchLineMessageImage,
   fetchLineMessageMedia,
   LineMediaAccessError,
   resolveLineMediaDescriptor,
   resolveLineMediaType,
-} from './media.js';
-import { resolveConversationNames, resolveSenderNames, resolveUserNames } from './names.js';
-import { createPhiAccumulator, maskInto, phiNote } from './phi-guard.js';
+} from './media.js'
+import {
+  resolveConversationNames,
+  resolveSenderNames,
+  resolveUserNames,
+} from './names.js'
+import { createPhiAccumulator, maskInto, phiNote } from './phi-guard.js'
 
-const log = createCliLogger('Yomi');
+const log = createCliLogger('Yomi')
 
 // Yomi logs in on its own (via the `login`/`login_complete` tools, or
 // `npx @rikaidev/yomi login`); it does not depend on inboxd for anything.
-export const NO_CREDENTIALS_MESSAGE
-  = 'No persisted LINE session. Call the `login` tool, or run `npx @rikaidev/yomi login` in a terminal.';
+export const NO_CREDENTIALS_MESSAGE =
+  'No persisted LINE session. Call the `login` tool, or run `npx @rikaidev/yomi login` in a terminal.'
 
 /**
  * Build the always-fresh session-required error payload.
@@ -42,7 +46,7 @@ export function sessionRequiredError() {
   return {
     content: [{ type: 'text' as const, text: NO_CREDENTIALS_MESSAGE }],
     isError: true,
-  };
+  }
 }
 
 /**
@@ -55,7 +59,7 @@ export function toolError(message: string) {
   return {
     content: [{ type: 'text' as const, text: message }],
     isError: true,
-  };
+  }
 }
 
 /**
@@ -65,35 +69,48 @@ export function toolError(message: string) {
  * @param args - Tool arguments.
  * @returns MCP tool result.
  */
-export async function handleListConversations(service: LineProtocolService, args: { limit?: number }) {
+export async function handleListConversations(
+  service: LineProtocolService,
+  args: { limit?: number },
+) {
   const result = await service.client.getMessageBoxes({
     lastMessagesPerMessageBoxCount: 1,
     messageBoxCountLimit: args.limit ?? 20,
     withUnreadCount: true,
-  });
-  const boxes = result.messageBoxes || [];
-  const names = await resolveConversationNames(service, boxes.map((box: any) => box.id).filter(Boolean));
+  })
+  const boxes = result.messageBoxes || []
+  const names = await resolveConversationNames(
+    service,
+    boxes.map((box: any) => box.id).filter(Boolean),
+  )
   // The last message embedded in getMessageBoxes is E2EE-wrapped for most
   // chats; run it through the same local decrypt path get_chat_messages
   // uses so previews aren't silently empty. No extra network fetch per
   // conversation — decryptLineMessage only resolves already-known/cached
   // E2EE keys, the same cost paid whenever any message from that chat is
   // decrypted.
-  const acc = createPhiAccumulator();
-  const conversations = await Promise.all(boxes.map(async (box: any) => {
-    const lastMessage = box.lastMessages?.[box.lastMessages.length - 1] || null;
-    const decryptedLastMessage = lastMessage ? await decryptLineMessage(service.e2eeManager, lastMessage, box.id) : null;
-    return {
-      id: box.id,
-      lastMessagePreview: maskInto(acc, decryptedLastMessage?.text ?? null),
-      name: names.get(box.id) ?? null,
-      unreadCount: box.unreadCount ?? 0,
-    };
-  }));
-  const content: any[] = [{ type: 'text' as const, text: JSON.stringify(conversations, null, 2) }];
-  const note = phiNote(acc);
-  if (note) content.push(note);
-  return { content };
+  const acc = createPhiAccumulator()
+  const conversations = await Promise.all(
+    boxes.map(async (box: any) => {
+      const lastMessage =
+        box.lastMessages?.[box.lastMessages.length - 1] || null
+      const decryptedLastMessage = lastMessage
+        ? await decryptLineMessage(service.e2eeManager, lastMessage, box.id)
+        : null
+      return {
+        id: box.id,
+        lastMessagePreview: maskInto(acc, decryptedLastMessage?.text ?? null),
+        name: names.get(box.id) ?? null,
+        unreadCount: box.unreadCount ?? 0,
+      }
+    }),
+  )
+  const content: any[] = [
+    { type: 'text' as const, text: JSON.stringify(conversations, null, 2) },
+  ]
+  const note = phiNote(acc)
+  if (note) content.push(note)
+  return { content }
 }
 
 /**
@@ -120,31 +137,43 @@ export async function handleSendMessage(
   args: { chatId: string; text: string; mentions?: Mention[] },
 ) {
   if (!args.chatId || !args.text) {
-    return toolError('chatId and text are required.');
+    return toolError('chatId and text are required.')
   }
-  let contentMetadata: Record<string, string> | undefined;
+  let contentMetadata: Record<string, string> | undefined
   if (args.mentions && args.mentions.length > 0) {
     try {
-      contentMetadata = { MENTION: buildMentionMetadata(args.text, args.mentions) };
-    }
-    catch (error: any) {
-      return toolError(`Invalid mentions: ${error?.message ?? String(error)}`);
+      contentMetadata = {
+        MENTION: buildMentionMetadata(args.text, args.mentions),
+      }
+    } catch (error: any) {
+      return toolError(`Invalid mentions: ${error?.message ?? String(error)}`)
     }
   }
-  const sent = await service.sendMessage(args.chatId, args.text, contentMetadata);
-  const messageId = sent?.id ?? sent?.messageId ?? null;
-  log.info('send_message.sent', { chatId: args.chatId, messageId });
-  let read = false;
+  const sent = await service.sendMessage(
+    args.chatId,
+    args.text,
+    contentMetadata,
+  )
+  const messageId = sent?.id ?? sent?.messageId ?? null
+  log.info('send_message.sent', { chatId: args.chatId, messageId })
+  let read = false
   try {
-    const r = await service.markChatRead(args.chatId);
-    read = r.marked;
-  }
-  catch (error: any) {
-    log.warn('send_message.mark_read_failed', { chatId: args.chatId, error: error?.message ?? String(error) });
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_message.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
   }
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify({ sent: true, messageId, read }, null, 2) }],
-  };
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ sent: true, messageId, read }, null, 2),
+      },
+    ],
+  }
 }
 
 /**
@@ -167,46 +196,66 @@ export async function handleSendImage(
   args: { chatId: string; imagePath?: string; imageBase64?: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.');
+    return toolError('chatId is required.')
   }
-  const hasPath = Boolean(args.imagePath);
-  const hasBase64 = Boolean(args.imageBase64);
+  const hasPath = Boolean(args.imagePath)
+  const hasBase64 = Boolean(args.imageBase64)
   if (hasPath === hasBase64) {
-    return toolError('Provide exactly one of imagePath or imageBase64.');
+    return toolError('Provide exactly one of imagePath or imageBase64.')
   }
 
-  let imageBytes: Buffer;
-  let fileName: string | null = null;
+  let imageBytes: Buffer
+  let fileName: string | null = null
   if (args.imagePath) {
     try {
-      imageBytes = await fs.readFile(args.imagePath);
+      imageBytes = await fs.readFile(args.imagePath)
+    } catch (error: any) {
+      return toolError(
+        `Could not read imagePath "${args.imagePath}": ${error?.message ?? String(error)}`,
+      )
     }
-    catch (error: any) {
-      return toolError(`Could not read imagePath "${args.imagePath}": ${error?.message ?? String(error)}`);
-    }
-    fileName = path.basename(args.imagePath);
-  }
-  else {
-    imageBytes = Buffer.from(args.imageBase64 as string, 'base64');
+    fileName = path.basename(args.imagePath)
+  } else {
+    imageBytes = Buffer.from(args.imageBase64 as string, 'base64')
   }
 
   if (imageBytes.length === 0) {
-    return toolError('Resolved image is empty.');
+    return toolError('Resolved image is empty.')
   }
 
-  const result = await service.sendImage(args.chatId, imageBytes, fileName);
-  log.info('send_image.sent', { chatId: args.chatId, messageId: result?.messageId, oid: result?.oid });
-  let read = false;
+  const result = await service.sendImage(args.chatId, imageBytes, fileName)
+  log.info('send_image.sent', {
+    chatId: args.chatId,
+    messageId: result?.messageId,
+    oid: result?.oid,
+  })
+  let read = false
   try {
-    const r = await service.markChatRead(args.chatId);
-    read = r.marked;
-  }
-  catch (error: any) {
-    log.warn('send_image.mark_read_failed', { chatId: args.chatId, error: error?.message ?? String(error) });
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_image.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
   }
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify({ messageId: result?.messageId ?? null, oid: result?.oid ?? null, sent: true, read }, null, 2) }],
-  };
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            messageId: result?.messageId ?? null,
+            oid: result?.oid ?? null,
+            sent: true,
+            read,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }
 }
 
 /**
@@ -233,30 +282,46 @@ export async function handleSendImage(
  */
 export async function handleGetChatMessages(
   service: LineProtocolService,
-  args: { chatId: string; count?: number; before?: { messageId?: string; deliveredTime?: number } },
+  args: {
+    chatId: string
+    count?: number
+    before?: { messageId?: string; deliveredTime?: number }
+  },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.');
+    return toolError('chatId is required.')
   }
   const fetched = args.before
-    ? await service.getPreviousMessages(args.chatId, args.count ?? 50, args.before)
-    : await service.getRecentMessages(args.chatId, args.count ?? 50);
+    ? await service.getPreviousMessages(
+        args.chatId,
+        args.count ?? 50,
+        args.before,
+      )
+    : await service.getRecentMessages(args.chatId, args.count ?? 50)
   // LINE's getPreviousMessagesV2 treats endMessageId as INCLUSIVE, so the
   // cursor message reappears at the top of each older page. Drop it so
   // `before` returns strictly-older messages and callers can page without
   // dedup.
   const messages = args.before?.messageId
-    ? fetched.filter((message: any) => String(message.id) !== String(args.before?.messageId))
-    : fetched;
-  const names = await resolveSenderNames(service, messages.map((message: any) => message.from).filter(Boolean));
-  const acc = createPhiAccumulator();
+    ? fetched.filter(
+        (message: any) => String(message.id) !== String(args.before?.messageId),
+      )
+    : fetched
+  const names = await resolveSenderNames(
+    service,
+    messages.map((message: any) => message.from).filter(Boolean),
+  )
+  const acc = createPhiAccumulator()
   const shaped = messages.map((message: any) => ({
     createdTime: message.createdTime,
     deliveredTime: message.deliveredTime,
     from: message.from,
     fromName: names.get(message.from) ?? null,
     id: message.id,
-    mediaType: resolveLineMediaDescriptor(message) !== null ? resolveLineMediaType(Number(message.contentType)) : null,
+    mediaType:
+      resolveLineMediaDescriptor(message) !== null
+        ? resolveLineMediaType(Number(message.contentType))
+        : null,
     // Read-only probe (see JSDoc above `handleGetChatMessages`): raw,
     // unparsed passthrough of contentMetadata.MENTION. Do not parse this
     // into a structured shape here — its real format is unknown and must
@@ -265,11 +330,13 @@ export async function handleGetChatMessages(
     mentions: message.contentMetadata?.MENTION ?? null,
     text: maskInto(acc, message.text),
     e2eeDecrypted: message.e2eeDecrypted ?? null,
-  }));
-  const content: any[] = [{ type: 'text' as const, text: JSON.stringify(shaped, null, 2) }];
-  const note = phiNote(acc);
-  if (note) content.push(note);
-  return { content };
+  }))
+  const content: any[] = [
+    { type: 'text' as const, text: JSON.stringify(shaped, null, 2) },
+  ]
+  const note = phiNote(acc)
+  if (note) content.push(note)
+  return { content }
 }
 
 /**
@@ -284,19 +351,25 @@ export async function handleGetMessageImage(
   args: { chatId: string; messageId: string; preview?: boolean },
 ) {
   if (!args.chatId || !args.messageId) {
-    return toolError('chatId and messageId are required.');
+    return toolError('chatId and messageId are required.')
   }
   try {
-    const { bytes, mimeType } = await fetchLineMessageImage(service, args.chatId, args.messageId, args.preview ?? false);
+    const { bytes, mimeType } = await fetchLineMessageImage(
+      service,
+      args.chatId,
+      args.messageId,
+      args.preview ?? false,
+    )
     return {
-      content: [{ type: 'image' as const, data: bytes.toString('base64'), mimeType }],
-    };
-  }
-  catch (error) {
-    if (error instanceof LineMediaAccessError) {
-      return toolError(error.message);
+      content: [
+        { type: 'image' as const, data: bytes.toString('base64'), mimeType },
+      ],
     }
-    throw error;
+  } catch (error) {
+    if (error instanceof LineMediaAccessError) {
+      return toolError(error.message)
+    }
+    throw error
   }
 }
 
@@ -317,35 +390,42 @@ export async function handleGetMessageMedia(
   args: { chatId: string; messageId: string; preview?: boolean },
 ) {
   if (!args.chatId || !args.messageId) {
-    return toolError('chatId and messageId are required.');
+    return toolError('chatId and messageId are required.')
   }
   try {
-    const { bytes, contentType, fileName, mimeType } = await fetchLineMessageMedia(service, args.chatId, args.messageId, args.preview ?? false);
-    const mediaType = resolveLineMediaType(contentType);
-    const data = bytes.toString('base64');
+    const { bytes, contentType, fileName, mimeType } =
+      await fetchLineMessageMedia(
+        service,
+        args.chatId,
+        args.messageId,
+        args.preview ?? false,
+      )
+    const mediaType = resolveLineMediaType(contentType)
+    const data = bytes.toString('base64')
     if (mediaType === 'image') {
-      return { content: [{ type: 'image' as const, data, mimeType }] };
+      return { content: [{ type: 'image' as const, data, mimeType }] }
     }
     if (mediaType === 'audio') {
-      return { content: [{ type: 'audio' as const, data, mimeType }] };
+      return { content: [{ type: 'audio' as const, data, mimeType }] }
     }
-    const uri = `line-media://${args.chatId}/${args.messageId}${fileName ? `/${encodeURIComponent(fileName)}` : ''}`;
+    const uri = `line-media://${args.chatId}/${args.messageId}${fileName ? `/${encodeURIComponent(fileName)}` : ''}`
     return {
-      content: [{ type: 'resource' as const, resource: { blob: data, mimeType, uri } }],
-    };
-  }
-  catch (error) {
-    if (error instanceof LineMediaAccessError) {
-      return toolError(error.message);
+      content: [
+        { type: 'resource' as const, resource: { blob: data, mimeType, uri } },
+      ],
     }
-    throw error;
+  } catch (error) {
+    if (error instanceof LineMediaAccessError) {
+      return toolError(error.message)
+    }
+    throw error
   }
 }
 
 /** One resolved LINE contact/member shape shared by the contact/group tools. */
 interface ContactSummary {
-  mid: string;
-  displayName: string | null;
+  mid: string
+  displayName: string | null
 }
 
 /**
@@ -358,23 +438,28 @@ interface ContactSummary {
  * @param service - Resumed LineProtocolService.
  * @returns Normalized friend contacts (unresolved names surfaced as null, never fabricated).
  */
-async function fetchAllContacts(service: LineProtocolService): Promise<ContactSummary[]> {
-  const mids = await service.client.getAllContactIds();
+async function fetchAllContacts(
+  service: LineProtocolService,
+): Promise<ContactSummary[]> {
+  const mids = await service.client.getAllContactIds()
   if (!Array.isArray(mids) || mids.length === 0) {
-    return [];
+    return []
   }
-  const contacts = await service.client.getContacts(mids);
-  const summaries: ContactSummary[] = [];
+  const contacts = await service.client.getContacts(mids)
+  const summaries: ContactSummary[] = []
   for (const contact of contacts as any[]) {
     if (!contact?.mid) {
-      continue;
+      continue
     }
     if (contact.displayName) {
-      service.nameCache.set(contact.mid, contact.displayName);
+      service.nameCache.set(contact.mid, contact.displayName)
     }
-    summaries.push({ mid: contact.mid, displayName: contact.displayName ?? null });
+    summaries.push({
+      mid: contact.mid,
+      displayName: contact.displayName ?? null,
+    })
   }
-  return summaries;
+  return summaries
 }
 
 /**
@@ -386,10 +471,12 @@ async function fetchAllContacts(service: LineProtocolService): Promise<ContactSu
  * @returns MCP tool result.
  */
 export async function handleListContacts(service: LineProtocolService) {
-  const contacts = await fetchAllContacts(service);
+  const contacts = await fetchAllContacts(service)
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(contacts, null, 2) }],
-  };
+    content: [
+      { type: 'text' as const, text: JSON.stringify(contacts, null, 2) },
+    ],
+  }
 }
 
 /**
@@ -402,16 +489,23 @@ export async function handleListContacts(service: LineProtocolService) {
  * @param args - Tool arguments.
  * @returns MCP tool result.
  */
-export async function handleFindContact(service: LineProtocolService, args: { name: string }) {
+export async function handleFindContact(
+  service: LineProtocolService,
+  args: { name: string },
+) {
   if (!args.name) {
-    return toolError('name is required.');
+    return toolError('name is required.')
   }
-  const needle = args.name.toLowerCase();
-  const contacts = await fetchAllContacts(service);
-  const matches = contacts.filter(contact => contact.displayName?.toLowerCase().includes(needle));
+  const needle = args.name.toLowerCase()
+  const contacts = await fetchAllContacts(service)
+  const matches = contacts.filter((contact) =>
+    contact.displayName?.toLowerCase().includes(needle),
+  )
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(matches, null, 2) }],
-  };
+    content: [
+      { type: 'text' as const, text: JSON.stringify(matches, null, 2) },
+    ],
+  }
 }
 
 /**
@@ -427,26 +521,41 @@ export async function handleFindContact(service: LineProtocolService, args: { na
  * @param args - Tool arguments.
  * @returns MCP tool result.
  */
-export async function handleGetGroupMembers(service: LineProtocolService, args: { chatId: string }) {
+export async function handleGetGroupMembers(
+  service: LineProtocolService,
+  args: { chatId: string },
+) {
   if (!args.chatId) {
-    return toolError('chatId is required.');
+    return toolError('chatId is required.')
   }
-  const chats = await service.client.getChats([args.chatId], true);
-  const chat = Array.isArray(chats) ? chats[0] : chats;
-  const groupExtra = (chat as any)?.extra?.['1'];
+  const chats = await service.client.getChats([args.chatId], true)
+  const chat = Array.isArray(chats) ? chats[0] : chats
+  const groupExtra = (chat as any)?.extra?.['1']
   if (!groupExtra) {
-    return toolError(`No membership data for chatId "${args.chatId}" (not a group chat, or LINE returned no member list).`);
+    return toolError(
+      `No membership data for chatId "${args.chatId}" (not a group chat, or LINE returned no member list).`,
+    )
   }
-  const memberMids = Object.keys(groupExtra['4'] ?? {});
-  const invitedMids = Object.keys(groupExtra['5'] ?? {});
-  const names = await resolveUserNames(service, [...memberMids, ...invitedMids]);
+  const memberMids = Object.keys(groupExtra['4'] ?? {})
+  const invitedMids = Object.keys(groupExtra['5'] ?? {})
+  const names = await resolveUserNames(service, [...memberMids, ...invitedMids])
   const summaries = [
-    ...memberMids.map((mid) => ({ mid, displayName: names.get(mid) ?? null, invited: false })),
-    ...invitedMids.map((mid) => ({ mid, displayName: names.get(mid) ?? null, invited: true })),
-  ];
+    ...memberMids.map((mid) => ({
+      mid,
+      displayName: names.get(mid) ?? null,
+      invited: false,
+    })),
+    ...invitedMids.map((mid) => ({
+      mid,
+      displayName: names.get(mid) ?? null,
+      invited: true,
+    })),
+  ]
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(summaries, null, 2) }],
-  };
+    content: [
+      { type: 'text' as const, text: JSON.stringify(summaries, null, 2) },
+    ],
+  }
 }
 
 /**
@@ -459,15 +568,18 @@ export async function handleGetGroupMembers(service: LineProtocolService, args: 
  * @param args - Tool arguments.
  * @returns MCP tool result.
  */
-export async function handleMarkRead(service: LineProtocolService, args: { chatId: string; messageId?: string }) {
+export async function handleMarkRead(
+  service: LineProtocolService,
+  args: { chatId: string; messageId?: string },
+) {
   if (!args.chatId) {
-    return toolError('chatId is required.');
+    return toolError('chatId is required.')
   }
-  const result = await service.markChatRead(args.chatId, args.messageId);
-  log.info('mark_read.done', { chatId: args.chatId, marked: result.marked });
+  const result = await service.markChatRead(args.chatId, args.messageId)
+  log.info('mark_read.done', { chatId: args.chatId, marked: result.marked })
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  };
+  }
 }
 
 /**
@@ -490,33 +602,46 @@ export async function handleGetUnreadDigest(
     lastMessagesPerMessageBoxCount: 1,
     messageBoxCountLimit: args.limit ?? 20,
     withUnreadCount: true,
-  });
-  const excluded = getExcludedChatIds();
+  })
+  const excluded = getExcludedChatIds()
   const unreadBoxes = (result.messageBoxes || []).filter(
     (box: any) => (box.unreadCount ?? 0) > 0 && box.id && !excluded.has(box.id),
-  );
-  const names = await resolveConversationNames(service, unreadBoxes.map((box: any) => box.id));
-  const perChat = args.perChat ?? 10;
-  const acc = createPhiAccumulator();
-  const digest = await Promise.all(unreadBoxes.map(async (box: any) => {
-    const messages = await service.getRecentMessages(box.id, perChat);
-    const senderNames = await resolveSenderNames(service, messages.map((m: any) => m.from).filter(Boolean));
-    return {
-      chatId: box.id,
-      name: names.get(box.id) ?? null,
-      unreadCount: box.unreadCount ?? 0,
-      messages: messages.map((m: any) => ({
-        createdTime: m.createdTime,
-        from: m.from,
-        fromName: senderNames.get(m.from) ?? null,
-        id: m.id,
-        mediaType: resolveLineMediaDescriptor(m) !== null ? resolveLineMediaType(Number(m.contentType)) : null,
-        text: maskInto(acc, m.text),
-      })),
-    };
-  }));
-  const content: any[] = [{ type: 'text' as const, text: JSON.stringify(digest, null, 2) }];
-  const note = phiNote(acc);
-  if (note) content.push(note);
-  return { content };
+  )
+  const names = await resolveConversationNames(
+    service,
+    unreadBoxes.map((box: any) => box.id),
+  )
+  const perChat = args.perChat ?? 10
+  const acc = createPhiAccumulator()
+  const digest = await Promise.all(
+    unreadBoxes.map(async (box: any) => {
+      const messages = await service.getRecentMessages(box.id, perChat)
+      const senderNames = await resolveSenderNames(
+        service,
+        messages.map((m: any) => m.from).filter(Boolean),
+      )
+      return {
+        chatId: box.id,
+        name: names.get(box.id) ?? null,
+        unreadCount: box.unreadCount ?? 0,
+        messages: messages.map((m: any) => ({
+          createdTime: m.createdTime,
+          from: m.from,
+          fromName: senderNames.get(m.from) ?? null,
+          id: m.id,
+          mediaType:
+            resolveLineMediaDescriptor(m) !== null
+              ? resolveLineMediaType(Number(m.contentType))
+              : null,
+          text: maskInto(acc, m.text),
+        })),
+      }
+    }),
+  )
+  const content: any[] = [
+    { type: 'text' as const, text: JSON.stringify(digest, null, 2) },
+  ]
+  const note = phiNote(acc)
+  if (note) content.push(note)
+  return { content }
 }

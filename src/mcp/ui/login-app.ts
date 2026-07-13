@@ -45,10 +45,11 @@
  * HTML/JS source, so there is exactly one place (../handlers-login.ts,
  * sourced from ../../line/auth/pwless/index.ts) that owns each number.
  */
-import { buildLoginAppProtocolJs } from './login-app-protocol.js';
-import { LOGIN_APP_CSS } from './login-app-styles.js';
-import { LOGIN_APP_VIEW_JS } from './login-app-view.js';
-import { YOMI_VERSION } from '../../version.js';
+
+import { YOMI_VERSION } from '../../version.js'
+import { buildLoginAppProtocolJs } from './login-app-protocol.js'
+import { LOGIN_APP_CSS } from './login-app-styles.js'
+import { LOGIN_APP_VIEW_JS } from './login-app-view.js'
 
 export const LOGIN_APP_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -70,4 +71,4 @@ ${LOGIN_APP_VIEW_JS}
 </script>
 </body>
 </html>
-`;
+`

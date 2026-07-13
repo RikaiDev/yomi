@@ -2,9 +2,12 @@
  * LINE core auth/session capability.
  */
 
-import { performPwlessLogin } from '../auth/protocol/index.js';
-import { performLogout } from './auth-session-logout.js';
-import { resumeSession as resumeSessionImpl, tryRefreshToken as tryRefreshTokenImpl } from './auth-session-runtime.js';
+import { performPwlessLogin } from '../auth/protocol/index.js'
+import { performLogout } from './auth-session-logout.js'
+import {
+  resumeSession as resumeSessionImpl,
+  tryRefreshToken as tryRefreshTokenImpl,
+} from './auth-session-runtime.js'
 
 /**
  * Create the auth/session capability bound to one LINE protocol service.
@@ -13,7 +16,10 @@ import { resumeSession as resumeSessionImpl, tryRefreshToken as tryRefreshTokenI
  * @param states - Service state constants.
  * @returns Auth/session methods.
  */
-export function createAuthSessionService(service: any, states: Record<string, string>) {
+export function createAuthSessionService(
+  service: any,
+  states: Record<string, string>,
+) {
   return {
     /**
      * Start the passwordless login process.
@@ -23,7 +29,14 @@ export function createAuthSessionService(service: any, states: Record<string, st
      * @returns Promise resolving to the login result.
      */
     async startPwlessLogin(phone: string, region: string): Promise<any> {
-      return performPwlessLogin(service, phone, region, states.LOGGING_IN, states.CONNECTED, states.ERROR);
+      return performPwlessLogin(
+        service,
+        phone,
+        region,
+        states.LOGGING_IN,
+        states.CONNECTED,
+        states.ERROR,
+      )
     },
 
     /**
@@ -32,7 +45,7 @@ export function createAuthSessionService(service: any, states: Record<string, st
      * @returns Promise resolving when logout completes.
      */
     async logout(): Promise<void> {
-      return performLogout(service, states.DISCONNECTED);
+      return performLogout(service, states.DISCONNECTED)
     },
 
     /**
@@ -42,31 +55,30 @@ export function createAuthSessionService(service: any, states: Record<string, st
      */
     async invalidateSession(reason = 'line_auth_invalidated'): Promise<void> {
       try {
-        service.client?.stopPolling?.();
-      }
-      catch {
+        service.client?.stopPolling?.()
+      } catch {
         // Polling may already be stopped.
       }
 
-      const savedPhone = await service.credentialStore?.get?.('line_phone');
-      const savedRegion = await service.credentialStore?.get?.('line_region');
-      await service.sessionState.clearAuth();
+      const savedPhone = await service.credentialStore?.get?.('line_phone')
+      const savedRegion = await service.credentialStore?.get?.('line_region')
+      await service.sessionState.clearAuth()
       if (savedPhone) {
-        await service.credentialStore?.set?.('line_phone', savedPhone);
+        await service.credentialStore?.set?.('line_phone', savedPhone)
       }
       if (savedRegion) {
-        await service.credentialStore?.set?.('line_region', savedRegion);
+        await service.credentialStore?.set?.('line_region', savedRegion)
       }
 
-      service.client = null;
-      service.profile = null;
-      service.e2eeWarning = false;
-      service.loginRequired = true;
-      service.nameCache.clear();
-      service.chatCache.clear();
-      service.setState(states.DISCONNECTED);
-      service.emit('line:loginRequired', { reason });
-      service.emit('error', new Error(reason));
+      service.client = null
+      service.profile = null
+      service.e2eeWarning = false
+      service.loginRequired = true
+      service.nameCache.clear()
+      service.chatCache.clear()
+      service.setState(states.DISCONNECTED)
+      service.emit('line:loginRequired', { reason })
+      service.emit('error', new Error(reason))
     },
 
     /**
@@ -75,7 +87,7 @@ export function createAuthSessionService(service: any, states: Record<string, st
      * @returns True when refresh succeeded.
      */
     async tryRefreshToken(): Promise<boolean> {
-      return tryRefreshTokenImpl(service);
+      return tryRefreshTokenImpl(service)
     },
 
     /**
@@ -84,7 +96,7 @@ export function createAuthSessionService(service: any, states: Record<string, st
      * @returns True when the session was restored.
      */
     async resumeSession(): Promise<boolean> {
-      return resumeSessionImpl(service);
+      return resumeSessionImpl(service)
     },
-  };
+  }
 }

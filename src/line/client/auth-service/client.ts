@@ -6,12 +6,12 @@
  * lifecycle and credential/bootstrap flows on /AS4, /RS4, and refresh paths.
  */
 
-import type { ThriftFieldTuple } from '../../core/thrift/types.js';
-import { Buffer } from 'node:buffer';
-import { createCliLogger } from '../../../util/log.js';
-import { LINE_APP_CONFIG } from '../../core/config.js';
-import { encodeCallMessage } from '../../core/thrift/index.js';
-import { sendRequest } from '../transport.js';
+import { Buffer } from 'node:buffer'
+import { createCliLogger } from '../../../util/log.js'
+import { LINE_APP_CONFIG } from '../../core/config.js'
+import { encodeCallMessage } from '../../core/thrift/index.js'
+import type { ThriftFieldTuple } from '../../core/thrift/types.js'
+import { sendRequest } from '../transport.js'
 
 /**
  * Resolve the active LINE client logger, preserving startup indentation.
@@ -21,12 +21,12 @@ import { sendRequest } from '../transport.js';
  */
 function getLineClientLog(client) {
   if (client?.startupFlowLogger) {
-    return client.startupFlowLogger;
+    return client.startupFlowLogger
   }
   if (client?.logger?.info) {
-    return client.logger;
+    return client.logger
   }
-  return client?.logger || createCliLogger('LINE');
+  return client?.logger || createCliLogger('LINE')
 }
 
 /**
@@ -38,10 +38,12 @@ function getLineClientLog(client) {
  */
 function unwrapAuthSuccess(method, result) {
   if (result.fields?.[1]) {
-    const err = result.fields[1];
-    throw new Error(`${method} failed: code=${err?.[1]} msg="${err?.[2] || 'Unknown error'}"`);
+    const err = result.fields[1]
+    throw new Error(
+      `${method} failed: code=${err?.[1]} msg="${err?.[2] || 'Unknown error'}"`,
+    )
   }
-  return result.fields?.[0] ?? true;
+  return result.fields?.[0] ?? true
 }
 
 /**
@@ -64,8 +66,12 @@ export function createAuthClient(runtime) {
      * @param path - Override service path when the method is not served from /AS4.
      * @returns Decoded thrift response.
      */
-    async sendAuth(method, args: ThriftFieldTuple[] = [], path = LINE_APP_CONFIG.authPath) {
-      const data = encodeCallMessage(method, runtime.seq++, args);
+    async sendAuth(
+      method,
+      args: ThriftFieldTuple[] = [],
+      path = LINE_APP_CONFIG.authPath,
+    ) {
+      const data = encodeCallMessage(method, runtime.seq++, args)
       const result = await sendRequest(
         runtime.host,
         path,
@@ -73,17 +79,17 @@ export function createAuthClient(runtime) {
         { 'X-Line-Access': runtime.authToken },
         30000,
         { logger: getLineClientLog(runtime) },
-      );
+      )
       if (result.nextToken) {
-        runtime.authToken = result.nextToken;
-        runtime.emit('tokenRotated', result.nextToken);
+        runtime.authToken = result.nextToken
+        runtime.emit('tokenRotated', result.nextToken)
       }
       if (result.fields?.[1] && typeof result.fields[1] === 'object') {
-        const exc = result.fields[1];
-        const msg = typeof exc[2] === 'string' ? exc[2] : JSON.stringify(exc);
-        console.error(`[LINE] ${method} exception: ${msg}`);
+        const exc = result.fields[1]
+        const msg = typeof exc[2] === 'string' ? exc[2] : JSON.stringify(exc)
+        console.error(`[LINE] ${method} exception: ${msg}`)
       }
-      return result;
+      return result
     },
 
     /**
@@ -95,28 +101,43 @@ export function createAuthClient(runtime) {
     async refreshAuthToken(refreshToken) {
       // stderr-only logger — stdout is the MCP JSON-RPC channel and this runs
       // inside the stdio server (token refresh on resume/rotation).
-      const lineLog = getLineClientLog(runtime);
+      const lineLog = getLineClientLog(runtime)
       lineLog.info('auth.refresh.call', {
         auth: `${String(runtime.authToken || '').slice(0, 16)}...`,
         refresh: `${String(refreshToken || '').slice(0, 12)}...`,
-      });
-      const result = await runtime.sendAuth('refresh', [
-        [12, 1, [[11, 1, refreshToken]]],
-      ], LINE_APP_CONFIG.tokenRefreshPath);
-      const resp = result.fields?.[0];
+      })
+      const result = await runtime.sendAuth(
+        'refresh',
+        [[12, 1, [[11, 1, refreshToken]]]],
+        LINE_APP_CONFIG.tokenRefreshPath,
+      )
+      const resp = result.fields?.[0]
       if (resp?.[1]) {
-        runtime.authToken = resp[1];
-        runtime.emit('tokenRotated', resp[1]);
-        const durationUntilRefreshInSec = typeof resp[2] === 'bigint' ? Number(resp[2]) : (resp[2] || 0);
-        const tokenIssueTimeEpochSec = typeof resp[3] === 'bigint' ? Number(resp[3]) : (resp[3] || null);
+        runtime.authToken = resp[1]
+        runtime.emit('tokenRotated', resp[1])
+        const durationUntilRefreshInSec =
+          typeof resp[2] === 'bigint' ? Number(resp[2]) : resp[2] || 0
+        const tokenIssueTimeEpochSec =
+          typeof resp[3] === 'bigint' ? Number(resp[3]) : resp[3] || null
         lineLog.info('auth.refresh.success', {
           auth: `${String(resp[1]).slice(0, 16)}...`,
           next_in_hours: Math.round(durationUntilRefreshInSec / 3600),
-        });
-        return { authToken: resp[1], durationUntilRefreshInSec, tokenIssueTimeEpochSec };
+        })
+        return {
+          authToken: resp[1],
+          durationUntilRefreshInSec,
+          tokenIssueTimeEpochSec,
+        }
       }
-      console.error('[LINE] refresh() exception payload:', JSON.stringify(result, (key, val) => typeof val === 'bigint' ? val.toString() : val));
-      throw new Error(`Token refresh failed: ${JSON.stringify(result, (key, val) => typeof val === 'bigint' ? val.toString() : val)}`);
+      console.error(
+        '[LINE] refresh() exception payload:',
+        JSON.stringify(result, (_key, val) =>
+          typeof val === 'bigint' ? val.toString() : val,
+        ),
+      )
+      throw new Error(
+        `Token refresh failed: ${JSON.stringify(result, (_key, val) => (typeof val === 'bigint' ? val.toString() : val))}`,
+      )
     },
 
     /**
@@ -128,8 +149,8 @@ export function createAuthClient(runtime) {
     async reportRefreshedAccessToken(authToken) {
       const result = await runtime.sendAuth('reportRefreshedAccessToken', [
         [12, 1, [[11, 1, authToken]]],
-      ]);
-      return unwrapAuthSuccess('reportRefreshedAccessToken', result);
+      ])
+      return unwrapAuthSuccess('reportRefreshedAccessToken', result)
     },
 
     /**
@@ -141,8 +162,8 @@ export function createAuthClient(runtime) {
     async openAuthSession(metaData = {}) {
       const result = await runtime.sendAuth('openAuthSession', [
         [12, 2, [[13, 1, [11, 11, metaData]]]],
-      ]);
-      return unwrapAuthSuccess('openAuthSession', result);
+      ])
+      return unwrapAuthSuccess('openAuthSession', result)
     },
 
     /**
@@ -154,8 +175,8 @@ export function createAuthClient(runtime) {
     async openSession(metaData = {}) {
       const result = await runtime.sendAuth('openSession', [
         [12, 1, [[13, 1, [11, 11, metaData]]]],
-      ]);
-      return unwrapAuthSuccess('openSession', result);
+      ])
+      return unwrapAuthSuccess('openSession', result)
     },
 
     /**
@@ -169,8 +190,8 @@ export function createAuthClient(runtime) {
       const result = await runtime.sendAuth('getAuthRSAKey', [
         [11, 2, authSessionId],
         [8, 3, identityProvider],
-      ]);
-      return unwrapAuthSuccess('getAuthRSAKey', result);
+      ])
+      return unwrapAuthSuccess('getAuthRSAKey', result)
     },
 
     /**
@@ -181,13 +202,17 @@ export function createAuthClient(runtime) {
      */
     async issueV3TokenForPrimary(request) {
       const result = await runtime.sendAuth('issueV3TokenForPrimary', [
-        [12, 1, [
-          [11, 1, request?.udid],
-          [11, 2, request?.systemDisplayName],
-          [11, 3, request?.modelName],
-        ]],
-      ]);
-      return unwrapAuthSuccess('issueV3TokenForPrimary', result);
+        [
+          12,
+          1,
+          [
+            [11, 1, request?.udid],
+            [11, 2, request?.systemDisplayName],
+            [11, 3, request?.modelName],
+          ],
+        ],
+      ])
+      return unwrapAuthSuccess('issueV3TokenForPrimary', result)
     },
 
     /**
@@ -198,13 +223,17 @@ export function createAuthClient(runtime) {
      */
     async createE2EEKeyBackupEnforced(request) {
       const result = await runtime.sendAuth('createE2EEKeyBackupEnforced', [
-        [12, 2, [
-          [11, 1, request?.blobHeader],
-          [11, 2, request?.blobPayload],
-          [8, 3, request?.reason],
-        ]],
-      ]);
-      return unwrapAuthSuccess('createE2EEKeyBackupEnforced', result);
+        [
+          12,
+          2,
+          [
+            [11, 1, request?.blobHeader],
+            [11, 2, request?.blobPayload],
+            [8, 3, request?.reason],
+          ],
+        ],
+      ])
+      return unwrapAuthSuccess('createE2EEKeyBackupEnforced', result)
     },
 
     /**
@@ -216,8 +245,8 @@ export function createAuthClient(runtime) {
     async restoreE2EEKeyBackup(restoreClaim) {
       const result = await runtime.sendAuth('restoreE2EEKeyBackup', [
         [12, 2, [[11, 1, restoreClaim]]],
-      ]);
-      return unwrapAuthSuccess('restoreE2EEKeyBackup', result);
+      ])
+      return unwrapAuthSuccess('restoreE2EEKeyBackup', result)
     },
 
     /**
@@ -226,7 +255,9 @@ export function createAuthClient(runtime) {
      * @returns Whether the server acknowledged logout success.
      */
     async logoutZ() {
-      const payload = Buffer.from([0x82, 0x21, 0x00, 0x07, 0x6C, 0x6F, 0x67, 0x6F, 0x75, 0x74, 0x5A, 0x00]);
+      const payload = Buffer.from([
+        0x82, 0x21, 0x00, 0x07, 0x6c, 0x6f, 0x67, 0x6f, 0x75, 0x74, 0x5a, 0x00,
+      ])
       const result = await sendRequest(
         runtime.host,
         LINE_APP_CONFIG.revokePath,
@@ -234,22 +265,27 @@ export function createAuthClient(runtime) {
         { 'X-Line-Access': runtime.authToken },
         30000,
         { logger: getLineClientLog(runtime) },
-      );
+      )
       if (result.nextToken) {
-        runtime.authToken = result.nextToken;
-        runtime.emit('tokenRotated', result.nextToken);
+        runtime.authToken = result.nextToken
+        runtime.emit('tokenRotated', result.nextToken)
       }
       if (result.fields?.[1]) {
-        const err = result.fields[1];
-        const code = String(err?.[1] || '');
-        const message = String(err?.[2] || '');
-        if (code !== 'MUST_REFRESH_V3_TOKEN' && !message.includes('MUST_REFRESH_V3_TOKEN')) {
-          throw new Error(`logoutZ failed: code=${code} msg="${message || 'Unknown error'}"`);
+        const err = result.fields[1]
+        const code = String(err?.[1] || '')
+        const message = String(err?.[2] || '')
+        if (
+          code !== 'MUST_REFRESH_V3_TOKEN' &&
+          !message.includes('MUST_REFRESH_V3_TOKEN')
+        ) {
+          throw new Error(
+            `logoutZ failed: code=${code} msg="${message || 'Unknown error'}"`,
+          )
         }
       }
-      runtime.polling = false;
-      runtime.aborted = true;
-      return result.fields?.[0] ?? true;
+      runtime.polling = false
+      runtime.aborted = true
+      return result.fields?.[0] ?? true
     },
-  };
+  }
 }

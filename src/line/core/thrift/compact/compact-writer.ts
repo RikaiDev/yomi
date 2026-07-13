@@ -6,26 +6,26 @@
  * @class TCompactWriter
  */
 
-import { THRIFT_TYPE } from '../types.js';
-import { getCompactTypeCodecDefinition } from './type-codec-dsl.js';
+import { THRIFT_TYPE } from '../types.js'
+import { getCompactTypeCodecDefinition } from './type-codec-dsl.js'
 
 /**
  *
  */
 export class TCompactWriter {
-  private buffer: number[] = [];
-  private lastFieldId: number = 0;
-  private readonly writeHandlers: Record<string, (value: unknown) => void>;
+  private buffer: number[] = []
+  private lastFieldId: number = 0
+  private readonly writeHandlers: Record<string, (value: unknown) => void>
 
   constructor() {
     this.writeHandlers = {
-      writeBoolValue: value => this.writeByte((value as boolean) ? 1 : 0),
-      writeByteValue: value => this.writeByte(value as number),
-      writeI16Value: value => this.writeZigzag32(value as number),
-      writeI32Value: value => this.writeZigzag32(value as number),
-      writeI64Value: value => this.writeZigzag64(Number(value)),
-      writeStringValue: value => this.writeString(value as string),
-    };
+      writeBoolValue: (value) => this.writeByte((value as boolean) ? 1 : 0),
+      writeByteValue: (value) => this.writeByte(value as number),
+      writeI16Value: (value) => this.writeZigzag32(value as number),
+      writeI32Value: (value) => this.writeZigzag32(value as number),
+      writeI64Value: (value) => this.writeZigzag64(Number(value)),
+      writeStringValue: (value) => this.writeString(value as string),
+    }
   }
 
   /**
@@ -36,16 +36,16 @@ export class TCompactWriter {
    * @param {Function} fieldsBuilder - Function to write fields
    */
   writeMessage(name: string, seqId: number, fieldsBuilder: () => void): void {
-    this.buffer = [];
-    this.lastFieldId = 0;
+    this.buffer = []
+    this.lastFieldId = 0
 
     // Protocol version + type
-    this.writeVarint32(0x820100 | 1);
-    this.writeString(name);
-    this.writeVarint32(seqId);
+    this.writeVarint32(0x820100 | 1)
+    this.writeString(name)
+    this.writeVarint32(seqId)
 
-    fieldsBuilder();
-    this.writeByte(THRIFT_TYPE.STOP);
+    fieldsBuilder()
+    this.writeByte(THRIFT_TYPE.STOP)
   }
 
   /**
@@ -55,22 +55,21 @@ export class TCompactWriter {
    * @param {number} type - Field type
    */
   writeFieldBegin(id: number, type: number): void {
-    const delta = id - this.lastFieldId;
+    const delta = id - this.lastFieldId
     if (delta > 0 && delta <= 15) {
-      this.writeByte((delta << 4) | type);
+      this.writeByte((delta << 4) | type)
+    } else {
+      this.writeByte(type)
+      this.writeVarint32(id)
     }
-    else {
-      this.writeByte(type);
-      this.writeVarint32(id);
-    }
-    this.lastFieldId = id;
+    this.lastFieldId = id
   }
 
   /**
    * Write field stop
    */
   writeFieldStop(): void {
-    this.writeByte(THRIFT_TYPE.STOP);
+    this.writeByte(THRIFT_TYPE.STOP)
   }
 
   /**
@@ -79,7 +78,7 @@ export class TCompactWriter {
    * @param {number} b - Byte value
    */
   writeByte(b: number): void {
-    this.buffer.push(b & 0xFF);
+    this.buffer.push(b & 0xff)
   }
 
   /**
@@ -88,11 +87,11 @@ export class TCompactWriter {
    * @param {number} n - Integer value
    */
   writeVarint32(n: number): void {
-    while (n > 0x7F) {
-      this.buffer.push((n & 0x7F) | 0x80);
-      n >>= 7;
+    while (n > 0x7f) {
+      this.buffer.push((n & 0x7f) | 0x80)
+      n >>= 7
     }
-    this.buffer.push(n);
+    this.buffer.push(n)
   }
 
   /**
@@ -101,11 +100,11 @@ export class TCompactWriter {
    * @param {number} n - Integer value
    */
   writeVarint64(n: number): void {
-    while (n > 0x7F) {
-      this.buffer.push((n & 0x7F) | 0x80);
-      n >>= 7;
+    while (n > 0x7f) {
+      this.buffer.push((n & 0x7f) | 0x80)
+      n >>= 7
     }
-    this.buffer.push(n);
+    this.buffer.push(n)
   }
 
   /**
@@ -114,7 +113,7 @@ export class TCompactWriter {
    * @param {number} n - Integer value
    */
   writeZigzag32(n: number): void {
-    this.writeVarint32((n << 1) ^ (n >> 31));
+    this.writeVarint32((n << 1) ^ (n >> 31))
   }
 
   /**
@@ -123,7 +122,7 @@ export class TCompactWriter {
    * @param {number} n - Integer value
    */
   writeZigzag64(n: number): void {
-    this.writeVarint64((n << 1) ^ (n >> 63));
+    this.writeVarint64((n << 1) ^ (n >> 63))
   }
 
   /**
@@ -132,10 +131,10 @@ export class TCompactWriter {
    * @param {string} s - String value
    */
   writeString(s: string): void {
-    const bytes = new TextEncoder().encode(s);
-    this.writeVarint32(bytes.length);
+    const bytes = new TextEncoder().encode(s)
+    this.writeVarint32(bytes.length)
     for (const b of bytes) {
-      this.buffer.push(b);
+      this.buffer.push(b)
     }
   }
 
@@ -146,10 +145,10 @@ export class TCompactWriter {
    * @param {unknown[]} arr - Array of elements
    */
   writeList(elemType: number, arr: unknown[]): void {
-    this.writeByte(elemType);
-    this.writeVarint32(arr.length);
+    this.writeByte(elemType)
+    this.writeVarint32(arr.length)
     for (const item of arr) {
-      this.writeValue(elemType, item);
+      this.writeValue(elemType, item)
     }
   }
 
@@ -160,11 +159,11 @@ export class TCompactWriter {
    * @param {unknown} value - Value
    */
   writeValue(type: number, value: unknown): void {
-    const definition = getCompactTypeCodecDefinition(type);
+    const definition = getCompactTypeCodecDefinition(type)
     if (!definition) {
-      throw new Error(`Unsupported type: ${type}`);
+      throw new Error(`Unsupported type: ${type}`)
     }
-    this.writeHandlers[definition.writeHandler](value);
+    this.writeHandlers[definition.writeHandler](value)
   }
 
   /**
@@ -173,6 +172,6 @@ export class TCompactWriter {
    * @returns {Uint8Array} Buffer
    */
   getBuffer(): Uint8Array {
-    return new Uint8Array(this.buffer);
+    return new Uint8Array(this.buffer)
   }
 }

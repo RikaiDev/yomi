@@ -17,12 +17,12 @@
 
 /** Running tally of what one tool response masked. */
 export interface PhiAccumulator {
-  count: number;
-  types: Set<string>;
+  count: number
+  types: Set<string>
 }
 
 /** Middle-redaction marker used in masked values (Q12〇〇9 style). */
-const MASK_MIDDLE = '〇〇';
+const MASK_MIDDLE = '〇〇'
 
 /**
  * Luhn check for candidate payment-card digit strings.
@@ -30,18 +30,18 @@ const MASK_MIDDLE = '〇〇';
  * @returns True when the digits satisfy the Luhn checksum.
  */
 function passesLuhn(digits: string): boolean {
-  let sum = 0;
-  let double = false;
+  let sum = 0
+  let double = false
   for (let i = digits.length - 1; i >= 0; i--) {
-    let d = digits.charCodeAt(i) - 48;
+    let d = digits.charCodeAt(i) - 48
     if (double) {
-      d *= 2;
-      if (d > 9) d -= 9;
+      d *= 2
+      if (d > 9) d -= 9
     }
-    sum += d;
-    double = !double;
+    sum += d
+    double = !double
   }
-  return digits.length >= 13 && digits.length <= 19 && sum % 10 === 0;
+  return digits.length >= 13 && digits.length <= 19 && sum % 10 === 0
 }
 
 /**
@@ -51,17 +51,17 @@ function passesLuhn(digits: string): boolean {
  * @returns The masked substring.
  */
 function maskValue(value: string): string {
-  const trimmed = value.trim();
-  const head = trimmed.slice(0, Math.min(3, trimmed.length));
-  const tail = trimmed.length > 4 ? trimmed.slice(-1) : '';
-  return `${head}${MASK_MIDDLE}${tail}`;
+  const trimmed = value.trim()
+  const head = trimmed.slice(0, Math.min(3, trimmed.length))
+  const tail = trimmed.length > 4 ? trimmed.slice(-1) : ''
+  return `${head}${MASK_MIDDLE}${tail}`
 }
 
 /** One detection rule. `validateDigits` (optional) gates a match on its digit-only form. */
 interface PhiPattern {
-  type: string;
-  re: RegExp;
-  validateDigits?: (digits: string) => boolean;
+  type: string
+  re: RegExp
+  validateDigits?: (digits: string) => boolean
 }
 
 // Order matters: email and phone are matched before the broad card pattern so
@@ -72,14 +72,14 @@ const PATTERNS: PhiPattern[] = [
   { type: 'phone', re: /\+886[\s-]?\d(?:[\s-]?\d){7,}/g },
   { type: 'phone', re: /\b09\d{8}\b/g },
   { type: 'card', re: /\b(?:\d[ -]?){13,19}\b/g, validateDigits: passesLuhn },
-];
+]
 
 /**
  * Create a fresh accumulator for one tool response.
  * @returns A zeroed PhiAccumulator.
  */
 export function createPhiAccumulator(): PhiAccumulator {
-  return { count: 0, types: new Set<string>() };
+  return { count: 0, types: new Set<string>() }
 }
 
 /**
@@ -89,22 +89,25 @@ export function createPhiAccumulator(): PhiAccumulator {
  * @param value - Text to mask.
  * @returns The masked text (or the original value when nothing to mask).
  */
-export function maskInto<T extends string | null | undefined>(acc: PhiAccumulator, value: T): T {
+export function maskInto<T extends string | null | undefined>(
+  acc: PhiAccumulator,
+  value: T,
+): T {
   if (typeof value !== 'string' || value.length === 0) {
-    return value;
+    return value
   }
-  let text: string = value;
+  let text: string = value
   for (const { type, re, validateDigits } of PATTERNS) {
     text = text.replace(re, (match) => {
       if (validateDigits && !validateDigits(match.replace(/\D/g, ''))) {
-        return match;
+        return match
       }
-      acc.count += 1;
-      acc.types.add(type);
-      return maskValue(match);
-    });
+      acc.count += 1
+      acc.types.add(type)
+      return maskValue(match)
+    })
   }
-  return text as T;
+  return text as T
 }
 
 /**
@@ -112,13 +115,15 @@ export function maskInto<T extends string | null | undefined>(acc: PhiAccumulato
  * @param acc - Accumulator populated by maskInto.
  * @returns An MCP text content block reporting the redaction, or null.
  */
-export function phiNote(acc: PhiAccumulator): { type: 'text'; text: string } | null {
+export function phiNote(
+  acc: PhiAccumulator,
+): { type: 'text'; text: string } | null {
   if (acc.count === 0) {
-    return null;
+    return null
   }
-  const types = [...acc.types].sort().join(', ');
+  const types = [...acc.types].sort().join(', ')
   return {
     type: 'text',
     text: `[phi-guard] Masked ${acc.count} high-sensitivity value(s) (${types}) before returning them. These are redacted for privacy; if the raw value is genuinely needed, ask the user explicitly.`,
-  };
+  }
 }

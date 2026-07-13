@@ -1,4 +1,4 @@
-import { requireLineClient } from './client-runtime.js';
+import { requireLineClient } from './client-runtime.js'
 
 /**
  * Infer the LINE conversation type from a stable chat MID.
@@ -8,18 +8,18 @@ import { requireLineClient } from './client-runtime.js';
  */
 function inferLineToType(chatId: string | null): number | null {
   if (!chatId) {
-    return null;
+    return null
   }
   if (chatId.startsWith('u')) {
-    return 0;
+    return 0
   }
   if (chatId.startsWith('c')) {
-    return 1;
+    return 1
   }
   if (chatId.startsWith('r')) {
-    return 2;
+    return 2
   }
-  return null;
+  return null
 }
 
 /**
@@ -29,14 +29,17 @@ function inferLineToType(chatId: string | null): number | null {
  * @param chatId - Requested LINE chat MID.
  * @returns Message with stable chat context.
  */
-export function normalizeLineMessageContext(message: any, chatId: string | null = null): any {
-  const resolvedChatId = message?.chatMid || chatId || null;
-  const inferredToType = inferLineToType(resolvedChatId);
+export function normalizeLineMessageContext(
+  message: any,
+  chatId: string | null = null,
+): any {
+  const resolvedChatId = message?.chatMid || chatId || null
+  const inferredToType = inferLineToType(resolvedChatId)
   return {
     ...message,
     chatMid: resolvedChatId || message?.chatMid,
     toType: message?.toType ?? inferredToType ?? message?.toType,
-  };
+  }
 }
 
 /**
@@ -46,7 +49,10 @@ export function normalizeLineMessageContext(message: any, chatId: string | null 
  * @param taggedMessage - Message with canonical LINE context.
  * @returns Diagnostic metadata.
  */
-function buildE2EEDecryptFailure(decrypted: any, taggedMessage: any): Record<string, unknown> {
+function buildE2EEDecryptFailure(
+  decrypted: any,
+  taggedMessage: any,
+): Record<string, unknown> {
   return {
     error: decrypted.error || null,
     envelopeInfo: decrypted.envelopeInfo || null,
@@ -56,7 +62,7 @@ function buildE2EEDecryptFailure(decrypted: any, taggedMessage: any): Record<str
     receiverKeyId: decrypted.receiverKeyId ?? null,
     senderKeyId: decrypted.senderKeyId ?? null,
     toType: decrypted.toType ?? taggedMessage.toType ?? null,
-  };
+  }
 }
 
 /**
@@ -67,28 +73,32 @@ function buildE2EEDecryptFailure(decrypted: any, taggedMessage: any): Record<str
  * @param chatId - Optional chat id to attach to the message.
  * @returns Message with decrypted text flags when available.
  */
-export async function decryptLineMessage(e2eeManager: any, message: any, chatId: string | null = null): Promise<any> {
-  const taggedMessage = normalizeLineMessageContext(message, chatId);
+export async function decryptLineMessage(
+  e2eeManager: any,
+  message: any,
+  chatId: string | null = null,
+): Promise<any> {
+  const taggedMessage = normalizeLineMessageContext(message, chatId)
   if (!e2eeManager?.tryDecrypt) {
-    return taggedMessage;
+    return taggedMessage
   }
 
-  const decrypted = await e2eeManager.tryDecrypt(taggedMessage);
+  const decrypted = await e2eeManager.tryDecrypt(taggedMessage)
   if (decrypted.decrypted) {
     return {
       ...taggedMessage,
       e2eeDecrypted: true,
       text: decrypted.text,
-    };
+    }
   }
   if (taggedMessage?.contentMetadata?.e2eeVersion && !taggedMessage.text) {
     return {
       ...taggedMessage,
       e2eeDecrypted: false,
       e2eeDecryptFailure: buildE2EEDecryptFailure(decrypted, taggedMessage),
-    };
+    }
   }
-  return taggedMessage;
+  return taggedMessage
 }
 
 /**
@@ -99,8 +109,14 @@ export async function decryptLineMessage(e2eeManager: any, message: any, chatId:
  * @param chatId - Optional chat id to attach to each message.
  * @returns Messages with decrypted text flags when available.
  */
-export async function decryptLineMessages(e2eeManager: any, messages: any[], chatId: string | null = null): Promise<any[]> {
-  return Promise.all(messages.map(message => decryptLineMessage(e2eeManager, message, chatId)));
+export async function decryptLineMessages(
+  e2eeManager: any,
+  messages: any[],
+  chatId: string | null = null,
+): Promise<any[]> {
+  return Promise.all(
+    messages.map((message) => decryptLineMessage(e2eeManager, message, chatId)),
+  )
 }
 
 /**
@@ -120,8 +136,11 @@ export function createMessageQueryService(getClient, e2eeManager) {
      * @returns Recent LINE messages
      */
     async getRecentMessages(chatId, count = 50) {
-      const messages = await requireLineClient(getClient).getRecentMessages(chatId, count);
-      return decryptLineMessages(e2eeManager, messages, chatId);
+      const messages = await requireLineClient(getClient).getRecentMessages(
+        chatId,
+        count,
+      )
+      return decryptLineMessages(e2eeManager, messages, chatId)
     },
 
     /**
@@ -133,13 +152,19 @@ export function createMessageQueryService(getClient, e2eeManager) {
      * @param before - Cursor identifying the oldest already-seen message (messageId and/or deliveredTime)
      * @returns Previous LINE messages, older than the cursor
      */
-    async getPreviousMessages(chatId, count = 50, before: { messageId?: string; deliveredTime?: number } = {}) {
-      const messages = await requireLineClient(getClient).getPreviousMessagesV2WithRequest({
+    async getPreviousMessages(
+      chatId,
+      count = 50,
+      before: { messageId?: string; deliveredTime?: number } = {},
+    ) {
+      const messages = await requireLineClient(
+        getClient,
+      ).getPreviousMessagesV2WithRequest({
         endMessageId: before,
         messageBoxId: chatId,
         messagesCount: count,
-      });
-      return decryptLineMessages(e2eeManager, messages, chatId);
+      })
+      return decryptLineMessages(e2eeManager, messages, chatId)
     },
 
     /**
@@ -150,7 +175,10 @@ export function createMessageQueryService(getClient, e2eeManager) {
      * @returns Original message content bytes
      */
     async downloadMessageContent(messageId, requestId = `yomi-${Date.now()}`) {
-      return requireLineClient(getClient).downloadMessageContent(messageId, requestId);
+      return requireLineClient(getClient).downloadMessageContent(
+        messageId,
+        requestId,
+      )
     },
 
     /**
@@ -160,8 +188,14 @@ export function createMessageQueryService(getClient, e2eeManager) {
      * @param requestId - Optional request identifier
      * @returns Preview content bytes
      */
-    async downloadMessageContentPreview(messageId, requestId = `yomi-${Date.now()}`) {
-      return requireLineClient(getClient).downloadMessageContentPreview(messageId, requestId);
+    async downloadMessageContentPreview(
+      messageId,
+      requestId = `yomi-${Date.now()}`,
+    ) {
+      return requireLineClient(getClient).downloadMessageContentPreview(
+        messageId,
+        requestId,
+      )
     },
-  };
+  }
 }

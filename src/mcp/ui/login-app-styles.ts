@@ -139,4 +139,4 @@ export const LOGIN_APP_CSS = `
     opacity: 0.6;
     cursor: default;
   }
-`;
+`

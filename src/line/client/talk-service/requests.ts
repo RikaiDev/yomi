@@ -1,5 +1,13 @@
-import { CONTENT_TYPE } from '../../core/constants.js';
-import { boolField, byteField, i32Field, listField, mapField, stringField, structField } from '../../core/thrift/index.js';
+import { CONTENT_TYPE } from '../../core/constants.js'
+import {
+  boolField,
+  byteField,
+  i32Field,
+  listField,
+  mapField,
+  stringField,
+  structField,
+} from '../../core/thrift/index.js'
 
 /**
  * Normalize sendMessage inputs into one consistent options object.
@@ -18,7 +26,7 @@ export function normalizeSendMessageOptions(to, text) {
       chunks: to.chunks ?? null,
       relatedMessageId: to.relatedMessageId ?? null,
       location: to.location ?? null,
-    };
+    }
   }
 
   return {
@@ -29,7 +37,7 @@ export function normalizeSendMessageOptions(to, text) {
     chunks: null,
     relatedMessageId: null,
     location: null,
-  };
+  }
 }
 
 /**
@@ -39,28 +47,28 @@ export function normalizeSendMessageOptions(to, text) {
  * @returns Thrift struct fields.
  */
 export function buildSendMessagePayload(options) {
-  const fields = [
-    stringField(2, options.to),
-    i32Field(15, options.contentType),
-  ];
+  const fields = [stringField(2, options.to), i32Field(15, options.contentType)]
 
   if (options.text != null) {
-    fields.push(stringField(10, options.text));
+    fields.push(stringField(10, options.text))
   }
-  if (options.contentMetadata && Object.keys(options.contentMetadata).length > 0) {
-    fields.push(mapField(18, 11, 11, options.contentMetadata));
+  if (
+    options.contentMetadata &&
+    Object.keys(options.contentMetadata).length > 0
+  ) {
+    fields.push(mapField(18, 11, 11, options.contentMetadata))
   }
   if (Array.isArray(options.chunks)) {
-    fields.push(listField(20, 11, options.chunks));
+    fields.push(listField(20, 11, options.chunks))
   }
   if (options.relatedMessageId) {
-    fields.push(stringField(21, options.relatedMessageId));
+    fields.push(stringField(21, options.relatedMessageId))
   }
   if (options.location) {
-    fields.push(structField(11, options.location));
+    fields.push(structField(11, options.location))
   }
 
-  return fields;
+  return fields
 }
 
 /**
@@ -70,10 +78,7 @@ export function buildSendMessagePayload(options) {
  * @returns Thrift request fields.
  */
 export function buildSendMessageRequest(options) {
-  return [
-    i32Field(1, 0),
-    structField(2, buildSendMessagePayload(options)),
-  ];
+  return [i32Field(1, 0), structField(2, buildSendMessagePayload(options))]
 }
 
 /**
@@ -84,12 +89,9 @@ export function buildSendMessageRequest(options) {
  */
 export function buildGetAllChatMidsRequest(syncReason) {
   return [
-    structField(1, [
-      boolField(1, true),
-      boolField(2, true),
-    ]),
+    structField(1, [boolField(1, true), boolField(2, true)]),
     i32Field(2, syncReason),
-  ];
+  ]
 }
 
 /**
@@ -108,7 +110,7 @@ export function buildGetChatsRequest(chatMids, withMembers, syncReason) {
       boolField(3, true),
     ]),
     i32Field(2, syncReason),
-  ];
+  ]
 }
 
 /**
@@ -119,10 +121,7 @@ export function buildGetChatsRequest(chatMids, withMembers, syncReason) {
  * @returns Thrift request fields.
  */
 export function buildGetMessageBoxesRequest(request, syncReason) {
-  return [
-    structField(2, request),
-    i32Field(3, syncReason),
-  ];
+  return [structField(2, request), i32Field(3, syncReason)]
 }
 
 /**
@@ -133,7 +132,11 @@ export function buildGetMessageBoxesRequest(request, syncReason) {
  * @param syncReason - Talk sync reason constant.
  * @returns Thrift request fields.
  */
-export function buildPreviousMessagesRequest(request, endMessageIdFields, syncReason) {
+export function buildPreviousMessagesRequest(
+  request,
+  endMessageIdFields,
+  syncReason,
+) {
   return [
     structField(2, [
       stringField(1, request.messageBoxId),
@@ -143,7 +146,7 @@ export function buildPreviousMessagesRequest(request, endMessageIdFields, syncRe
       boolField(5, Boolean(request.receivedOnly)),
     ]),
     i32Field(3, syncReason),
-  ];
+  ]
 }
 
 /**
@@ -154,10 +157,7 @@ export function buildPreviousMessagesRequest(request, endMessageIdFields, syncRe
  * @returns Thrift request fields.
  */
 export function buildRecentMessagesRequest(chatId, count) {
-  return [
-    stringField(2, chatId),
-    i32Field(3, count),
-  ];
+  return [stringField(2, chatId), i32Field(3, count)]
 }
 
 /**
@@ -168,10 +168,7 @@ export function buildRecentMessagesRequest(chatId, count) {
  * @returns Thrift request fields.
  */
 export function buildDownloadMessageContentRequest(requestId, messageId) {
-  return [
-    stringField(1, requestId),
-    stringField(2, messageId),
-  ];
+  return [stringField(1, requestId), stringField(2, messageId)]
 }
 
 /**
@@ -181,7 +178,7 @@ export function buildDownloadMessageContentRequest(requestId, messageId) {
  * @returns Thrift request fields.
  */
 export function buildMidLookupRequest(mid) {
-  return [stringField(2, mid)];
+  return [stringField(2, mid)]
 }
 
 /**
@@ -191,7 +188,7 @@ export function buildMidLookupRequest(mid) {
  * @returns Thrift request fields.
  */
 export function buildMidListRequest(mids) {
-  return [listField(2, 11, mids)];
+  return [listField(2, 11, mids)]
 }
 
 /**
@@ -200,7 +197,7 @@ export function buildMidListRequest(mids) {
  * @returns Thrift request fields.
  */
 export function buildGetAllContactIdsRequest() {
-  return [i32Field(1, 0)];
+  return [i32Field(1, 0)]
 }
 
 /**
@@ -211,11 +208,15 @@ export function buildGetAllContactIdsRequest() {
  * @param sessionId - Client session id (default 0).
  * @returns Thrift request fields.
  */
-export function buildSendChatCheckedRequest(chatMid, lastMessageId, sessionId = 0) {
+export function buildSendChatCheckedRequest(
+  chatMid,
+  lastMessageId,
+  sessionId = 0,
+) {
   return [
     i32Field(1, 0),
     stringField(2, chatMid),
     stringField(3, lastMessageId),
     byteField(4, sessionId),
-  ];
+  ]
 }

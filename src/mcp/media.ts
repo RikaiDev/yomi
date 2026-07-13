@@ -14,16 +14,16 @@
  * callers get an honest error naming the reason.
  */
 
-import { CONTENT_TYPE } from '../line/core/constants.js';
-import { decryptLineMediaBytes } from '../line/core/media-decrypt.js';
-import { downloadLineObsMediaObject } from '../line/client/obs-media-client.js';
+import { downloadLineObsMediaObject } from '../line/client/obs-media-client.js'
+import { CONTENT_TYPE } from '../line/core/constants.js'
+import { decryptLineMediaBytes } from '../line/core/media-decrypt.js'
 
 interface LineMediaDescriptor {
-  fileName: string | null;
-  mimeType: string | null;
-  oid: string;
-  sid: string;
-  keyMaterial: string | null;
+  fileName: string | null
+  mimeType: string | null
+  oid: string
+  sid: string
+  keyMaterial: string | null
 }
 
 /** LINE content types this server can download and decrypt via the OBS path. */
@@ -32,7 +32,7 @@ const DOWNLOADABLE_CONTENT_TYPES = new Set<number>([
   CONTENT_TYPE.VIDEO,
   CONTENT_TYPE.AUDIO,
   CONTENT_TYPE.FILE,
-]);
+])
 
 /** Short media-kind label per LINE content type, for MCP content shaping. */
 const MEDIA_TYPE_BY_CONTENT_TYPE: Record<number, string> = {
@@ -40,7 +40,7 @@ const MEDIA_TYPE_BY_CONTENT_TYPE: Record<number, string> = {
   [CONTENT_TYPE.VIDEO]: 'video',
   [CONTENT_TYPE.AUDIO]: 'audio',
   [CONTENT_TYPE.FILE]: 'file',
-};
+}
 
 /** Fallback MIME type per content type when no file extension is known. */
 const DEFAULT_MIME_BY_CONTENT_TYPE: Record<number, string> = {
@@ -48,7 +48,7 @@ const DEFAULT_MIME_BY_CONTENT_TYPE: Record<number, string> = {
   [CONTENT_TYPE.VIDEO]: 'video/mp4',
   [CONTENT_TYPE.AUDIO]: 'audio/mp4',
   [CONTENT_TYPE.FILE]: 'application/octet-stream',
-};
+}
 
 /** MIME type per known file extension, across all downloadable media kinds. */
 const MIME_BY_EXTENSION: Record<string, string> = {
@@ -69,7 +69,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   wav: 'audio/wav',
   webp: 'image/webp',
   zip: 'application/zip',
-};
+}
 
 /**
  * Resolve the short media-kind label for a LINE content type.
@@ -78,7 +78,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
  * @returns 'image' | 'video' | 'audio' | 'file', or null when not downloadable media.
  */
 export function resolveLineMediaType(contentType: number): string | null {
-  return MEDIA_TYPE_BY_CONTENT_TYPE[contentType] || null;
+  return MEDIA_TYPE_BY_CONTENT_TYPE[contentType] || null
 }
 
 /**
@@ -90,13 +90,12 @@ export function resolveLineMediaType(contentType: number): string | null {
  */
 function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== 'string' || !value) {
-    return fallback;
+    return fallback
   }
   try {
-    return JSON.parse(value) as T;
-  }
-  catch {
-    return fallback;
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
   }
 }
 
@@ -107,12 +106,15 @@ function parseJson<T>(value: unknown, fallback: T): T {
  * @param contentType - LINE content type.
  * @returns MIME type, or null when unknown.
  */
-function resolveMimeType(extension: string | null, contentType: number): string | null {
-  const normalized = extension?.toLowerCase() || '';
+function resolveMimeType(
+  extension: string | null,
+  contentType: number,
+): string | null {
+  const normalized = extension?.toLowerCase() || ''
   if (MIME_BY_EXTENSION[normalized]) {
-    return MIME_BY_EXTENSION[normalized];
+    return MIME_BY_EXTENSION[normalized]
   }
-  return DEFAULT_MIME_BY_CONTENT_TYPE[contentType] || null;
+  return DEFAULT_MIME_BY_CONTENT_TYPE[contentType] || null
 }
 
 /**
@@ -125,55 +127,69 @@ function resolveMimeType(extension: string | null, contentType: number): string 
  * @param message - Decrypted LINE message (from getRecentMessages).
  * @returns Media descriptor, or null when the message has no OBS object.
  */
-export function resolveLineMediaDescriptor(message: any): LineMediaDescriptor | null {
-  const contentMetadata = message?.contentMetadata || {};
+export function resolveLineMediaDescriptor(
+  message: any,
+): LineMediaDescriptor | null {
+  const contentMetadata = message?.contentMetadata || {}
   if (!contentMetadata.OID || !contentMetadata.SID) {
-    return null;
+    return null
   }
-  const dataPayload = parseJson<{ keyMaterial?: string; fileName?: string }>(message?.text, {});
-  const mediaInfo = parseJson<{ extension?: string }>(contentMetadata.MEDIA_CONTENT_INFO, {});
+  const dataPayload = parseJson<{ keyMaterial?: string; fileName?: string }>(
+    message?.text,
+    {},
+  )
+  const mediaInfo = parseJson<{ extension?: string }>(
+    contentMetadata.MEDIA_CONTENT_INFO,
+    {},
+  )
   return {
     fileName: dataPayload.fileName || null,
     keyMaterial: dataPayload.keyMaterial || null,
-    mimeType: resolveMimeType(mediaInfo.extension || null, Number(message?.contentType || 0)),
+    mimeType: resolveMimeType(
+      mediaInfo.extension || null,
+      Number(message?.contentType || 0),
+    ),
     oid: String(contentMetadata.OID),
     sid: String(contentMetadata.SID),
-  };
+  }
 }
 
 export interface FetchLineMessageImageResult {
-  bytes: Buffer;
-  mimeType: string;
+  bytes: Buffer
+  mimeType: string
 }
 
 export interface FetchLineMessageMediaResult {
-  bytes: Buffer;
-  contentType: number;
-  fileName: string | null;
-  mimeType: string;
+  bytes: Buffer
+  contentType: number
+  fileName: string | null
+  mimeType: string
 }
 
 /** Base class for honest "could not produce media bytes" errors — never caught to fabricate a fallback. */
 export abstract class LineMediaAccessError extends Error {
-  public abstract readonly code: string;
+  public abstract readonly code: string
 }
 
 /** Thrown when the message body is missing the OBS/E2EE material required to decrypt its media. */
 export class MissingDecryptMaterialError extends LineMediaAccessError {
-  public readonly code = 'missing_decrypt_material';
+  public readonly code = 'missing_decrypt_material'
 
   constructor(reason: string) {
-    super(`missing_decrypt_material: ${reason}`);
+    super(`missing_decrypt_material: ${reason}`)
   }
 }
 
 /** Thrown when the message's content type is not a downloadable media type (e.g. plain text, sticker ref). */
 export class UnsupportedMediaTypeError extends LineMediaAccessError {
-  public readonly code = 'unsupported_media_type';
+  public readonly code = 'unsupported_media_type'
 
   constructor(contentType: number, messageId: string) {
-    const label = resolveLineMediaType(contentType) ?? `contentType=${contentType}`;
-    super(`unsupported_media_type: message ${messageId} (${label}) is not downloadable media`);
+    const label =
+      resolveLineMediaType(contentType) ?? `contentType=${contentType}`
+    super(
+      `unsupported_media_type: message ${messageId} (${label}) is not downloadable media`,
+    )
   }
 }
 
@@ -196,19 +212,23 @@ export async function fetchLineMessageMedia(
   messageId: string,
   preview: boolean,
 ): Promise<FetchLineMessageMediaResult> {
-  const messages = await service.getRecentMessages(chatId, 100);
-  const message = messages.find((candidate: any) => candidate.id === messageId);
+  const messages = await service.getRecentMessages(chatId, 100)
+  const message = messages.find((candidate: any) => candidate.id === messageId)
   if (!message) {
-    throw new MissingDecryptMaterialError(`message ${messageId} not found in recent history of ${chatId}`);
+    throw new MissingDecryptMaterialError(
+      `message ${messageId} not found in recent history of ${chatId}`,
+    )
   }
-  const contentType = Number(message.contentType);
+  const contentType = Number(message.contentType)
   if (!DOWNLOADABLE_CONTENT_TYPES.has(contentType)) {
-    throw new UnsupportedMediaTypeError(contentType, messageId);
+    throw new UnsupportedMediaTypeError(contentType, messageId)
   }
 
-  const descriptor = resolveLineMediaDescriptor(message);
+  const descriptor = resolveLineMediaDescriptor(message)
   if (!descriptor) {
-    throw new MissingDecryptMaterialError(`message ${messageId} is missing OBS object metadata (OID/SID)`);
+    throw new MissingDecryptMaterialError(
+      `message ${messageId} is missing OBS object metadata (OID/SID)`,
+    )
   }
 
   const encryptedBytes = await downloadLineObsMediaObject(service.client, {
@@ -216,12 +236,15 @@ export async function fetchLineMessageMedia(
     oid: descriptor.oid,
     preview,
     sid: descriptor.sid,
-  });
+  })
   if (encryptedBytes.length === 0) {
-    throw new Error('LINE media download returned empty bytes');
+    throw new Error('LINE media download returned empty bytes')
   }
 
-  const fallbackMimeType = descriptor.mimeType || DEFAULT_MIME_BY_CONTENT_TYPE[contentType] || 'application/octet-stream';
+  const fallbackMimeType =
+    descriptor.mimeType ||
+    DEFAULT_MIME_BY_CONTENT_TYPE[contentType] ||
+    'application/octet-stream'
 
   if (!descriptor.keyMaterial) {
     // Not all media messages are E2EE-wrapped (e.g. some group content is
@@ -229,14 +252,27 @@ export async function fetchLineMessageMedia(
     // cannot tell the difference between "unencrypted" and "decrypt
     // context missing", so we surface the honest bytes as-is rather than
     // guessing. Callers can inspect mimeType/bytes to decide.
-    return { bytes: encryptedBytes, contentType, fileName: descriptor.fileName, mimeType: fallbackMimeType };
+    return {
+      bytes: encryptedBytes,
+      contentType,
+      fileName: descriptor.fileName,
+      mimeType: fallbackMimeType,
+    }
   }
 
-  const mediaBytes = await decryptLineMediaBytes(encryptedBytes, descriptor.keyMaterial);
+  const mediaBytes = await decryptLineMediaBytes(
+    encryptedBytes,
+    descriptor.keyMaterial,
+  )
   if (mediaBytes.length === 0) {
-    throw new Error('LINE media decrypt returned empty bytes');
+    throw new Error('LINE media decrypt returned empty bytes')
   }
-  return { bytes: mediaBytes, contentType, fileName: descriptor.fileName, mimeType: fallbackMimeType };
+  return {
+    bytes: mediaBytes,
+    contentType,
+    fileName: descriptor.fileName,
+    mimeType: fallbackMimeType,
+  }
 }
 
 /**
@@ -256,9 +292,14 @@ export async function fetchLineMessageImage(
   messageId: string,
   preview: boolean,
 ): Promise<FetchLineMessageImageResult> {
-  const result = await fetchLineMessageMedia(service, chatId, messageId, preview);
+  const result = await fetchLineMessageMedia(
+    service,
+    chatId,
+    messageId,
+    preview,
+  )
   if (result.contentType !== CONTENT_TYPE.IMAGE) {
-    throw new UnsupportedMediaTypeError(result.contentType, messageId);
+    throw new UnsupportedMediaTypeError(result.contentType, messageId)
   }
-  return { bytes: result.bytes, mimeType: result.mimeType };
+  return { bytes: result.bytes, mimeType: result.mimeType }
 }

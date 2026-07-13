@@ -4,9 +4,13 @@
  * Send messages and other TalkService write operations with side effects.
  */
 
-import { Buffer } from 'node:buffer';
-import { parseMessage } from '../parsers.js';
-import { buildSendChatCheckedRequest, buildSendMessageRequest, normalizeSendMessageOptions } from './requests.js';
+import { Buffer } from 'node:buffer'
+import { parseMessage } from '../parsers.js'
+import {
+  buildSendChatCheckedRequest,
+  buildSendMessageRequest,
+  normalizeSendMessageOptions,
+} from './requests.js'
 
 /**
  * Create the TalkService command capability bound to one LINE client runtime.
@@ -30,19 +34,24 @@ export function createTalkCommandClient(runtime) {
      * @returns The sent message object or null on error.
      */
     async sendMessage(to, text) {
-      const options = normalizeSendMessageOptions(to, text);
+      const options = normalizeSendMessageOptions(to, text)
       if (Array.isArray(options.chunks)) {
-        options.chunks = options.chunks.map(chunk => Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        options.chunks = options.chunks.map((chunk) =>
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+        )
       }
-      const result = await runtime.sendTalk('sendMessage', buildSendMessageRequest(options));
+      const result = await runtime.sendTalk(
+        'sendMessage',
+        buildSendMessageRequest(options),
+      )
       if (result.error) {
-        throw new Error(`sendMessage failed: ${result.error}`);
+        throw new Error(`sendMessage failed: ${result.error}`)
       }
       // fields[0] is the raw Thrift Message struct; normalize it so callers
       // get { id, from, ... } consistent with the read path (raw struct
       // carries the id at index [4], not `.id`).
-      const sent = result.fields?.[0];
-      return sent ? parseMessage(sent) : null;
+      const sent = result.fields?.[0]
+      return sent ? parseMessage(sent) : null
     },
 
     /**
@@ -57,11 +66,14 @@ export function createTalkCommandClient(runtime) {
      * @returns True when the read receipt was accepted.
      */
     async sendChatChecked(chatMid, lastMessageId, sessionId = 0) {
-      const result = await runtime.sendTalk('sendChatChecked', buildSendChatCheckedRequest(chatMid, lastMessageId, sessionId));
+      const result = await runtime.sendTalk(
+        'sendChatChecked',
+        buildSendChatCheckedRequest(chatMid, lastMessageId, sessionId),
+      )
       if (result.error) {
-        throw new Error(`sendChatChecked failed: ${result.error}`);
+        throw new Error(`sendChatChecked failed: ${result.error}`)
       }
-      return true;
+      return true
     },
-  };
+  }
 }

@@ -11,7 +11,7 @@ import type {
   ThriftScalarValue,
   ThriftStructValue,
   ThriftType,
-} from '../types.js';
+} from '../types.js'
 
 /**
  * Build a generic thrift field tuple.
@@ -21,8 +21,16 @@ import type {
  * @param value - Field value.
  * @returns Thrift field tuple.
  */
-export function field(type: ThriftType, fieldId: number, value: ThriftScalarValue | ThriftListValue | ThriftMapValue | ThriftStructValue): ThriftFieldTuple {
-  return [type, fieldId, value];
+export function field(
+  type: ThriftType,
+  fieldId: number,
+  value:
+    | ThriftScalarValue
+    | ThriftListValue
+    | ThriftMapValue
+    | ThriftStructValue,
+): ThriftFieldTuple {
+  return [type, fieldId, value]
 }
 
 /**
@@ -33,7 +41,7 @@ export function field(type: ThriftType, fieldId: number, value: ThriftScalarValu
  * @returns Thrift field tuple.
  */
 export function boolField(fieldId: number, value: boolean): ThriftFieldTuple {
-  return field(2, fieldId, value);
+  return field(2, fieldId, value)
 }
 
 /**
@@ -44,7 +52,7 @@ export function boolField(fieldId: number, value: boolean): ThriftFieldTuple {
  * @returns Thrift field tuple.
  */
 export function byteField(fieldId: number, value: number): ThriftFieldTuple {
-  return field(3, fieldId, value);
+  return field(3, fieldId, value)
 }
 
 /**
@@ -55,7 +63,7 @@ export function byteField(fieldId: number, value: number): ThriftFieldTuple {
  * @returns Thrift field tuple.
  */
 export function i16Field(fieldId: number, value: number): ThriftFieldTuple {
-  return field(6, fieldId, value);
+  return field(6, fieldId, value)
 }
 
 /**
@@ -66,7 +74,7 @@ export function i16Field(fieldId: number, value: number): ThriftFieldTuple {
  * @returns Thrift field tuple.
  */
 export function i32Field(fieldId: number, value: number): ThriftFieldTuple {
-  return field(8, fieldId, value);
+  return field(8, fieldId, value)
 }
 
 /**
@@ -76,8 +84,11 @@ export function i32Field(fieldId: number, value: number): ThriftFieldTuple {
  * @param value - I64 value.
  * @returns Thrift field tuple.
  */
-export function i64Field(fieldId: number, value: number | bigint): ThriftFieldTuple {
-  return field(10, fieldId, value);
+export function i64Field(
+  fieldId: number,
+  value: number | bigint,
+): ThriftFieldTuple {
+  return field(10, fieldId, value)
 }
 
 /**
@@ -87,8 +98,11 @@ export function i64Field(fieldId: number, value: number | bigint): ThriftFieldTu
  * @param value - String or buffer value.
  * @returns Thrift field tuple.
  */
-export function stringField(fieldId: number, value: string | Buffer | null): ThriftFieldTuple {
-  return field(11, fieldId, value);
+export function stringField(
+  fieldId: number,
+  value: string | Buffer | null,
+): ThriftFieldTuple {
+  return field(11, fieldId, value)
 }
 
 /**
@@ -98,8 +112,11 @@ export function stringField(fieldId: number, value: string | Buffer | null): Thr
  * @param fields - Nested struct fields.
  * @returns Thrift field tuple.
  */
-export function structField(fieldId: number, fields: ThriftFieldTuple[]): ThriftFieldTuple {
-  return field(12, fieldId, fields);
+export function structField(
+  fieldId: number,
+  fields: ThriftFieldTuple[],
+): ThriftFieldTuple {
+  return field(12, fieldId, fields)
 }
 
 /**
@@ -111,8 +128,13 @@ export function structField(fieldId: number, fields: ThriftFieldTuple[]): Thrift
  * @param entries - Map entries.
  * @returns Thrift field tuple.
  */
-export function mapField(fieldId: number, keyType: ThriftType, valueType: ThriftType, entries: ThriftMapEntries): ThriftFieldTuple {
-  return field(13, fieldId, [keyType, valueType, entries]);
+export function mapField(
+  fieldId: number,
+  keyType: ThriftType,
+  valueType: ThriftType,
+  entries: ThriftMapEntries,
+): ThriftFieldTuple {
+  return field(13, fieldId, [keyType, valueType, entries])
 }
 
 /**
@@ -123,6 +145,10 @@ export function mapField(fieldId: number, keyType: ThriftType, valueType: Thrift
  * @param items - List items.
  * @returns Thrift field tuple.
  */
-export function listField(fieldId: number, elementType: ThriftType, items: ThriftListItems): ThriftFieldTuple {
-  return field(15, fieldId, [elementType, items]);
+export function listField(
+  fieldId: number,
+  elementType: ThriftType,
+  items: ThriftListItems,
+): ThriftFieldTuple {
+  return field(15, fieldId, [elementType, items])
 }

@@ -1,4 +1,4 @@
-import { requireLineClient } from './client-runtime.js';
+import { requireLineClient } from './client-runtime.js'
 
 /**
  * Build the LINE contact query boundary for a connected runtime.
@@ -15,7 +15,7 @@ export function createContactQueryService(getClient) {
      * @returns LINE contact profile
      */
     async getContact(mid) {
-      return requireLineClient(getClient).getContact(mid);
+      return requireLineClient(getClient).getContact(mid)
     },
-  };
+  }
 }

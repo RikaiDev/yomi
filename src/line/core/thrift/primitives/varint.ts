@@ -2,7 +2,7 @@
  * TCompact primitive encoding helpers.
  */
 
-import { Buffer } from 'node:buffer';
+import { Buffer } from 'node:buffer'
 
 /**
  * Encode an unsigned integer as a base-128 varint.
@@ -11,17 +11,17 @@ import { Buffer } from 'node:buffer';
  * @returns Encoded varint buffer.
  */
 export function varint(value: number): Buffer {
-  const bytes: number[] = [];
-  let remaining = value >>> 0;
+  const bytes: number[] = []
+  let remaining = value >>> 0
   do {
-    let byte = remaining & 0x7F;
-    remaining >>>= 7;
+    let byte = remaining & 0x7f
+    remaining >>>= 7
     if (remaining) {
-      byte |= 0x80;
+      byte |= 0x80
     }
-    bytes.push(byte);
-  } while (remaining);
-  return Buffer.from(bytes);
+    bytes.push(byte)
+  } while (remaining)
+  return Buffer.from(bytes)
 }
 
 /**
@@ -31,7 +31,7 @@ export function varint(value: number): Buffer {
  * @returns Encoded varint buffer.
  */
 export function zigzag(value: number): Buffer {
-  return varint(((value << 1) ^ (value >> 31)) >>> 0);
+  return varint(((value << 1) ^ (value >> 31)) >>> 0)
 }
 
 /**
@@ -41,20 +41,20 @@ export function zigzag(value: number): Buffer {
  * @returns Encoded varint buffer.
  */
 export function varintBig(value: bigint): Buffer {
-  const bytes: number[] = [];
-  let remaining = value;
+  const bytes: number[] = []
+  let remaining = value
   if (remaining < 0n) {
-    remaining += 1n << 64n;
+    remaining += 1n << 64n
   }
   do {
-    let byte = Number(remaining & 0x7Fn);
-    remaining >>= 7n;
+    let byte = Number(remaining & 0x7fn)
+    remaining >>= 7n
     if (remaining) {
-      byte |= 0x80;
+      byte |= 0x80
     }
-    bytes.push(byte);
-  } while (remaining);
-  return Buffer.from(bytes);
+    bytes.push(byte)
+  } while (remaining)
+  return Buffer.from(bytes)
 }
 
 /**
@@ -64,6 +64,6 @@ export function varintBig(value: bigint): Buffer {
  * @returns Encoded varint buffer.
  */
 export function zigzag64(value: any): Buffer {
-  const bigintValue = BigInt(value);
-  return varintBig((bigintValue << 1n) ^ (bigintValue >> 63n));
+  const bigintValue = BigInt(value)
+  return varintBig((bigintValue << 1n) ^ (bigintValue >> 63n))
 }

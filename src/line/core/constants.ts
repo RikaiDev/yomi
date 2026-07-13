@@ -26,7 +26,7 @@ export const OP_TYPE = {
   NOTIFIED_ACCEPT_GROUP_INVITATION: 34,
   NOTIFIED_LEAVE_GROUP: 35,
   KICKOUT_FROM_GROUP: 36,
-};
+}
 
 export const CONTENT_TYPE = {
   NONE: 0,
@@ -46,4 +46,4 @@ export const CONTENT_TYPE = {
   CONTACT: 18,
   FILE: 19,
   FLEX: 22,
-};
+}

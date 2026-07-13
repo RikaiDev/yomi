@@ -12,12 +12,12 @@
  */
 export function readSharedKeyResponseField(shared, namedKey, tupleIndex) {
   if (shared?.[namedKey] !== undefined && shared?.[namedKey] !== null) {
-    return shared[namedKey];
+    return shared[namedKey]
   }
   if (shared?.[tupleIndex] !== undefined && shared?.[tupleIndex] !== null) {
-    return shared[tupleIndex];
+    return shared[tupleIndex]
   }
-  return null;
+  return null
 }
 
 /**
@@ -32,6 +32,8 @@ export function extractSharedKeyIdentity(shared) {
     creator_key_id: readSharedKeyResponseField(shared, 'creatorKeyId', 4),
     receiver_key_id: readSharedKeyResponseField(shared, 'receiverKeyId', 6),
     group_key_id: readSharedKeyResponseField(shared, 'groupKeyId', 2),
-    has_encrypted_shared_key: Boolean(readSharedKeyResponseField(shared, 'encryptedSharedKey', 7)),
-  };
+    has_encrypted_shared_key: Boolean(
+      readSharedKeyResponseField(shared, 'encryptedSharedKey', 7),
+    ),
+  }
 }

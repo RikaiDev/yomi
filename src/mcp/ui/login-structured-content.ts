@@ -15,24 +15,24 @@
  */
 export interface LoginStructuredContentPin {
   /** `pin` — LINE issued a PIN the human must enter. */
-  stage: 'pin';
+  stage: 'pin'
   /** The PIN to enter. */
-  pin: string;
+  pin: string
   /** LINE's real server-side deadline to enter the PIN and confirm the device (external fact, ~3 min). */
-  pinCodeLifetimeSeconds: number;
+  pinCodeLifetimeSeconds: number
   /** How long yomi's client keeps polling for the PIN-verification step before giving up (~16 min). */
-  clientPinPollCeilingSeconds: number;
+  clientPinPollCeilingSeconds: number
   /** How long yomi's client keeps polling for the device-approval step that follows (~13 min). */
-  clientApprovalPollCeilingSeconds: number;
+  clientApprovalPollCeilingSeconds: number
 }
 
 export interface LoginStructuredContentCert {
   /** `cert` — a stored login certificate skipped the PIN step entirely; only the device-approval step remains. */
-  stage: 'cert';
+  stage: 'cert'
   /** No PIN was issued in this stage. */
-  pin: null;
+  pin: null
   /** How long yomi's client keeps polling for the device-approval step (~13 min). */
-  clientApprovalPollCeilingSeconds: number;
+  clientApprovalPollCeilingSeconds: number
 }
 
 /**
@@ -44,14 +44,14 @@ export interface LoginStructuredContentCert {
  * own; this is how it avoids retyping the list.
  */
 export interface LoginStructuredContentNeedCredentials {
-  stage: 'need_credentials';
+  stage: 'need_credentials'
   /** No PIN has been issued yet — the flow has not even started. */
-  pin: null;
+  pin: null
   /** Region codes offered on the form's region `<select>`, sourced from `LOGIN_REGIONS`. */
-  regions: string[];
+  regions: string[]
 }
 
 export type LoginStructuredContent =
   | LoginStructuredContentPin
   | LoginStructuredContentCert
-  | LoginStructuredContentNeedCredentials;
+  | LoginStructuredContentNeedCredentials

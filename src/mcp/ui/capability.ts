@@ -14,13 +14,13 @@
  * `'mimeTypes' in value`, `value` narrows to `object & Record<'mimeTypes',
  * unknown>`, so `value.mimeTypes` is accessible as `unknown`.
  */
-import type { ClientCapabilities } from '@modelcontextprotocol/sdk/types.js';
+import type { ClientCapabilities } from '@modelcontextprotocol/sdk/types.js'
 
 /** The MCP Apps UI mime type the host must declare support for. */
-export const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
+export const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app'
 
 /** The extension key the MCP Apps spec registers capability support under. */
-const MCP_APPS_EXTENSION_KEY = 'io.modelcontextprotocol/ui';
+const MCP_APPS_EXTENSION_KEY = 'io.modelcontextprotocol/ui'
 
 /**
  * Does the connected client's negotiated capabilities include MCP Apps UI
@@ -30,17 +30,19 @@ const MCP_APPS_EXTENSION_KEY = 'io.modelcontextprotocol/ui';
  * @param capabilities - Result of `server.getClientCapabilities()`.
  * @returns True only when the client explicitly declared the mime type.
  */
-export function supportsMcpApps(capabilities: ClientCapabilities | undefined): boolean {
-  const extension = capabilities?.extensions?.[MCP_APPS_EXTENSION_KEY];
+export function supportsMcpApps(
+  capabilities: ClientCapabilities | undefined,
+): boolean {
+  const extension = capabilities?.extensions?.[MCP_APPS_EXTENSION_KEY]
   if (!extension || typeof extension !== 'object') {
-    return false;
+    return false
   }
   if (!('mimeTypes' in extension)) {
-    return false;
+    return false
   }
-  const { mimeTypes } = extension;
+  const { mimeTypes } = extension
   if (!Array.isArray(mimeTypes)) {
-    return false;
+    return false
   }
-  return mimeTypes.includes(MCP_APPS_MIME_TYPE);
+  return mimeTypes.includes(MCP_APPS_MIME_TYPE)
 }

@@ -2,12 +2,12 @@
  * LINE Client sync capability.
  */
 
-import type { ThriftFieldTuple } from '../../core/thrift/types.js';
-import { createCliLogger } from '../../../util/log.js';
-import { LINE_APP_CONFIG } from '../../core/config.js';
-import { OP_TYPE } from '../../core/constants.js';
-import { encodeCallMessage } from '../../core/thrift/index.js';
-import { sendRequest } from '../transport.js';
+import { createCliLogger } from '../../../util/log.js'
+import { LINE_APP_CONFIG } from '../../core/config.js'
+import { OP_TYPE } from '../../core/constants.js'
+import { encodeCallMessage } from '../../core/thrift/index.js'
+import type { ThriftFieldTuple } from '../../core/thrift/types.js'
+import { sendRequest } from '../transport.js'
 
 /**
  * Check whether a logger exposes the CLI logger contract used by LINE sync.
@@ -16,7 +16,7 @@ import { sendRequest } from '../transport.js';
  * @returns True when the logger supports info/warn/error.
  */
 function hasCliLogger(logger: any): boolean {
-  return Boolean(logger?.info && logger?.warn && logger?.error);
+  return Boolean(logger?.info && logger?.warn && logger?.error)
 }
 
 /**
@@ -27,12 +27,12 @@ function hasCliLogger(logger: any): boolean {
  */
 function getLineLog(runtime: any) {
   if (hasCliLogger(runtime?.startupFlowLogger)) {
-    return runtime.startupFlowLogger;
+    return runtime.startupFlowLogger
   }
   if (hasCliLogger(runtime?.logger)) {
-    return runtime.logger;
+    return runtime.logger
   }
-  return createCliLogger('LINE');
+  return createCliLogger('LINE')
 }
 
 /**
@@ -44,14 +44,18 @@ function getLineLog(runtime: any) {
  */
 function buildSyncPayload(runtime: any, count: number) {
   const fields: ThriftFieldTuple[] = [
-    [12, 1, [
-      [10, 1, Math.max(0, runtime.revision)],
-      [8, 2, count],
-      [10, 3, runtime.globalRevision ?? 0],
-      [10, 4, runtime.individualRevision ?? 0],
-    ]],
-  ];
-  return encodeCallMessage('sync', runtime.seq++, fields);
+    [
+      12,
+      1,
+      [
+        [10, 1, Math.max(0, runtime.revision)],
+        [8, 2, count],
+        [10, 3, runtime.globalRevision ?? 0],
+        [10, 4, runtime.individualRevision ?? 0],
+      ],
+    ],
+  ]
+  return encodeCallMessage('sync', runtime.seq++, fields)
 }
 
 /**
@@ -62,7 +66,9 @@ function buildSyncPayload(runtime: any, count: number) {
  * @returns Parsed operations.
  */
 function parseOperations(runtime: any, ops: any[] | undefined) {
-  return Array.isArray(ops) ? ops.map(op => runtime.parseOperation(op)).filter(Boolean) : [];
+  return Array.isArray(ops)
+    ? ops.map((op) => runtime.parseOperation(op)).filter(Boolean)
+    : []
 }
 
 /**
@@ -73,10 +79,10 @@ function parseOperations(runtime: any, ops: any[] | undefined) {
  */
 function applyTokenRotation(runtime: any, result: any): void {
   if (!result.nextToken) {
-    return;
+    return
   }
-  runtime.authToken = result.nextToken;
-  runtime.emit('tokenRotated', result.nextToken);
+  runtime.authToken = result.nextToken
+  runtime.emit('tokenRotated', result.nextToken)
 }
 
 /**
@@ -86,13 +92,13 @@ function applyTokenRotation(runtime: any, result: any): void {
  * @param lineLog - Active LINE logger.
  */
 function throwSyncException(result: any, lineLog: any): void {
-  const exc = result.fields?.[1];
+  const exc = result.fields?.[1]
   if (!exc || typeof exc !== 'object') {
-    return;
+    return
   }
-  const excMsg = typeof exc[2] === 'string' ? exc[2] : JSON.stringify(exc);
-  lineLog.error('sync.exception', { error: excMsg });
-  throw new Error(`sync exception: ${excMsg}`);
+  const excMsg = typeof exc[2] === 'string' ? exc[2] : JSON.stringify(exc)
+  lineLog.error('sync.exception', { error: excMsg })
+  throw new Error(`sync exception: ${excMsg}`)
 }
 
 /**
@@ -103,23 +109,36 @@ function throwSyncException(result: any, lineLog: any): void {
  * @returns Raw operations array.
  */
 function updateSyncRevisions(runtime: any, response: any): any[] | undefined {
-  const operationResponse = response?.[1];
-  const ops = operationResponse?.[1];
-  const nextRevision = response?.[2];
-  const lastGlobalRevision = operationResponse?.[2];
-  const lastIndividualRevision = operationResponse?.[3];
+  const operationResponse = response?.[1]
+  const ops = operationResponse?.[1]
+  const nextRevision = response?.[2]
+  const lastGlobalRevision = operationResponse?.[2]
+  const lastIndividualRevision = operationResponse?.[3]
 
   if (typeof nextRevision === 'number' || typeof nextRevision === 'bigint') {
-    runtime.revision = typeof nextRevision === 'bigint' ? Number(nextRevision) : nextRevision;
+    runtime.revision =
+      typeof nextRevision === 'bigint' ? Number(nextRevision) : nextRevision
   }
-  if (typeof lastGlobalRevision === 'number' || typeof lastGlobalRevision === 'bigint') {
-    runtime.globalRevision = typeof lastGlobalRevision === 'bigint' ? Number(lastGlobalRevision) : lastGlobalRevision;
+  if (
+    typeof lastGlobalRevision === 'number' ||
+    typeof lastGlobalRevision === 'bigint'
+  ) {
+    runtime.globalRevision =
+      typeof lastGlobalRevision === 'bigint'
+        ? Number(lastGlobalRevision)
+        : lastGlobalRevision
   }
-  if (typeof lastIndividualRevision === 'number' || typeof lastIndividualRevision === 'bigint') {
-    runtime.individualRevision = typeof lastIndividualRevision === 'bigint' ? Number(lastIndividualRevision) : lastIndividualRevision;
+  if (
+    typeof lastIndividualRevision === 'number' ||
+    typeof lastIndividualRevision === 'bigint'
+  ) {
+    runtime.individualRevision =
+      typeof lastIndividualRevision === 'bigint'
+        ? Number(lastIndividualRevision)
+        : lastIndividualRevision
   }
 
-  return ops;
+  return ops
 }
 
 /**
@@ -130,15 +149,31 @@ function updateSyncRevisions(runtime: any, response: any): any[] | undefined {
  * @param opCount - Number of operations returned.
  * @param elapsedMs - Poll duration in milliseconds.
  */
-function recordSyncPoll(lineLog: any, runtime: any, opCount: number, elapsedMs: number): void {
+function recordSyncPoll(
+  lineLog: any,
+  runtime: any,
+  opCount: number,
+  elapsedMs: number,
+): void {
   if (opCount > 0) {
-    lineLog.info('sync.event', { elapsed_ms: elapsedMs, ops: opCount, revision: runtime.revision });
-    runtime._syncEmptyLogCount = 0;
-    return;
+    lineLog.info('sync.event', {
+      elapsed_ms: elapsedMs,
+      ops: opCount,
+      revision: runtime.revision,
+    })
+    runtime._syncEmptyLogCount = 0
+    return
   }
-  runtime._syncEmptyLogCount = (runtime._syncEmptyLogCount || 0) + 1;
-  if (runtime._syncEmptyLogCount === 1 || runtime._syncEmptyLogCount % 10 === 0) {
-    lineLog.info('sync.idle', { elapsed_ms: elapsedMs, empty_polls: runtime._syncEmptyLogCount, revision: runtime.revision });
+  runtime._syncEmptyLogCount = (runtime._syncEmptyLogCount || 0) + 1
+  if (
+    runtime._syncEmptyLogCount === 1 ||
+    runtime._syncEmptyLogCount % 10 === 0
+  ) {
+    lineLog.info('sync.idle', {
+      elapsed_ms: elapsedMs,
+      empty_polls: runtime._syncEmptyLogCount,
+      revision: runtime.revision,
+    })
   }
 }
 
@@ -150,12 +185,12 @@ function recordSyncPoll(lineLog: any, runtime: any, opCount: number, elapsedMs: 
  */
 function emitOperations(runtime: any, ops: any[]): void {
   for (const op of ops) {
-    runtime.emit('operation', op);
+    runtime.emit('operation', op)
     if (op.type === OP_TYPE.RECEIVE_MESSAGE && op.message) {
-      runtime.emit('message', op.message);
+      runtime.emit('message', op.message)
     }
     if (op.revision && op.revision > runtime.revision) {
-      runtime.revision = op.revision;
+      runtime.revision = op.revision
     }
   }
 }
@@ -167,11 +202,14 @@ function emitOperations(runtime: any, ops: any[]): void {
  * @param consecutiveEmptyPolls - Consecutive idle poll count.
  * @returns Delay in milliseconds.
  */
-function getNextPollDelay(opCount: number, consecutiveEmptyPolls: number): number {
+function getNextPollDelay(
+  opCount: number,
+  consecutiveEmptyPolls: number,
+): number {
   if (opCount > 0) {
-    return 250;
+    return 250
   }
-  return Math.min(1000 * (2 ** Math.min(consecutiveEmptyPolls, 4)), 15000);
+  return Math.min(1000 * 2 ** Math.min(consecutiveEmptyPolls, 4), 15000)
 }
 
 /**
@@ -181,7 +219,7 @@ function getNextPollDelay(opCount: number, consecutiveEmptyPolls: number): numbe
  * @returns Promise resolving after the delay.
  */
 async function sleep(ms: number): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, ms));
+  await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -191,9 +229,9 @@ async function sleep(ms: number): Promise<void> {
  * @returns Parsed operations from this poll.
  */
 async function pollOnce(runtime: any): Promise<any[]> {
-  const ops = await runtime.syncLongPoll(50, 60000);
-  emitOperations(runtime, ops);
-  return ops;
+  const ops = await runtime.syncLongPoll(50, 60000)
+  emitOperations(runtime, ops)
+  return ops
 }
 
 /**
@@ -211,13 +249,19 @@ export function createSyncClient(runtime) {
      * @returns Parsed operations.
      */
     async sync(count = 50) {
-      const data = buildSyncPayload(runtime, count);
-      const result = await sendRequest(runtime.host, LINE_APP_CONFIG.syncPath, data, { 'X-Line-Access': runtime.authToken }, 10000);
+      const data = buildSyncPayload(runtime, count)
+      const result = await sendRequest(
+        runtime.host,
+        LINE_APP_CONFIG.syncPath,
+        data,
+        { 'X-Line-Access': runtime.authToken },
+        10000,
+      )
       if (result.error === 'timeout') {
-        return [];
+        return []
       }
-      const ops = result.fields?.[0]?.[1]?.[1];
-      return parseOperations(runtime, ops);
+      const ops = result.fields?.[0]?.[1]?.[1]
+      return parseOperations(runtime, ops)
     },
     /**
      * Long-poll sync until new operations arrive or the timeout elapses.
@@ -227,23 +271,29 @@ export function createSyncClient(runtime) {
      * @returns Parsed operations.
      */
     async syncLongPoll(count = 50, timeoutMs = 60000) {
-      const lineLog = getLineLog(runtime);
-      const startedAt = Date.now();
-      const data = buildSyncPayload(runtime, count);
-      const result = await sendRequest(runtime.host, LINE_APP_CONFIG.syncPath, data, { 'X-Line-Access': runtime.authToken }, timeoutMs + 5000);
+      const lineLog = getLineLog(runtime)
+      const startedAt = Date.now()
+      const data = buildSyncPayload(runtime, count)
+      const result = await sendRequest(
+        runtime.host,
+        LINE_APP_CONFIG.syncPath,
+        data,
+        { 'X-Line-Access': runtime.authToken },
+        timeoutMs + 5000,
+      )
       if (result.error === 'timeout') {
-        return [];
+        return []
       }
-      applyTokenRotation(runtime, result);
-      throwSyncException(result, lineLog);
+      applyTokenRotation(runtime, result)
+      throwSyncException(result, lineLog)
       if (result.statusCode && result.statusCode !== 200) {
-        lineLog.warn('sync.http', { status_code: result.statusCode });
+        lineLog.warn('sync.http', { status_code: result.statusCode })
       }
-      const response = result.fields?.[0];
-      const ops = updateSyncRevisions(runtime, response);
-      const opCount = Array.isArray(ops) ? ops.length : 0;
-      recordSyncPoll(lineLog, runtime, opCount, Date.now() - startedAt);
-      return parseOperations(runtime, ops);
+      const response = result.fields?.[0]
+      const ops = updateSyncRevisions(runtime, response)
+      const opCount = Array.isArray(ops) ? ops.length : 0
+      recordSyncPoll(lineLog, runtime, opCount, Date.now() - startedAt)
+      return parseOperations(runtime, ops)
     },
     /**
      * Fetch the latest operation revision from the server.
@@ -251,16 +301,20 @@ export function createSyncClient(runtime) {
      * @returns The latest operation revision.
      */
     async getLastOpRevision() {
-      const lineLog = getLineLog(runtime);
-      const result = await runtime.sendTalk('getLastOpRevision', []);
+      const lineLog = getLineLog(runtime)
+      const result = await runtime.sendTalk('getLastOpRevision', [])
       if (result.fields?.[1]) {
-        const exc = result.fields[1];
-        lineLog.error('revision.fetch.failed', { error: JSON.stringify(exc) });
-        throw new Error(`getLastOpRevision: ${exc[2] || exc[1] || 'unknown'}`);
+        const exc = result.fields[1]
+        lineLog.error('revision.fetch.failed', { error: JSON.stringify(exc) })
+        throw new Error(`getLastOpRevision: ${exc[2] || exc[1] || 'unknown'}`)
       }
-      const rev = result.fields?.[0];
-      lineLog.info('revision.fetch', { type: typeof rev, value: rev });
-      return rev !== undefined ? (typeof rev === 'bigint' ? Number(rev) : rev) : 0;
+      const rev = result.fields?.[0]
+      lineLog.info('revision.fetch', { type: typeof rev, value: rev })
+      return rev !== undefined
+        ? typeof rev === 'bigint'
+          ? Number(rev)
+          : rev
+        : 0
     },
     /**
      * Start continuous polling for new operations and messages.
@@ -268,28 +322,28 @@ export function createSyncClient(runtime) {
      * @returns Promise resolving when polling stops.
      */
     async startPolling() {
-      const lineLog = getLineLog(runtime);
+      const lineLog = getLineLog(runtime)
       if (runtime.polling) {
-        return;
+        return
       }
-      runtime.polling = true;
-      runtime.aborted = false;
+      runtime.polling = true
+      runtime.aborted = false
       if (runtime.revision < 0) {
-        runtime.revision = await runtime.getLastOpRevision();
-        lineLog.info('polling.start', { revision: runtime.revision });
+        runtime.revision = await runtime.getLastOpRevision()
+        lineLog.info('polling.start', { revision: runtime.revision })
       }
-      let consecutiveEmptyPolls = 0;
+      let consecutiveEmptyPolls = 0
       while (runtime.polling && !runtime.aborted) {
         try {
-          const ops = await pollOnce(runtime);
-          consecutiveEmptyPolls = ops.length === 0 ? consecutiveEmptyPolls + 1 : 0;
-          await sleep(getNextPollDelay(ops.length, consecutiveEmptyPolls));
-        }
-        catch (err) {
-          runtime.emit('error', err);
-          consecutiveEmptyPolls = 0;
+          const ops = await pollOnce(runtime)
+          consecutiveEmptyPolls =
+            ops.length === 0 ? consecutiveEmptyPolls + 1 : 0
+          await sleep(getNextPollDelay(ops.length, consecutiveEmptyPolls))
+        } catch (err) {
+          runtime.emit('error', err)
+          consecutiveEmptyPolls = 0
           if (runtime.polling && !runtime.aborted) {
-            await sleep(3000);
+            await sleep(3000)
           }
         }
       }
@@ -298,8 +352,8 @@ export function createSyncClient(runtime) {
      * Stop the polling loop.
      */
     stopPolling() {
-      runtime.polling = false;
-      runtime.aborted = true;
+      runtime.polling = false
+      runtime.aborted = true
     },
-  };
+  }
 }

@@ -2,9 +2,9 @@
  * Crypto Primitives for E2EE
  */
 
-import { Buffer } from 'node:buffer';
-import crypto from 'node:crypto';
-import { sharedKey as curve25519SharedKey } from 'curve25519-js';
+import { Buffer } from 'node:buffer'
+import crypto from 'node:crypto'
+import { sharedKey as curve25519SharedKey } from 'curve25519-js'
 
 /**
  * Compute SHA-256 hash of input data
@@ -12,12 +12,12 @@ import { sharedKey as curve25519SharedKey } from 'curve25519-js';
  * @returns Hash digest as Buffer
  */
 export function sha256(...args: (string | Uint8Array)[]): Buffer {
-  const h = crypto.createHash('sha256');
+  const h = crypto.createHash('sha256')
   for (const a of args) {
-    const buf = Buffer.from(a);
-    h.update(buf);
+    const buf = Buffer.from(a)
+    h.update(buf)
   }
-  return h.digest();
+  return h.digest()
 }
 
 /**
@@ -26,12 +26,12 @@ export function sha256(...args: (string | Uint8Array)[]): Buffer {
  * @returns Resulting buffer with half the length
  */
 export function xorHalves(buf: Buffer): Buffer {
-  const half = Math.floor(buf.length / 2);
-  const out = Buffer.alloc(half);
+  const half = Math.floor(buf.length / 2)
+  const out = Buffer.alloc(half)
   for (let i = 0; i < half; i++) {
-    out[i] = buf[i] ^ buf[half + i];
+    out[i] = buf[i] ^ buf[half + i]
   }
-  return out;
+  return out
 }
 
 /**
@@ -42,22 +42,25 @@ export function xorHalves(buf: Buffer): Buffer {
  * @returns Decrypted data
  */
 export function aesDecrypt(data: Buffer, key: Buffer, iv: Buffer): Buffer {
-  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-  return Buffer.concat([decipher.update(data), decipher.final()]);
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv)
+  return Buffer.concat([decipher.update(data), decipher.final()])
 }
 
 /**
  * Generate X25519 key pair for E2EE
  * @returns Key pair object
  */
-export function generateKeyPair(): { publicKey: Uint8Array; privateKey: Uint8Array } {
-  const { publicKey, privateKey } = crypto.generateKeyPairSync('x25519');
-  const pub = publicKey.export({ type: 'spki', format: 'der' }).slice(-32);
-  const priv = privateKey.export({ type: 'pkcs8', format: 'der' }).slice(-32);
+export function generateKeyPair(): {
+  publicKey: Uint8Array
+  privateKey: Uint8Array
+} {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('x25519')
+  const pub = publicKey.export({ type: 'spki', format: 'der' }).slice(-32)
+  const priv = privateKey.export({ type: 'pkcs8', format: 'der' }).slice(-32)
   return {
     publicKey: pub as unknown as Uint8Array,
     privateKey: priv as unknown as Uint8Array,
-  };
+  }
 }
 
 /**
@@ -67,10 +70,16 @@ export function generateKeyPair(): { publicKey: Uint8Array; privateKey: Uint8Arr
  * @param publicKey - 32-byte public key
  * @returns 32-byte shared secret
  */
-export function computeSharedSecret(privateKey: Buffer | Uint8Array, publicKey: Buffer | Uint8Array) {
+export function computeSharedSecret(
+  privateKey: Buffer | Uint8Array,
+  publicKey: Buffer | Uint8Array,
+) {
   return Buffer.from(
-    curve25519SharedKey(Uint8Array.from(privateKey), Uint8Array.from(publicKey)),
-  );
+    curve25519SharedKey(
+      Uint8Array.from(privateKey),
+      Uint8Array.from(publicKey),
+    ),
+  )
 }
 
 /**
@@ -82,7 +91,7 @@ export function deriveKeyAndIV(sharedSecret: Buffer) {
   return {
     key: sha256(sharedSecret, 'Key'),
     iv: xorHalves(sha256(sharedSecret, 'IV')),
-  };
+  }
 }
 
 /**
@@ -95,7 +104,7 @@ export function deriveMessageKeyAndIV(sharedSecret: Buffer, salt: Buffer) {
   return {
     key: sha256(sharedSecret, salt, 'Key'),
     iv: xorHalves(sha256(sharedSecret, salt, 'IV')),
-  };
+  }
 }
 
 /**
@@ -105,5 +114,5 @@ export function deriveMessageKeyAndIV(sharedSecret: Buffer, salt: Buffer) {
  * @returns Derived 32-byte key
  */
 export function deriveGCMKey(sharedSecret: Buffer, salt: Buffer) {
-  return sha256(sharedSecret, salt, 'Key');
+  return sha256(sharedSecret, salt, 'Key')
 }

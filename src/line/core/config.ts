@@ -5,11 +5,11 @@
  * Protocol version derived from installed LINE.app via Info.plist.
  */
 
-import { execSync } from 'node:child_process';
-import fs from 'node:fs';
-import os from 'node:os';
+import { execSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
 
-const LINE_INFO_PLIST_PATH = '/Applications/LINE.app/Contents/Info.plist';
+const LINE_INFO_PLIST_PATH = '/Applications/LINE.app/Contents/Info.plist'
 
 /**
  * Read a plist key from LINE.app, with fallback.
@@ -20,16 +20,15 @@ const LINE_INFO_PLIST_PATH = '/Applications/LINE.app/Contents/Info.plist';
  */
 function plist(key: string, fallback: string): string {
   if (!fs.existsSync(LINE_INFO_PLIST_PATH)) {
-    return fallback;
+    return fallback
   }
   try {
     return execSync(
       `defaults read ${LINE_INFO_PLIST_PATH} ${key} 2>/dev/null`,
       { encoding: 'utf-8', timeout: 3000 },
-    ).trim();
-  }
-  catch {
-    return fallback;
+    ).trim()
+  } catch {
+    return fallback
   }
 }
 
@@ -43,17 +42,16 @@ function macosVersion(): string {
     return execSync('sw_vers -productVersion', {
       encoding: 'utf-8',
       timeout: 3000,
-    }).trim();
-  }
-  catch {
-    return '15.0';
+    }).trim()
+  } catch {
+    return '15.0'
   }
 }
 
-const LINE_SHORT = plist('CFBundleShortVersionString', '26.0.2');
-const LINE_BUILD = plist('CFBundleVersion', '3828');
-const LINE_VERSION = `${LINE_SHORT}.${LINE_BUILD}`;
-const MACOS_VER = macosVersion();
+const LINE_SHORT = plist('CFBundleShortVersionString', '26.0.2')
+const LINE_BUILD = plist('CFBundleVersion', '3828')
+const LINE_VERSION = `${LINE_SHORT}.${LINE_BUILD}`
+const MACOS_VER = macosVersion()
 
 export const LINE_APP_CONFIG = {
   host: 'ga2.line.naver.jp',
@@ -76,4 +74,4 @@ export const LINE_APP_CONFIG = {
   // Device info shown on phone during secondary-device approval.
   systemName: os.hostname() || 'yomi',
   modelName: 'yomi',
-};
+}

@@ -1,13 +1,12 @@
-import type { PeerPublicKeyCandidate } from './key-types.js';
-import { Buffer } from 'node:buffer';
-import crypto from 'node:crypto';
-
+import { Buffer } from 'node:buffer'
+import crypto from 'node:crypto'
 import {
   aesDecrypt,
   computeSharedSecret,
   deriveGCMKey,
   deriveMessageKeyAndIV,
-} from '../crypto/crypto-primitives.js';
+} from '../crypto/crypto-primitives.js'
+import type { PeerPublicKeyCandidate } from './key-types.js'
 
 /**
  * Decrypt a V1 (AES-256-CBC) E2EE payload.
@@ -16,9 +15,13 @@ import {
  * @param ciphertext - Encrypted payload
  * @returns Decrypted UTF-8 string
  */
-export function decryptV1(shared: Buffer, salt: Buffer, ciphertext: Buffer): string {
-  const { key, iv } = deriveMessageKeyAndIV(shared, salt);
-  return aesDecrypt(ciphertext, key, iv).toString('utf8');
+export function decryptV1(
+  shared: Buffer,
+  salt: Buffer,
+  ciphertext: Buffer,
+): string {
+  const { key, iv } = deriveMessageKeyAndIV(shared, salt)
+  return aesDecrypt(ciphertext, key, iv).toString('utf8')
 }
 
 /**
@@ -31,15 +34,23 @@ export function decryptV1(shared: Buffer, salt: Buffer, ciphertext: Buffer): str
  * @param aad - Additional authenticated data derived from message metadata
  * @returns Decrypted UTF-8 string
  */
-export function decryptV2(shared: Buffer, salt: Buffer, ciphertext: Buffer, nonce: Buffer, aad: Buffer): string {
-  const gcmKey = deriveGCMKey(shared, salt);
-  const tagLength = 16;
-  const encData = ciphertext.subarray(0, ciphertext.length - tagLength);
-  const authTag = ciphertext.subarray(ciphertext.length - tagLength);
-  const decipher = crypto.createDecipheriv('aes-256-gcm', gcmKey, nonce);
-  decipher.setAuthTag(authTag);
-  decipher.setAAD(aad);
-  return Buffer.concat([decipher.update(encData), decipher.final()]).toString('utf8');
+export function decryptV2(
+  shared: Buffer,
+  salt: Buffer,
+  ciphertext: Buffer,
+  nonce: Buffer,
+  aad: Buffer,
+): string {
+  const gcmKey = deriveGCMKey(shared, salt)
+  const tagLength = 16
+  const encData = ciphertext.subarray(0, ciphertext.length - tagLength)
+  const authTag = ciphertext.subarray(ciphertext.length - tagLength)
+  const decipher = crypto.createDecipheriv('aes-256-gcm', gcmKey, nonce)
+  decipher.setAuthTag(authTag)
+  decipher.setAAD(aad)
+  return Buffer.concat([decipher.update(encData), decipher.final()]).toString(
+    'utf8',
+  )
 }
 
 /**
@@ -61,17 +72,24 @@ export function decryptV2WithCandidates(
   nonce: Buffer,
   buildAAD: (candidate: PeerPublicKeyCandidate) => Buffer,
 ): string {
-  let lastError: Error | null = null;
+  let lastError: Error | null = null
   for (let index = 0; index < candidates.length; index += 1) {
     try {
-      const shared = computeSharedSecret(privateKey, candidates[index].keyData);
-      return decryptV2(shared, salt, ciphertext, nonce, buildAAD(candidates[index]));
-    }
-    catch (error) {
-      lastError = error as Error;
+      const shared = computeSharedSecret(privateKey, candidates[index].keyData)
+      return decryptV2(
+        shared,
+        salt,
+        ciphertext,
+        nonce,
+        buildAAD(candidates[index]),
+      )
+    } catch (error) {
+      lastError = error as Error
     }
   }
-  throw lastError || new Error('No sender key candidate could decrypt the message');
+  throw (
+    lastError || new Error('No sender key candidate could decrypt the message')
+  )
 }
 
 /**
@@ -87,15 +105,18 @@ export function decryptV2WithCandidates(
  */
 export function extractTextPayload(raw: string): string {
   try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && typeof parsed.text === 'string') {
-      return parsed.text;
+    const parsed = JSON.parse(raw)
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.text === 'string'
+    ) {
+      return parsed.text
     }
-  }
-  catch {
+  } catch {
     // Non-JSON payloads are valid for older/atypical message bodies.
   }
-  return raw;
+  return raw
 }
 
 /**
@@ -125,7 +146,7 @@ export function generateAAD(
     getIntBytes(receiverKeyId),
     getIntBytes(specVersion),
     getIntBytes(contentType),
-  ]);
+  ])
 }
 
 /**
@@ -134,10 +155,10 @@ export function generateAAD(
  * @returns 4-byte buffer
  */
 export function getIntBytes(value: number): Buffer {
-  const buffer = new ArrayBuffer(4);
-  const view = new DataView(buffer);
-  view.setInt32(0, value);
-  return Buffer.from(new Uint8Array(buffer));
+  const buffer = new ArrayBuffer(4)
+  const view = new DataView(buffer)
+  view.setInt32(0, value)
+  return Buffer.from(new Uint8Array(buffer))
 }
 
 /**
@@ -147,10 +168,10 @@ export function getIntBytes(value: number): Buffer {
  */
 export function toChunkKeyId(value: any): string | null {
   if (value == null) {
-    return null;
+    return null
   }
   if (typeof value === 'number') {
-    return value > 0 ? String(value) : null;
+    return value > 0 ? String(value) : null
   }
   const buf = Buffer.isBuffer(value)
     ? value
@@ -160,15 +181,15 @@ export function toChunkKeyId(value: any): string | null {
         ? Buffer.from(value)
         : typeof value === 'string'
           ? Buffer.from(value, 'utf8')
-          : null;
+          : null
 
   if (!buf || buf.length === 0 || buf.length > 6) {
-    return null;
+    return null
   }
 
-  let parsed = 0;
+  let parsed = 0
   for (const byte of buf.values()) {
-    parsed = (parsed << 8) | byte;
+    parsed = (parsed << 8) | byte
   }
-  return parsed > 0 ? String(parsed) : null;
+  return parsed > 0 ? String(parsed) : null
 }

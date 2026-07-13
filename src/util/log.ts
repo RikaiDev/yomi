@@ -8,19 +8,19 @@
  * Output uses `[TAG]` prefixes — no emoji, per project convention.
  */
 
-type Primitive = string | number | boolean | null | undefined | bigint;
-type LogContext = Record<string, Primitive>;
+type Primitive = string | number | boolean | null | undefined | bigint
+type LogContext = Record<string, Primitive>
 
 interface LoggerOptions {
-  indent?: string;
+  indent?: string
 }
 
 export interface Logger {
-  info: (event: string, context?: LogContext) => void;
-  warn: (event: string, context?: LogContext) => void;
-  error: (event: string, context?: LogContext) => void;
-  debug: (event: string, context?: LogContext) => void;
-  child: (nextOptions?: LoggerOptions) => Logger;
+  info: (event: string, context?: LogContext) => void
+  warn: (event: string, context?: LogContext) => void
+  error: (event: string, context?: LogContext) => void
+  debug: (event: string, context?: LogContext) => void
+  child: (nextOptions?: LoggerOptions) => Logger
 }
 
 /**
@@ -30,11 +30,11 @@ export interface Logger {
  * @returns String representation suitable for log output.
  */
 function formatValue(value: Primitive): string {
-  if (value === null) return 'null';
-  if (value === undefined) return 'undefined';
-  if (typeof value === 'string') return JSON.stringify(value);
-  if (typeof value === 'bigint') return value.toString();
-  return String(value);
+  if (value === null) return 'null'
+  if (value === undefined) return 'undefined'
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'bigint') return value.toString()
+  return String(value)
 }
 
 /**
@@ -44,12 +44,12 @@ function formatValue(value: Primitive): string {
  * @returns Formatted suffix beginning with a leading space when non-empty.
  */
 function formatContext(context?: LogContext): string {
-  if (!context) return '';
+  if (!context) return ''
   const entries = Object.entries(context)
     .filter(([, value]) => value !== undefined)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${formatValue(value)}`);
-  return entries.length > 0 ? ` ${entries.join(' ')}` : '';
+    .map(([key, value]) => `${key}=${formatValue(value)}`)
+  return entries.length > 0 ? ` ${entries.join(' ')}` : ''
 }
 
 /**
@@ -67,16 +67,16 @@ function formatContext(context?: LogContext): string {
  * @param options - Optional rendering options such as indentation.
  */
 function emit(
-  method: 'log' | 'warn' | 'error',
+  _method: 'log' | 'warn' | 'error',
   scope: string,
   level: string,
   event: string,
   context?: LogContext,
   options: LoggerOptions = {},
 ): void {
-  const indent = options.indent ?? '';
-  const line = `${indent}[${scope}] ${level.toUpperCase()} ${event}${formatContext(context)}`;
-  console.error(line);
+  const indent = options.indent ?? ''
+  const line = `${indent}[${scope}] ${level.toUpperCase()} ${event}${formatContext(context)}`
+  console.error(line)
 }
 
 /**
@@ -86,22 +86,25 @@ function emit(
  * @param options - Optional rendering options such as indentation.
  * @returns Scope-bound logger.
  */
-export function createCliLogger(scope: string, options: LoggerOptions = {}): Logger {
+export function createCliLogger(
+  scope: string,
+  options: LoggerOptions = {},
+): Logger {
   return {
     info(event, context) {
-      emit('log', scope, 'info', event, context, options);
+      emit('log', scope, 'info', event, context, options)
     },
     warn(event, context) {
-      emit('warn', scope, 'warn', event, context, options);
+      emit('warn', scope, 'warn', event, context, options)
     },
     error(event, context) {
-      emit('error', scope, 'error', event, context, options);
+      emit('error', scope, 'error', event, context, options)
     },
     debug(event, context) {
-      emit('log', scope, 'debug', event, context, options);
+      emit('log', scope, 'debug', event, context, options)
     },
     child(nextOptions = {}) {
-      return createCliLogger(scope, { ...options, ...nextOptions });
+      return createCliLogger(scope, { ...options, ...nextOptions })
     },
-  };
+  }
 }

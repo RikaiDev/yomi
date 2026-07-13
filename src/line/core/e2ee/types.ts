@@ -3,16 +3,16 @@
  */
 
 export interface E2EEConfig {
-  keyStore?: unknown;
+  keyStore?: unknown
 }
 
 export interface KeyPair {
-  publicKey: Uint8Array;
-  privateKey: Uint8Array;
+  publicKey: Uint8Array
+  privateKey: Uint8Array
 }
 
 export interface DecryptResult {
-  success: boolean;
-  message?: string;
-  error?: string;
+  success: boolean
+  message?: string
+  error?: string
 }

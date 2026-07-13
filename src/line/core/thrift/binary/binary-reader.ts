@@ -6,20 +6,20 @@
  * @class TBinaryReader
  */
 
-import type { ThriftField } from '../types.js';
-import { THRIFT_TYPE } from '../types.js';
-import { getBinaryTypeCodecDefinition } from './type-codec-dsl.js';
+import type { ThriftField } from '../types.js'
+import { THRIFT_TYPE } from '../types.js'
+import { getBinaryTypeCodecDefinition } from './type-codec-dsl.js'
 
 /**
  *
  */
 export class TBinaryReader {
-  private buffer: Uint8Array;
-  private offset: number = 0;
-  private readonly readHandlers: Record<string, () => unknown>;
+  private buffer: Uint8Array
+  private offset: number = 0
+  private readonly readHandlers: Record<string, () => unknown>
 
   constructor(buffer: Uint8Array) {
-    this.buffer = buffer;
+    this.buffer = buffer
     this.readHandlers = {
       readBoolValue: () => this.readByte() !== 0,
       readByteValue: () => this.readByte(),
@@ -27,7 +27,7 @@ export class TBinaryReader {
       readI32Value: () => this.readI32(),
       readI64Value: () => this.readI64(),
       readStringValue: () => this.readString(),
-    };
+    }
   }
 
   /**
@@ -36,18 +36,18 @@ export class TBinaryReader {
    * @returns {{name: string, type: number, seqId: number}} Message header
    */
   readMessageBegin(): { name: string; type: number; seqId: number } {
-    const versionType = this.readI32();
-    const version = versionType & 0xFFFF0000;
-    const type = versionType & 0x0000FFFF;
+    const versionType = this.readI32()
+    const version = versionType & 0xffff0000
+    const type = versionType & 0x0000ffff
 
     if (version !== 0x8000) {
-      throw new Error('Invalid version');
+      throw new Error('Invalid version')
     }
 
-    const name = this.readString();
-    const seqId = this.readI32();
+    const name = this.readString()
+    const seqId = this.readI32()
 
-    return { name, type, seqId };
+    return { name, type, seqId }
   }
 
   /**
@@ -63,12 +63,12 @@ export class TBinaryReader {
    * @returns {{type: number, id: number}} Field header
    */
   readFieldBegin(): { type: number; id: number } {
-    const type = this.readByte();
+    const type = this.readByte()
     if (type === THRIFT_TYPE.STOP) {
-      return { type: THRIFT_TYPE.STOP, id: 0 };
+      return { type: THRIFT_TYPE.STOP, id: 0 }
     }
-    const id = this.readI16();
-    return { type, id };
+    const id = this.readI16()
+    return { type, id }
   }
 
   /**
@@ -84,7 +84,7 @@ export class TBinaryReader {
    * @returns {number} Byte value
    */
   readByte(): number {
-    return this.buffer[this.offset++];
+    return this.buffer[this.offset++]
   }
 
   /**
@@ -93,9 +93,9 @@ export class TBinaryReader {
    * @returns {number} Integer value
    */
   readI16(): number {
-    const b1 = this.buffer[this.offset++];
-    const b2 = this.buffer[this.offset++];
-    return (b1 << 8) | b2;
+    const b1 = this.buffer[this.offset++]
+    const b2 = this.buffer[this.offset++]
+    return (b1 << 8) | b2
   }
 
   /**
@@ -104,11 +104,11 @@ export class TBinaryReader {
    * @returns {number} Integer value
    */
   readI32(): number {
-    const b1 = this.buffer[this.offset++];
-    const b2 = this.buffer[this.offset++];
-    const b3 = this.buffer[this.offset++];
-    const b4 = this.buffer[this.offset++];
-    return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
+    const b1 = this.buffer[this.offset++]
+    const b2 = this.buffer[this.offset++]
+    const b3 = this.buffer[this.offset++]
+    const b4 = this.buffer[this.offset++]
+    return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4
   }
 
   /**
@@ -117,9 +117,9 @@ export class TBinaryReader {
    * @returns {number} Integer value
    */
   readI64(): number {
-    const hi = this.readI32();
-    const lo = this.readI32();
-    return hi * 0x100000000 + lo;
+    const hi = this.readI32()
+    const lo = this.readI32()
+    return hi * 0x100000000 + lo
   }
 
   /**
@@ -128,10 +128,10 @@ export class TBinaryReader {
    * @returns {string} String value
    */
   readString(): string {
-    const len = this.readI32();
-    const bytes = this.buffer.slice(this.offset, this.offset + len);
-    this.offset += len;
-    return new TextDecoder().decode(bytes);
+    const len = this.readI32()
+    const bytes = this.buffer.slice(this.offset, this.offset + len)
+    this.offset += len
+    return new TextDecoder().decode(bytes)
   }
 
   /**
@@ -141,11 +141,11 @@ export class TBinaryReader {
    * @returns {unknown} Value
    */
   readValue(type: number): unknown {
-    const definition = getBinaryTypeCodecDefinition(type);
+    const definition = getBinaryTypeCodecDefinition(type)
     if (!definition) {
-      throw new Error(`Unsupported type: ${type}`);
+      throw new Error(`Unsupported type: ${type}`)
     }
-    return this.readHandlers[definition.readHandler]();
+    return this.readHandlers[definition.readHandler]()
   }
 
   /**
@@ -154,19 +154,21 @@ export class TBinaryReader {
    * @returns {ThriftField[]} Fields
    */
   readStruct(): ThriftField[] {
-    const fields: ThriftField[] = [];
+    const fields: ThriftField[] = []
 
     while (true) {
-      const { type, id } = this.readFieldBegin();
+      const { type, id } = this.readFieldBegin()
       if (type === THRIFT_TYPE.STOP) {
-        break;
+        break
       }
 
-      const value = this.readValue(type) as import('../types.js').ThriftFieldValue;
-      fields.push({ id, type: type as import('../types.js').ThriftType, value });
-      this.readFieldEnd();
+      const value = this.readValue(
+        type,
+      ) as import('../types.js').ThriftFieldValue
+      fields.push({ id, type: type as import('../types.js').ThriftType, value })
+      this.readFieldEnd()
     }
 
-    return fields;
+    return fields
   }
 }

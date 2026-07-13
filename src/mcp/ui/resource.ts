@@ -12,23 +12,24 @@
  * the `resources/list` entry and the `resources/read` contents, matching the
  * MCP Apps spec.
  */
-import { MCP_APPS_MIME_TYPE } from './capability.js';
-import { LOGIN_APP_HTML } from './login-app.js';
+import { MCP_APPS_MIME_TYPE } from './capability.js'
+import { LOGIN_APP_HTML } from './login-app.js'
 
 /** The `ui://` resource URI for the login view. */
-export const LOGIN_UI_RESOURCE_URI = 'ui://yomi/login';
+export const LOGIN_UI_RESOURCE_URI = 'ui://yomi/login'
 
 /** UI metadata shared by both resources/list and resources/read entries. */
-const LOGIN_UI_META = { ui: { prefersBorder: true } } as const;
+const LOGIN_UI_META = { ui: { prefersBorder: true } } as const
 
 /** `resources/list` entry for the login view. */
 export const LOGIN_UI_RESOURCE_LISTING = {
   uri: LOGIN_UI_RESOURCE_URI,
   name: 'login_view',
-  description: 'Interactive LINE login view — shows the PIN or device-approval step with a live countdown.',
+  description:
+    'Interactive LINE login view — shows the PIN or device-approval step with a live countdown.',
   mimeType: MCP_APPS_MIME_TYPE,
   _meta: LOGIN_UI_META,
-};
+}
 
 /** `resources/read` contents entry for the login view. */
 export const LOGIN_UI_RESOURCE_CONTENTS = {
@@ -36,4 +37,4 @@ export const LOGIN_UI_RESOURCE_CONTENTS = {
   mimeType: MCP_APPS_MIME_TYPE,
   text: LOGIN_APP_HTML,
   _meta: LOGIN_UI_META,
-};
+}

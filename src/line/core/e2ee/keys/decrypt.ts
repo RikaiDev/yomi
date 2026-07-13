@@ -1,10 +1,11 @@
-import type { KeyManagerContext } from './key-types.js';
-import { invalidateGroupKey } from './group-key.js';
-import { tryDecryptInner } from './message-decrypt.js';
+import { invalidateGroupKey } from './group-key.js'
+import type { KeyManagerContext } from './key-types.js'
+import { tryDecryptInner } from './message-decrypt.js'
 
-const PEER_KEY_MISMATCH_PATTERN = /Peer E2EE key mismatch/i;
-const MISSING_GROUP_SENDER_KEY_PATTERN = /Missing group sender key/i;
-const GCM_AUTH_FAILURE_PATTERN = /unable to authenticate data|Unsupported state or unable to authenticate/i;
+const PEER_KEY_MISMATCH_PATTERN = /Peer E2EE key mismatch/i
+const MISSING_GROUP_SENDER_KEY_PATTERN = /Missing group sender key/i
+const GCM_AUTH_FAILURE_PATTERN =
+  /unable to authenticate data|Unsupported state or unable to authenticate/i
 
 export {
   decryptV1,
@@ -14,7 +15,7 @@ export {
   generateAAD,
   getIntBytes,
   toChunkKeyId,
-} from './message-crypto.js';
+} from './message-crypto.js'
 
 /**
  * Build one structured decrypt-failure log payload from a raw LINE message.
@@ -24,8 +25,12 @@ export {
  * @param error - Thrown decryption error.
  * @returns Structured log context.
  */
-function buildDecryptFailureContext(ctx: KeyManagerContext, msg: any, error: Error): Record<string, unknown> {
-  const chatMid = resolveDecryptFailureChatMid(msg);
+function buildDecryptFailureContext(
+  ctx: KeyManagerContext,
+  msg: any,
+  error: Error,
+): Record<string, unknown> {
+  const chatMid = resolveDecryptFailureChatMid(msg)
   return {
     chat: chatMid,
     message_id: msg?.id ?? null,
@@ -36,7 +41,7 @@ function buildDecryptFailureContext(ctx: KeyManagerContext, msg: any, error: Err
     content_type: msg?.contentType ?? null,
     e2ee_version: msg?.contentMetadata?.e2eeVersion ?? null,
     error: error.message,
-  };
+  }
 }
 
 /**
@@ -47,15 +52,15 @@ function buildDecryptFailureContext(ctx: KeyManagerContext, msg: any, error: Err
  */
 function resolveDecryptFailureReason(error: Error): string {
   if (PEER_KEY_MISMATCH_PATTERN.test(error.message)) {
-    return 'peer_key_mismatch';
+    return 'peer_key_mismatch'
   }
   if (MISSING_GROUP_SENDER_KEY_PATTERN.test(error.message)) {
-    return 'missing_group_sender_key';
+    return 'missing_group_sender_key'
   }
   if (GCM_AUTH_FAILURE_PATTERN.test(error.message)) {
-    return 'gcm_auth_failed';
+    return 'gcm_auth_failed'
   }
-  return 'decrypt_failed';
+  return 'decrypt_failed'
 }
 
 /**
@@ -65,8 +70,8 @@ function resolveDecryptFailureReason(error: Error): string {
  * @returns Group chat MID or null.
  */
 function resolveDecryptFailureChatMid(msg: any): string | null {
-  const isGroup = Number(msg?.toType) !== 0;
-  return isGroup && typeof msg?.to === 'string' ? msg.to : null;
+  const isGroup = Number(msg?.toType) !== 0
+  return isGroup && typeof msg?.to === 'string' ? msg.to : null
 }
 
 /**
@@ -77,11 +82,15 @@ function resolveDecryptFailureChatMid(msg: any): string | null {
  * @param index - Chunk index.
  * @returns Parsed chunk key id or null.
  */
-function readDecryptFailureChunkKeyId(ctx: KeyManagerContext, msg: any, index: number): string | null {
+function readDecryptFailureChunkKeyId(
+  ctx: KeyManagerContext,
+  msg: any,
+  index: number,
+): string | null {
   if (typeof ctx.readChunkKeyId !== 'function') {
-    return null;
+    return null
   }
-  return ctx.readChunkKeyId(msg?.chunks?.[index]);
+  return ctx.readChunkKeyId(msg?.chunks?.[index])
 }
 
 /**
@@ -96,21 +105,31 @@ async function handleDecryptFailure(
   ctx: KeyManagerContext,
   msg: any,
   error: Error,
-): Promise<{ decrypted: boolean; text?: string; reason?: string; error?: string; senderKeyId?: string | null; receiverKeyId?: string | null }> {
-  const isGroup = Number(msg?.toType) !== 0;
-  const chatMid = isGroup && typeof msg?.to === 'string' ? msg.to : null;
+): Promise<{
+  decrypted: boolean
+  text?: string
+  reason?: string
+  error?: string
+  senderKeyId?: string | null
+  receiverKeyId?: string | null
+}> {
+  const isGroup = Number(msg?.toType) !== 0
+  const chatMid = isGroup && typeof msg?.to === 'string' ? msg.to : null
   if (chatMid) {
-    await invalidateGroupKey(ctx, chatMid);
+    await invalidateGroupKey(ctx, chatMid)
   }
-  ctx.logGroupKeyEvent?.('e2ee.message.decrypt_failed', buildDecryptFailureContext(ctx, msg, error));
-  console.warn('[E2EE] Decryption failed:', error.message);
+  ctx.logGroupKeyEvent?.(
+    'e2ee.message.decrypt_failed',
+    buildDecryptFailureContext(ctx, msg, error),
+  )
+  console.warn('[E2EE] Decryption failed:', error.message)
   return {
     decrypted: false,
     error: error.message,
     reason: resolveDecryptFailureReason(error),
     receiverKeyId: readDecryptFailureChunkKeyId(ctx, msg, 4),
     senderKeyId: readDecryptFailureChunkKeyId(ctx, msg, 3),
-  };
+  }
 }
 
 /**
@@ -121,11 +140,13 @@ async function handleDecryptFailure(
  * @param msg - Parsed message object (from parsers.ts)
  * @returns Decryption result with optional plaintext
  */
-export async function tryDecrypt(ctx: KeyManagerContext, msg: any): Promise<{ decrypted: boolean; text?: string }> {
+export async function tryDecrypt(
+  ctx: KeyManagerContext,
+  msg: any,
+): Promise<{ decrypted: boolean; text?: string }> {
   try {
-    return await tryDecryptInner(ctx, msg);
-  }
-  catch (err) {
-    return handleDecryptFailure(ctx, msg, err as Error);
+    return await tryDecryptInner(ctx, msg)
+  } catch (err) {
+    return handleDecryptFailure(ctx, msg, err as Error)
   }
 }

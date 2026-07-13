@@ -1,3 +1,8 @@
+import { Buffer } from 'node:buffer'
+import { generateKeyPairSync } from 'node:crypto'
+import { createCliLogger } from '../../../../util/log.js'
+import { tryDecrypt as tryDecryptFn } from './decrypt.js'
+import { encryptE2EEMessage as encryptE2EEMessageFn } from './encrypt.js'
 import type {
   EncryptedMessagePayload,
   GroupKey,
@@ -5,43 +10,45 @@ import type {
   ImportedKey,
   KeyManagerContext,
   KeyPair,
-} from './key-types.js';
-import { Buffer } from 'node:buffer';
-import { generateKeyPairSync } from 'node:crypto';
-import { createCliLogger } from '../../../../util/log.js';
+} from './key-types.js'
+import { toChunkKeyId } from './message-crypto.js'
 
-import { tryDecrypt as tryDecryptFn } from './decrypt.js';
-import { encryptE2EEMessage as encryptE2EEMessageFn } from './encrypt.js';
-import { toChunkKeyId } from './message-crypto.js';
-
-const e2eeLog = createCliLogger('E2EE');
+const e2eeLog = createCliLogger('E2EE')
 
 /**
  * KeyManager handles E2EE key generation and storage.
  * Implements {@link KeyManagerContext} so it can be passed as `ctx` to module-level functions.
  */
 export class KeyManager implements KeyManagerContext {
-  private keys: Map<string, KeyPair> = new Map();
-  private importedKeys: Map<string, ImportedKey> = new Map();
-  private selfKeyByMid: Map<string, ImportedKey> = new Map();
-  peerPublicKeys: Map<string, Buffer> = new Map();
-  groupKeys: Map<string, GroupKey> = new Map();
-  groupKeyFetches: Map<string, GroupKeyFetchState> = new Map();
-  private runtimeGetClient?: () => any;
-  private runtimeGetStore?: () => any;
-  private runtimeGetProfileMid?: () => string | undefined;
-  private emitWarning?: (payload: { active: boolean; reason: string; [key: string]: any }) => void;
+  private keys: Map<string, KeyPair> = new Map()
+  private importedKeys: Map<string, ImportedKey> = new Map()
+  private selfKeyByMid: Map<string, ImportedKey> = new Map()
+  peerPublicKeys: Map<string, Buffer> = new Map()
+  groupKeys: Map<string, GroupKey> = new Map()
+  groupKeyFetches: Map<string, GroupKeyFetchState> = new Map()
+  private runtimeGetClient?: () => any
+  private runtimeGetStore?: () => any
+  private runtimeGetProfileMid?: () => string | undefined
+  private emitWarning?: (payload: {
+    active: boolean
+    reason: string
+    [key: string]: any
+  }) => void
 
   /**
    * Generate a new X25519 key pair for E2EE.
    * @returns Generated key pair
    */
   generateKeyPair(): KeyPair {
-    const keyPair = generateKeyPairSync('x25519');
+    const keyPair = generateKeyPairSync('x25519')
     return {
-      publicKey: keyPair.publicKey.export({ type: 'spki', format: 'der' }).slice(-32) as unknown as Uint8Array,
-      privateKey: keyPair.privateKey.export({ type: 'pkcs8', format: 'der' }).slice(-32) as unknown as Uint8Array,
-    };
+      publicKey: keyPair.publicKey
+        .export({ type: 'spki', format: 'der' })
+        .slice(-32) as unknown as Uint8Array,
+      privateKey: keyPair.privateKey
+        .export({ type: 'pkcs8', format: 'der' })
+        .slice(-32) as unknown as Uint8Array,
+    }
   }
 
   /**
@@ -50,7 +57,7 @@ export class KeyManager implements KeyManagerContext {
    * @param keyPair - Key pair to store
    */
   storeKey(userId: string, keyPair: KeyPair): void {
-    this.keys.set(userId, keyPair);
+    this.keys.set(userId, keyPair)
   }
 
   /**
@@ -59,7 +66,7 @@ export class KeyManager implements KeyManagerContext {
    * @returns Stored key pair when present.
    */
   getKey(userId: string): KeyPair | undefined {
-    return this.keys.get(userId);
+    return this.keys.get(userId)
   }
 
   /**
@@ -68,7 +75,7 @@ export class KeyManager implements KeyManagerContext {
    * @returns True when a key exists for the user.
    */
   hasKey(userId: string): boolean {
-    return this.keys.has(userId);
+    return this.keys.has(userId)
   }
 
   /**
@@ -78,22 +85,26 @@ export class KeyManager implements KeyManagerContext {
    */
   importKeys(keys: any[]): void {
     for (const k of keys) {
-      const keyId = String(k.keyId);
+      const keyId = String(k.keyId)
       const importedKey: ImportedKey = {
         keyId,
         version: k.version != null ? String(k.version) : undefined,
         createdTime: k.createdTime != null ? Number(k.createdTime) : null,
-        publicKey: Buffer.isBuffer(k.publicKey) ? k.publicKey : Buffer.from(k.publicKey),
-        privateKey: Buffer.isBuffer(k.privateKey) ? k.privateKey : Buffer.from(k.privateKey),
-      };
-      this.importedKeys.set(keyId, importedKey);
+        publicKey: Buffer.isBuffer(k.publicKey)
+          ? k.publicKey
+          : Buffer.from(k.publicKey),
+        privateKey: Buffer.isBuffer(k.privateKey)
+          ? k.privateKey
+          : Buffer.from(k.privateKey),
+      }
+      this.importedKeys.set(keyId, importedKey)
       if (k.mid) {
-        this.selfKeyByMid.set(String(k.mid), importedKey);
+        this.selfKeyByMid.set(String(k.mid), importedKey)
       }
     }
     this.resolveLogger().info('e2ee.keys.imported', {
       count: keys.length,
-    });
+    })
   }
 
   /**
@@ -101,10 +112,11 @@ export class KeyManager implements KeyManagerContext {
    * @param mid - Authenticated LINE MID
    */
   bindSelfKeysToMid(mid: string): void {
-    const latest = [...this.importedKeys.values()]
-      .sort((a, b) => (b.createdTime ?? 0) - (a.createdTime ?? 0))[0];
+    const latest = [...this.importedKeys.values()].sort(
+      (a, b) => (b.createdTime ?? 0) - (a.createdTime ?? 0),
+    )[0]
     if (latest) {
-      this.selfKeyByMid.set(mid, latest);
+      this.selfKeyByMid.set(mid, latest)
     }
   }
 
@@ -114,7 +126,7 @@ export class KeyManager implements KeyManagerContext {
    * @returns Matching imported key when present.
    */
   getSelfKeyById(keyId: string): ImportedKey | undefined {
-    return this.importedKeys.get(String(keyId));
+    return this.importedKeys.get(String(keyId))
   }
 
   /**
@@ -123,7 +135,7 @@ export class KeyManager implements KeyManagerContext {
    * @returns Matching imported key when present.
    */
   getSelfKeyByMid(mid: string): ImportedKey | undefined {
-    return this.selfKeyByMid.get(String(mid));
+    return this.selfKeyByMid.get(String(mid))
   }
 
   /**
@@ -134,9 +146,9 @@ export class KeyManager implements KeyManagerContext {
    * material should survive across retries until the user explicitly logs out.
    */
   resetTransientCaches(): void {
-    this.peerPublicKeys.clear();
-    this.groupKeys.clear();
-    this.groupKeyFetches.clear();
+    this.peerPublicKeys.clear()
+    this.groupKeys.clear()
+    this.groupKeyFetches.clear()
   }
 
   /**
@@ -148,34 +160,44 @@ export class KeyManager implements KeyManagerContext {
    * @param deps.emitWarning - Emits a recovery warning to the service.
    */
   setRuntime(deps: {
-    getClient: () => any;
-    getStore: () => any;
-    getProfileMid: () => string | undefined;
-    emitWarning?: (payload: { active: boolean; reason: string; [key: string]: any }) => void;
+    getClient: () => any
+    getStore: () => any
+    getProfileMid: () => string | undefined
+    emitWarning?: (payload: {
+      active: boolean
+      reason: string
+      [key: string]: any
+    }) => void
   }): void {
-    this.runtimeGetClient = deps.getClient;
-    this.runtimeGetStore = deps.getStore;
-    this.runtimeGetProfileMid = deps.getProfileMid;
-    this.emitWarning = deps.emitWarning;
+    this.runtimeGetClient = deps.getClient
+    this.runtimeGetStore = deps.getStore
+    this.runtimeGetProfileMid = deps.getProfileMid
+    this.emitWarning = deps.emitWarning
   }
 
   /**
    * Return the active LINE client when runtime dependencies are bound.
    * @returns Active LINE client.
    */
-  getClient(): any { return this.runtimeGetClient?.(); }
+  getClient(): any {
+    return this.runtimeGetClient?.()
+  }
 
   /**
    * Return the credential store when runtime dependencies are bound.
    * @returns Credential store.
    */
-  getStore(): any { return this.runtimeGetStore?.(); }
+  getStore(): any {
+    return this.runtimeGetStore?.()
+  }
 
   /**
    * Return the authenticated LINE MID when runtime dependencies are bound.
    * @returns Authenticated LINE MID.
    */
-  getProfileMid(): string | undefined { return this.runtimeGetProfileMid?.(); }
+  getProfileMid(): string | undefined {
+    return this.runtimeGetProfileMid?.()
+  }
 
   /**
    * Emit a recovery warning if the service is available.
@@ -183,7 +205,7 @@ export class KeyManager implements KeyManagerContext {
    * @param details - Additional warning metadata.
    */
   raiseWarning(reason: string, details: Record<string, any> = {}): void {
-    this.emitWarning?.({ active: true, reason, ...details });
+    this.emitWarning?.({ active: true, reason, ...details })
   }
 
   /**
@@ -192,7 +214,7 @@ export class KeyManager implements KeyManagerContext {
    * @param context - Structured payload
    */
   logGroupKeyEvent(event: string, context: Record<string, any> = {}): void {
-    this.resolveLogger().info(event, context);
+    this.resolveLogger().info(event, context)
   }
 
   /**
@@ -202,7 +224,7 @@ export class KeyManager implements KeyManagerContext {
    * @param context - Structured payload
    */
   logE2EEWarning(event: string, context: Record<string, any> = {}): void {
-    this.resolveLogger().warn(event, context);
+    this.resolveLogger().warn(event, context)
   }
 
   /**
@@ -211,8 +233,8 @@ export class KeyManager implements KeyManagerContext {
    * @returns Startup-aware CLI logger.
    */
   private resolveLogger() {
-    const client = this.getClient();
-    return client?.startupFlowLogger || client?.logger || e2eeLog;
+    const client = this.getClient()
+    return client?.startupFlowLogger || client?.logger || e2eeLog
   }
 
   /**
@@ -222,7 +244,7 @@ export class KeyManager implements KeyManagerContext {
    * @returns Decryption result with optional plaintext
    */
   async tryDecrypt(msg: any): Promise<{ decrypted: boolean; text?: string }> {
-    return tryDecryptFn(this, msg);
+    return tryDecryptFn(this, msg)
   }
 
   /**
@@ -237,8 +259,12 @@ export class KeyManager implements KeyManagerContext {
    * @param contentType - LINE content type of the payload
    * @returns Message chunks plus metadata required by LINE
    */
-  async encryptE2EEMessage(to: string, data: string | Record<string, any>, contentType = 0): Promise<EncryptedMessagePayload> {
-    return encryptE2EEMessageFn(this, to, data, contentType);
+  async encryptE2EEMessage(
+    to: string,
+    data: string | Record<string, any>,
+    contentType = 0,
+  ): Promise<EncryptedMessagePayload> {
+    return encryptE2EEMessageFn(this, to, data, contentType)
   }
 
   /**
@@ -249,6 +275,6 @@ export class KeyManager implements KeyManagerContext {
    * @returns Parsed decimal key ID or null
    */
   readChunkKeyId(value: any): string | null {
-    return toChunkKeyId(value);
+    return toChunkKeyId(value)
   }
 }

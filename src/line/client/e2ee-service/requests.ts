@@ -1,4 +1,10 @@
-import { i32Field, i64Field, listField, stringField, structField } from '../../core/thrift/index.js';
+import {
+  i32Field,
+  i64Field,
+  listField,
+  stringField,
+  structField,
+} from '../../core/thrift/index.js'
 
 /**
  * Build the registerE2EEPublicKey request fields.
@@ -9,7 +15,12 @@ import { i32Field, i64Field, listField, stringField, structField } from '../../c
  * @param timestamp - Registration timestamp.
  * @returns Thrift request fields.
  */
-export function buildRegisterPublicKeyRequest(version, keyId, keyData, timestamp) {
+export function buildRegisterPublicKeyRequest(
+  version,
+  keyId,
+  keyData,
+  timestamp,
+) {
   return [
     i32Field(1, 0),
     structField(2, [
@@ -18,7 +29,7 @@ export function buildRegisterPublicKeyRequest(version, keyId, keyData, timestamp
       stringField(4, keyData),
       i64Field(5, timestamp),
     ]),
-  ];
+  ]
 }
 
 /**
@@ -28,7 +39,7 @@ export function buildRegisterPublicKeyRequest(version, keyId, keyData, timestamp
  * @returns Thrift request fields.
  */
 export function buildNegotiatePublicKeyRequest(mid) {
-  return [stringField(2, mid)];
+  return [stringField(2, mid)]
 }
 
 /**
@@ -38,7 +49,7 @@ export function buildNegotiatePublicKeyRequest(mid) {
  * @returns Thrift request fields.
  */
 export function buildGetPublicKeysRequest(mids) {
-  return [listField(2, 11, mids)];
+  return [listField(2, 11, mids)]
 }
 
 /**
@@ -54,7 +65,7 @@ export function buildGetE2EEMessageInfoRequest(mid, messageId, receiverKeyId) {
     stringField(2, mid),
     stringField(3, messageId),
     i32Field(4, Number(receiverKeyId)),
-  ];
+  ]
 }
 
 /**
@@ -65,10 +76,7 @@ export function buildGetE2EEMessageInfoRequest(mid, messageId, receiverKeyId) {
  * @returns Thrift request fields.
  */
 export function buildGetLastGroupSharedKeyRequest(keyVersion, chatMid) {
-  return [
-    i32Field(2, keyVersion),
-    stringField(3, chatMid),
-  ];
+  return [i32Field(2, keyVersion), stringField(3, chatMid)]
 }
 
 /**
@@ -78,7 +86,7 @@ export function buildGetLastGroupSharedKeyRequest(keyVersion, chatMid) {
  * @returns Thrift request fields.
  */
 export function buildGetLastPublicKeysRequest(chatMid) {
-  return [stringField(2, chatMid)];
+  return [stringField(2, chatMid)]
 }
 
 /**
@@ -91,12 +99,18 @@ export function buildGetLastPublicKeysRequest(chatMid) {
  * @param encryptedSharedKeys - Encrypted shared keys.
  * @returns Thrift request fields.
  */
-export function buildRegisterGroupKeyRequest(keyVersion, chatMid, members, keyIds, encryptedSharedKeys) {
+export function buildRegisterGroupKeyRequest(
+  keyVersion,
+  chatMid,
+  members,
+  keyIds,
+  encryptedSharedKeys,
+) {
   return [
     i32Field(2, keyVersion),
     stringField(3, chatMid),
     listField(4, 11, members),
     listField(5, 8, keyIds),
     listField(6, 11, encryptedSharedKeys),
-  ];
+  ]
 }

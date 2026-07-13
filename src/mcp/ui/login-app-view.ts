@@ -358,4 +358,4 @@ export const LOGIN_APP_VIEW_JS = `
     // ui/notifications/tool-input(-partial) (ignored, carries only the call's
     // arguments) followed by tool-result, which drives the first real render.
   });
-`;
+`

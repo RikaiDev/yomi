@@ -1,5 +1,5 @@
-import { Buffer } from 'node:buffer';
-import { decryptKeyChain } from '../index.js';
+import { Buffer } from 'node:buffer'
+import { decryptKeyChain } from '../index.js'
 
 /**
  * Attempt to rebuild persisted LINE self keys from the original login bootstrap.
@@ -13,19 +13,21 @@ import { decryptKeyChain } from '../index.js';
  * @param service - LineProtocolService-like object
  * @returns Recovered key list, or null when bootstrap material is unavailable
  */
-export async function recoverBootstrapKeys(service: any): Promise<any[] | null> {
-  const bootstrapInput = await readBootstrapRecoveryInput(service);
+export async function recoverBootstrapKeys(
+  service: any,
+): Promise<any[] | null> {
+  const bootstrapInput = await readBootstrapRecoveryInput(service)
   if (!bootstrapInput) {
-    return null;
+    return null
   }
 
-  const keys = rebuildBootstrapKeys(bootstrapInput);
+  const keys = rebuildBootstrapKeys(bootstrapInput)
   if (!keys) {
-    return null;
+    return null
   }
 
-  await persistRecoveredKeys(service, keys, bootstrapInput.mid);
-  return keys;
+  await persistRecoveredKeys(service, keys, bootstrapInput.mid)
+  return keys
 }
 
 /**
@@ -35,18 +37,20 @@ export async function recoverBootstrapKeys(service: any): Promise<any[] | null> 
  * @returns Decoded bootstrap inputs or null.
  */
 async function readBootstrapRecoveryInput(service: any) {
-  const bootstrapRaw = await service?.credentialStore?.get?.('line_e2ee_bootstrap');
-  const bootstrap = parseBootstrapPayload(bootstrapRaw);
-  const secretKeyBase64 = await readPersistedSecretKey(service, bootstrap);
-  const decodedBuffers = decodeBootstrapBuffers(bootstrap, secretKeyBase64);
+  const bootstrapRaw = await service?.credentialStore?.get?.(
+    'line_e2ee_bootstrap',
+  )
+  const bootstrap = parseBootstrapPayload(bootstrapRaw)
+  const secretKeyBase64 = await readPersistedSecretKey(service, bootstrap)
+  const decodedBuffers = decodeBootstrapBuffers(bootstrap, secretKeyBase64)
   if (!decodedBuffers) {
-    return null;
+    return null
   }
 
   return {
     ...decodedBuffers,
     mid: await readPersistedMid(service),
-  };
+  }
 }
 
 /**
@@ -56,11 +60,14 @@ async function readBootstrapRecoveryInput(service: any) {
  * @param bootstrap - Parsed bootstrap payload.
  * @returns Base64 secret key or null.
  */
-async function readPersistedSecretKey(service: any, bootstrap: any): Promise<string | null> {
+async function readPersistedSecretKey(
+  service: any,
+  bootstrap: any,
+): Promise<string | null> {
   if (bootstrap?.secretKey) {
-    return bootstrap.secretKey;
+    return bootstrap.secretKey
   }
-  return await service?.credentialStore?.get?.('line_nacl_secret_key') || null;
+  return (await service?.credentialStore?.get?.('line_nacl_secret_key')) || null
 }
 
 /**
@@ -71,9 +78,9 @@ async function readPersistedSecretKey(service: any, bootstrap: any): Promise<str
  */
 async function readPersistedMid(service: any): Promise<string | null> {
   if (service?.profile?.mid) {
-    return service.profile.mid;
+    return service.profile.mid
   }
-  return await service?.credentialStore?.get?.('line_mid') || null;
+  return (await service?.credentialStore?.get?.('line_mid')) || null
 }
 
 /**
@@ -84,14 +91,13 @@ async function readPersistedMid(service: any): Promise<string | null> {
  */
 function parseBootstrapPayload(bootstrapRaw: string) {
   if (!bootstrapRaw) {
-    return null;
+    return null
   }
 
   try {
-    return JSON.parse(bootstrapRaw);
-  }
-  catch {
-    return null;
+    return JSON.parse(bootstrapRaw)
+  } catch {
+    return null
   }
 }
 
@@ -102,19 +108,22 @@ function parseBootstrapPayload(bootstrapRaw: string) {
  * @param secretKeyBase64 - Persisted secret key in base64.
  * @returns Decoded buffers or null.
  */
-function decodeBootstrapBuffers(bootstrap: any, secretKeyBase64: string | null) {
-  const encryptedKeyChain = decodeBase64Buffer(bootstrap?.encryptedKeyChain);
-  const serverPublicKey = decodeBase64Buffer(bootstrap?.serverPublicKey);
-  const secretKey = decodeBase64Buffer(secretKeyBase64);
+function decodeBootstrapBuffers(
+  bootstrap: any,
+  secretKeyBase64: string | null,
+) {
+  const encryptedKeyChain = decodeBase64Buffer(bootstrap?.encryptedKeyChain)
+  const serverPublicKey = decodeBase64Buffer(bootstrap?.serverPublicKey)
+  const secretKey = decodeBase64Buffer(secretKeyBase64)
   if (!encryptedKeyChain || !serverPublicKey || !secretKey) {
-    return null;
+    return null
   }
 
   return {
     encryptedKeyChain,
     serverPublicKey,
     secretKey,
-  };
+  }
 }
 
 /**
@@ -128,18 +137,21 @@ function decodeBootstrapBuffers(bootstrap: any, secretKeyBase64: string | null) 
  * @returns Recovered key list or null.
  */
 function rebuildBootstrapKeys(input: {
-  encryptedKeyChain: Buffer;
-  serverPublicKey: Buffer;
-  secretKey: Buffer;
-  mid: string | null;
+  encryptedKeyChain: Buffer
+  serverPublicKey: Buffer
+  secretKey: Buffer
+  mid: string | null
 }) {
-  const keys = decryptKeyChain(input.encryptedKeyChain, input.serverPublicKey, input.secretKey)
-    .map((key: any) => ({
-      ...key,
-      mid: input.mid,
-    }));
+  const keys = decryptKeyChain(
+    input.encryptedKeyChain,
+    input.serverPublicKey,
+    input.secretKey,
+  ).map((key: any) => ({
+    ...key,
+    mid: input.mid,
+  }))
 
-  return Array.isArray(keys) && keys.length > 0 ? keys : null;
+  return Array.isArray(keys) && keys.length > 0 ? keys : null
 }
 
 /**
@@ -149,12 +161,16 @@ function rebuildBootstrapKeys(input: {
  * @param keys - Recovered key list.
  * @param mid - Optional self MID.
  */
-async function persistRecoveredKeys(service: any, keys: any[], mid: string | null) {
-  service.e2eeManager.importKeys(keys);
+async function persistRecoveredKeys(
+  service: any,
+  keys: any[],
+  mid: string | null,
+) {
+  service.e2eeManager.importKeys(keys)
   if (mid) {
-    service.e2eeManager.bindSelfKeysToMid(mid);
+    service.e2eeManager.bindSelfKeysToMid(mid)
   }
-  await service.sessionState.saveE2EEKeys(keys);
+  await service.sessionState.saveE2EEKeys(keys)
 }
 
 /**
@@ -165,18 +181,17 @@ async function persistRecoveredKeys(service: any, keys: any[], mid: string | nul
  */
 function decodeBase64Buffer(value: any): Buffer | null {
   if (!value) {
-    return null;
+    return null
   }
   if (Buffer.isBuffer(value)) {
-    return value;
+    return value
   }
   if (typeof value !== 'string' || value.length === 0) {
-    return null;
+    return null
   }
   try {
-    return Buffer.from(value, 'base64');
-  }
-  catch {
-    return null;
+    return Buffer.from(value, 'base64')
+  } catch {
+    return null
   }
 }

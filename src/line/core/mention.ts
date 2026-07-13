@@ -30,9 +30,9 @@
  * something callers should have to think about.
  */
 export interface Mention {
-  mid: string;
-  start: number;
-  end: number;
+  mid: string
+  start: number
+  end: number
 }
 
 /**
@@ -47,22 +47,30 @@ export interface Mention {
  * @throws Error describing the first invalid mention or overlap found.
  */
 export function validateMentions(text: string, mentions: Mention[]): void {
-  const sorted = [...mentions].sort((a, b) => a.start - b.start);
+  const sorted = [...mentions].sort((a, b) => a.start - b.start)
 
   for (const mention of sorted) {
-    const { mid, start, end } = mention;
+    const { mid, start, end } = mention
 
     if (typeof mid !== 'string' || mid.length === 0) {
-      throw new Error(`Mention mid must be a non-empty string (got: ${JSON.stringify(mid)}).`);
+      throw new Error(
+        `Mention mid must be a non-empty string (got: ${JSON.stringify(mid)}).`,
+      )
     }
     if (!Number.isInteger(start) || !Number.isInteger(end)) {
-      throw new Error(`Mention start/end must be integers (got start=${start}, end=${end}, mid=${mid}).`);
+      throw new Error(
+        `Mention start/end must be integers (got start=${start}, end=${end}, mid=${mid}).`,
+      )
     }
     if (!(start >= 0 && start < end)) {
-      throw new Error(`Mention range must satisfy 0 <= start < end (got start=${start}, end=${end}, mid=${mid}).`);
+      throw new Error(
+        `Mention range must satisfy 0 <= start < end (got start=${start}, end=${end}, mid=${mid}).`,
+      )
     }
     if (end > text.length) {
-      throw new Error(`Mention end (${end}) exceeds text length (${text.length}) for mid=${mid}.`);
+      throw new Error(
+        `Mention end (${end}) exceeds text length (${text.length}) for mid=${mid}.`,
+      )
     }
     // Heuristic guard derived from observed data, not a documented LINE
     // protocol requirement: every real mention we have seen starts at the
@@ -71,20 +79,20 @@ export function validateMentions(text: string, mentions: Mention[]): void {
     // highlight rather than a real notification.
     if (text[start] !== '@') {
       throw new Error(
-        `Mention range [${start}, ${end}) for mid=${mid} must start at "@" (the "@name" run in text), `
-        + `but text[${start}] is ${JSON.stringify(text[start])}. `,
-      );
+        `Mention range [${start}, ${end}) for mid=${mid} must start at "@" (the "@name" run in text), ` +
+          `but text[${start}] is ${JSON.stringify(text[start])}. `,
+      )
     }
   }
 
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const cur = sorted[i];
+    const prev = sorted[i - 1]
+    const cur = sorted[i]
     if (cur.start < prev.end) {
       throw new Error(
-        `Mention ranges overlap: [${prev.start}, ${prev.end}) (mid=${prev.mid}) `
-        + `and [${cur.start}, ${cur.end}) (mid=${cur.mid}).`,
-      );
+        `Mention ranges overlap: [${prev.start}, ${prev.end}) (mid=${prev.mid}) ` +
+          `and [${cur.start}, ${cur.end}) (mid=${cur.mid}).`,
+      )
     }
   }
 }
@@ -100,9 +108,16 @@ export function validateMentions(text: string, mentions: Mention[]): void {
  * @returns The JSON string LINE expects at `contentMetadata.MENTION`.
  * @throws Error - see `validateMentions`.
  */
-export function buildMentionMetadata(text: string, mentions: Mention[]): string {
-  validateMentions(text, mentions);
+export function buildMentionMetadata(
+  text: string,
+  mentions: Mention[],
+): string {
+  validateMentions(text, mentions)
   return JSON.stringify({
-    MENTIONEES: mentions.map(m => ({ S: String(m.start), E: String(m.end), M: m.mid })),
-  });
+    MENTIONEES: mentions.map((m) => ({
+      S: String(m.start),
+      E: String(m.end),
+      M: m.mid,
+    })),
+  })
 }

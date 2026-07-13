@@ -32,7 +32,7 @@
  * it stays equal to package.json's "version" field so the two can't drift.
  */
 export function buildLoginAppProtocolJs(version: string): string {
-  const versionLiteral = JSON.stringify(version);
+  const versionLiteral = JSON.stringify(version)
   return `
   var nextRequestId = 1;
   var pendingRequests = {};
@@ -115,5 +115,5 @@ export function buildLoginAppProtocolJs(version: string): string {
       onReady(null, error);
     });
   }
-`;
+`
 }

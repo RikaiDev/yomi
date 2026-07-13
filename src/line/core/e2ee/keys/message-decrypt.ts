@@ -1,7 +1,7 @@
-import type { KeyManagerContext, PeerPublicKeyCandidate } from './key-types.js';
-import { Buffer } from 'node:buffer';
-import { computeSharedSecret } from '../crypto/crypto-primitives.js';
-import { getGroupKey } from './group-key.js';
+import { Buffer } from 'node:buffer'
+import { computeSharedSecret } from '../crypto/crypto-primitives.js'
+import { getGroupKey } from './group-key.js'
+import type { KeyManagerContext, PeerPublicKeyCandidate } from './key-types.js'
 import {
   decryptV1,
   decryptV2,
@@ -9,44 +9,47 @@ import {
   extractTextPayload,
   generateAAD,
   toChunkKeyId,
-} from './message-crypto.js';
-import { getGroupSenderPublicKeyCandidates, getPeerPublicKey } from './peer-key.js';
+} from './message-crypto.js'
+import {
+  getGroupSenderPublicKeyCandidates,
+  getPeerPublicKey,
+} from './peer-key.js'
 
 export interface E2EEChunks {
-  salt: Buffer;
-  ciphertext: Buffer;
-  sign: Buffer;
-  version: string;
-  senderKeyId: string | null;
-  receiverKeyId: string | null;
-  toType: number;
-  isUserChat: boolean;
-  chatMid: string | null;
-  isSelf: boolean;
+  salt: Buffer
+  ciphertext: Buffer
+  sign: Buffer
+  version: string
+  senderKeyId: string | null
+  receiverKeyId: string | null
+  toType: number
+  isUserChat: boolean
+  chatMid: string | null
+  isSelf: boolean
 }
 
 interface DecryptKeys {
-  privateKey: Buffer | Uint8Array;
-  publicKey: Buffer | Uint8Array | undefined;
-  candidatePublicKeys: PeerPublicKeyCandidate[] | null;
-  resolvedReceiverKeyId: string | null;
+  privateKey: Buffer | Uint8Array
+  publicKey: Buffer | Uint8Array | undefined
+  candidatePublicKeys: PeerPublicKeyCandidate[] | null
+  resolvedReceiverKeyId: string | null
 }
 
 interface PreparedDecryptPayload {
-  chunks: E2EEChunks;
-  msg: any;
+  chunks: E2EEChunks
+  msg: any
 }
 
 interface DecryptResult {
-  decrypted: boolean;
-  text?: string;
-  reason?: string;
-  envelopeInfo?: Record<string, unknown> | null;
-  senderKeyId?: string | null;
-  receiverKeyId?: string | null;
-  toType?: number | null;
-  isUserChat?: boolean;
-  isSelf?: boolean;
+  decrypted: boolean
+  text?: string
+  reason?: string
+  envelopeInfo?: Record<string, unknown> | null
+  senderKeyId?: string | null
+  receiverKeyId?: string | null
+  toType?: number | null
+  isUserChat?: boolean
+  isSelf?: boolean
 }
 
 /**
@@ -78,7 +81,7 @@ function logMissingDecryptKeys(
     to_type: msg.toType ?? null,
     is_user_chat: isUserChat,
     is_self: isSelf,
-  });
+  })
 }
 
 /**
@@ -88,7 +91,10 @@ function logMissingDecryptKeys(
  * @returns True when a direct sender key or fallback candidates exist.
  */
 function hasDecryptMaterial(resolved: DecryptKeys | null): boolean {
-  return Boolean(resolved?.publicKey) || (resolved?.candidatePublicKeys?.length ?? 0) > 0;
+  return (
+    Boolean(resolved?.publicKey) ||
+    (resolved?.candidatePublicKeys?.length ?? 0) > 0
+  )
 }
 
 /**
@@ -98,13 +104,16 @@ function hasDecryptMaterial(resolved: DecryptKeys | null): boolean {
  * @param msg - Raw message object
  * @returns Parsed E2EE chunk data, or null if the message is not E2EE
  */
-export function parseE2EEChunks(ctx: KeyManagerContext, msg: any): E2EEChunks | null {
-  const chunks = msg.chunks;
+export function parseE2EEChunks(
+  ctx: KeyManagerContext,
+  msg: any,
+): E2EEChunks | null {
+  const chunks = msg.chunks
   if (!chunks || !Array.isArray(chunks) || chunks.length < 5) {
-    return null;
+    return null
   }
-  const toType = Number(msg.toType);
-  const isUserChat = toType === 0;
+  const toType = Number(msg.toType)
+  const isUserChat = toType === 0
   return {
     salt: Buffer.from(chunks[0]),
     ciphertext: Buffer.from(chunks[1]),
@@ -116,7 +125,7 @@ export function parseE2EEChunks(ctx: KeyManagerContext, msg: any): E2EEChunks | 
     isUserChat,
     chatMid: !isUserChat && typeof msg.to === 'string' ? msg.to : null,
     isSelf: Boolean(msg.from && ctx.getProfileMid() === msg.from),
-  };
+  }
 }
 
 /**
@@ -127,8 +136,14 @@ export function parseE2EEChunks(ctx: KeyManagerContext, msg: any): E2EEChunks | 
  * @param tupleIndex - Numeric field id used by thrift tuple decoders.
  * @returns Field value when available.
  */
-function readMessageInfoField(info: any, namedKey: string, tupleIndex: number): any {
-  return info?.[namedKey] ?? info?.[tupleIndex] ?? info?.fields?.[tupleIndex] ?? null;
+function readMessageInfoField(
+  info: any,
+  namedKey: string,
+  tupleIndex: number,
+): any {
+  return (
+    info?.[namedKey] ?? info?.[tupleIndex] ?? info?.fields?.[tupleIndex] ?? null
+  )
 }
 
 /**
@@ -139,10 +154,15 @@ function readMessageInfoField(info: any, namedKey: string, tupleIndex: number): 
  * @returns Whether the envelope is missing the peer key id.
  */
 function shouldFetchMessageInfoEnvelope(msg: any, chunks: E2EEChunks): boolean {
-  if (!chunks.isUserChat || chunks.isSelf || chunks.senderKeyId || !chunks.receiverKeyId) {
-    return false;
+  if (
+    !chunks.isUserChat ||
+    chunks.isSelf ||
+    chunks.senderKeyId ||
+    !chunks.receiverKeyId
+  ) {
+    return false
   }
-  return Boolean(msg?.id && msg?.from);
+  return Boolean(msg?.id && msg?.from)
 }
 
 /**
@@ -152,11 +172,14 @@ function shouldFetchMessageInfoEnvelope(msg: any, chunks: E2EEChunks): boolean {
  * @param envelopeInfo - Diagnostic payload.
  * @returns Message carrying the enrichment diagnostics.
  */
-function withEnvelopeInfo(msg: any, envelopeInfo: Record<string, unknown>): any {
+function withEnvelopeInfo(
+  msg: any,
+  envelopeInfo: Record<string, unknown>,
+): any {
   return {
     ...msg,
     e2eeEnvelopeInfo: envelopeInfo,
-  };
+  }
 }
 
 /**
@@ -173,20 +196,22 @@ async function enrichMissingUserEnvelope(
   chunks: E2EEChunks,
 ): Promise<PreparedDecryptPayload> {
   if (!shouldFetchMessageInfoEnvelope(msg, chunks)) {
-    return { chunks, msg };
+    return { chunks, msg }
   }
-  const getMessageInfo = ctx.getClient()?.getE2EEMessageInfo;
+  const getMessageInfo = ctx.getClient()?.getE2EEMessageInfo
   if (typeof getMessageInfo !== 'function') {
     return {
       chunks,
-      msg: withEnvelopeInfo(msg, { attempted: false, reason: 'client_method_unavailable' }),
-    };
+      msg: withEnvelopeInfo(msg, {
+        attempted: false,
+        reason: 'client_method_unavailable',
+      }),
+    }
   }
-  let info: any = null;
+  let info: any = null
   try {
-    info = await getMessageInfo(msg.from, msg.id, Number(chunks.receiverKeyId));
-  }
-  catch (error) {
+    info = await getMessageInfo(msg.from, msg.id, Number(chunks.receiverKeyId))
+  } catch (error) {
     return {
       chunks,
       msg: withEnvelopeInfo(msg, {
@@ -194,9 +219,9 @@ async function enrichMissingUserEnvelope(
         error: error instanceof Error ? error.message : String(error),
         reason: 'message_info_fetch_failed',
       }),
-    };
+    }
   }
-  const infoChunks = readMessageInfoField(info, 'chunks', 3);
+  const infoChunks = readMessageInfoField(info, 'chunks', 3)
   if (!Array.isArray(infoChunks) || infoChunks.length < 5) {
     return {
       chunks,
@@ -205,21 +230,25 @@ async function enrichMissingUserEnvelope(
         reason: 'message_info_missing_chunks',
         responseType: info == null ? 'null' : typeof info,
       }),
-    };
+    }
   }
   const enrichedMsg = {
     ...msg,
     chunks: infoChunks,
-    contentMetadata: readMessageInfoField(info, 'contentMetadata', 2) || msg.contentMetadata,
-    contentType: readMessageInfoField(info, 'contentType', 1) ?? msg.contentType,
+    contentMetadata:
+      readMessageInfoField(info, 'contentMetadata', 2) || msg.contentMetadata,
+    contentType:
+      readMessageInfoField(info, 'contentType', 1) ?? msg.contentType,
     e2eeEnvelopeInfo: {
       attempted: true,
       chunkCount: infoChunks.length,
       reason: 'message_info_enriched',
     },
-  };
-  const enrichedChunks = parseE2EEChunks(ctx, enrichedMsg);
-  return enrichedChunks ? { chunks: enrichedChunks, msg: enrichedMsg } : { chunks, msg };
+  }
+  const enrichedChunks = parseE2EEChunks(ctx, enrichedMsg)
+  return enrichedChunks
+    ? { chunks: enrichedChunks, msg: enrichedMsg }
+    : { chunks, msg }
 }
 
 /**
@@ -235,11 +264,13 @@ function resolveSelfKey(
   selfMid: string,
   chunks: E2EEChunks,
 ): NonNullable<ReturnType<KeyManagerContext['getSelfKeyByMid']>> | undefined {
-  const envelopeSelfKeyId = chunks.isSelf ? chunks.senderKeyId : chunks.receiverKeyId;
+  const envelopeSelfKeyId = chunks.isSelf
+    ? chunks.senderKeyId
+    : chunks.receiverKeyId
   if (envelopeSelfKeyId) {
-    return ctx.getSelfKeyById(envelopeSelfKeyId) || ctx.getSelfKeyByMid(selfMid);
+    return ctx.getSelfKeyById(envelopeSelfKeyId) || ctx.getSelfKeyByMid(selfMid)
   }
-  return ctx.getSelfKeyByMid(selfMid);
+  return ctx.getSelfKeyByMid(selfMid)
 }
 
 /**
@@ -256,26 +287,29 @@ async function resolveGroupSenderKey(
   msg: any,
   chatMid: string,
   senderKeyId: string | null,
-): Promise<{ publicKey?: Buffer; candidatePublicKeys?: PeerPublicKeyCandidate[] | null } | null> {
+): Promise<{
+  publicKey?: Buffer
+  candidatePublicKeys?: PeerPublicKeyCandidate[] | null
+} | null> {
   if (!msg.from) {
     ctx.logGroupKeyEvent('e2ee.message.missing_sender_key_id', {
       chat: chatMid,
       sender: null,
       sender_key_id: senderKeyId,
       receiver_key_id: null,
-    });
-    return null;
+    })
+    return null
   }
   if (senderKeyId) {
     return {
       publicKey: await getPeerPublicKey(ctx, msg.from, senderKeyId),
       candidatePublicKeys: null,
-    };
+    }
   }
   const candidatePublicKeys = chatMid
     ? await getGroupSenderPublicKeyCandidates(ctx, chatMid, msg.from)
-    : [];
-  return { candidatePublicKeys, publicKey: undefined };
+    : []
+  return { candidatePublicKeys, publicKey: undefined }
 }
 
 /**
@@ -302,26 +336,28 @@ async function resolveDecryptKeys(
   receiverKeyId: string | null,
 ): Promise<DecryptKeys | null> {
   if (isUserChat) {
-    const peerMid = isSelf ? msg.to : msg.from;
-    const peerKeyId = isSelf ? receiverKeyId : senderKeyId;
+    const peerMid = isSelf ? msg.to : msg.from
+    const peerKeyId = isSelf ? receiverKeyId : senderKeyId
     if (!peerMid || !peerKeyId) {
-      return null;
+      return null
     }
     return {
       privateKey: selfKey.privateKey,
       publicKey: await getPeerPublicKey(ctx, peerMid, peerKeyId),
       candidatePublicKeys: null,
       resolvedReceiverKeyId: receiverKeyId,
-    };
+    }
   }
-  const groupKey = chatMid ? await getGroupKey(ctx, chatMid, receiverKeyId, msg.from, senderKeyId) : undefined;
+  const groupKey = chatMid
+    ? await getGroupKey(ctx, chatMid, receiverKeyId, msg.from, senderKeyId)
+    : undefined
   if (!groupKey) {
     return {
       privateKey: selfKey.privateKey,
       publicKey: undefined,
       candidatePublicKeys: null,
       resolvedReceiverKeyId: receiverKeyId,
-    };
+    }
   }
   ctx.logGroupKeyEvent('e2ee.message.decrypt_context', {
     chat: chatMid,
@@ -331,25 +367,30 @@ async function resolveDecryptKeys(
     message_group_key_id: receiverKeyId,
     resolved_group_key_id: groupKey.keyId,
     is_self: isSelf,
-  });
+  })
   if (isSelf) {
     return {
       privateKey: groupKey.privateKey,
       publicKey: Buffer.from(selfKey.publicKey),
       candidatePublicKeys: null,
       resolvedReceiverKeyId: groupKey.keyId,
-    };
+    }
   }
-  const senderKeys = await resolveGroupSenderKey(ctx, msg, chatMid!, senderKeyId);
+  const senderKeys = await resolveGroupSenderKey(
+    ctx,
+    msg,
+    chatMid!,
+    senderKeyId,
+  )
   if (!senderKeys) {
-    return null;
+    return null
   }
   return {
     privateKey: groupKey.privateKey,
     publicKey: senderKeys.publicKey,
     candidatePublicKeys: senderKeys.candidatePublicKeys ?? null,
     resolvedReceiverKeyId: groupKey.keyId,
-  };
+  }
 }
 
 /**
@@ -371,36 +412,45 @@ export function performDecrypt(
   candidatePublicKeys: PeerPublicKeyCandidate[] | null,
   resolvedReceiverKeyId: string | null,
 ): string {
-  const { salt, ciphertext, sign, version, senderKeyId, receiverKeyId } = chunks;
+  const { salt, ciphertext, sign, version, senderKeyId, receiverKeyId } = chunks
   if (version !== '2') {
-    return extractTextPayload(decryptV1(computeSharedSecret(privateKey, publicKey!), salt, ciphertext));
+    return extractTextPayload(
+      decryptV1(computeSharedSecret(privateKey, publicKey!), salt, ciphertext),
+    )
   }
-  const effectiveReceiverKeyId = Number(resolvedReceiverKeyId || receiverKeyId || 0);
-  const buildAAD = (effectiveSenderKeyId: string | null) => generateAAD(
-    String(msg.to || ''),
-    String(msg.from || ''),
-    Number(effectiveSenderKeyId || senderKeyId || 0),
-    effectiveReceiverKeyId,
-    Number(version || 2),
-    Number(msg.contentType || 0),
-  );
+  const effectiveReceiverKeyId = Number(
+    resolvedReceiverKeyId || receiverKeyId || 0,
+  )
+  const buildAAD = (effectiveSenderKeyId: string | null) =>
+    generateAAD(
+      String(msg.to || ''),
+      String(msg.from || ''),
+      Number(effectiveSenderKeyId || senderKeyId || 0),
+      effectiveReceiverKeyId,
+      Number(version || 2),
+      Number(msg.contentType || 0),
+    )
   if (candidatePublicKeys && candidatePublicKeys.length > 0) {
-    return extractTextPayload(decryptV2WithCandidates(
-      privateKey,
-      candidatePublicKeys,
+    return extractTextPayload(
+      decryptV2WithCandidates(
+        privateKey,
+        candidatePublicKeys,
+        salt,
+        ciphertext,
+        sign,
+        (candidate) => buildAAD(candidate.keyId),
+      ),
+    )
+  }
+  return extractTextPayload(
+    decryptV2(
+      computeSharedSecret(privateKey, publicKey!),
       salt,
       ciphertext,
       sign,
-      candidate => buildAAD(candidate.keyId),
-    ));
-  }
-  return extractTextPayload(decryptV2(
-    computeSharedSecret(privateKey, publicKey!),
-    salt,
-    ciphertext,
-    sign,
-    buildAAD(senderKeyId),
-  ));
+      buildAAD(senderKeyId),
+    ),
+  )
 }
 
 /**
@@ -416,9 +466,20 @@ function buildMissingDecryptResult(
   msg: any,
   chunks: E2EEChunks,
 ): DecryptResult {
-  const { isUserChat, isSelf, chatMid, senderKeyId, receiverKeyId, version } = chunks;
-  console.warn(`[E2EE] No stored key: version=${version}, senderKeyId=${senderKeyId}, receiverKeyId=${receiverKeyId}, toType=${String(msg.toType)}`);
-  logMissingDecryptKeys(ctx, msg, chatMid, senderKeyId, receiverKeyId, isUserChat, isSelf);
+  const { isUserChat, isSelf, chatMid, senderKeyId, receiverKeyId, version } =
+    chunks
+  console.warn(
+    `[E2EE] No stored key: version=${version}, senderKeyId=${senderKeyId}, receiverKeyId=${receiverKeyId}, toType=${String(msg.toType)}`,
+  )
+  logMissingDecryptKeys(
+    ctx,
+    msg,
+    chatMid,
+    senderKeyId,
+    receiverKeyId,
+    isUserChat,
+    isSelf,
+  )
   return {
     decrypted: false,
     envelopeInfo: msg.e2eeEnvelopeInfo || null,
@@ -428,7 +489,7 @@ function buildMissingDecryptResult(
     receiverKeyId,
     senderKeyId,
     toType: chunks.toType,
-  };
+  }
 }
 
 /**
@@ -439,15 +500,18 @@ function buildMissingDecryptResult(
  * @param msg - Parsed message object
  * @returns Decryption result with optional plaintext
  */
-export async function tryDecryptInner(ctx: KeyManagerContext, msg: any): Promise<DecryptResult> {
-  const parsedChunks = parseE2EEChunks(ctx, msg);
+export async function tryDecryptInner(
+  ctx: KeyManagerContext,
+  msg: any,
+): Promise<DecryptResult> {
+  const parsedChunks = parseE2EEChunks(ctx, msg)
   if (!parsedChunks) {
-    return { decrypted: false, reason: 'missing_chunks' };
+    return { decrypted: false, reason: 'missing_chunks' }
   }
-  const prepared = await enrichMissingUserEnvelope(ctx, msg, parsedChunks);
-  const { chunks } = prepared;
-  const decryptMsg = prepared.msg;
-  const selfMid = ctx.getProfileMid();
+  const prepared = await enrichMissingUserEnvelope(ctx, msg, parsedChunks)
+  const { chunks } = prepared
+  const decryptMsg = prepared.msg
+  const selfMid = ctx.getProfileMid()
   if (!selfMid) {
     return {
       decrypted: false,
@@ -457,11 +521,11 @@ export async function tryDecryptInner(ctx: KeyManagerContext, msg: any): Promise
       receiverKeyId: chunks.receiverKeyId,
       senderKeyId: chunks.senderKeyId,
       toType: chunks.toType,
-    };
+    }
   }
-  const selfKey = resolveSelfKey(ctx, selfMid, chunks);
+  const selfKey = resolveSelfKey(ctx, selfMid, chunks)
   if (!selfKey) {
-    ctx.raiseWarning('missing_self_key', { profileMid: selfMid });
+    ctx.raiseWarning('missing_self_key', { profileMid: selfMid })
     return {
       decrypted: false,
       isSelf: chunks.isSelf,
@@ -470,12 +534,21 @@ export async function tryDecryptInner(ctx: KeyManagerContext, msg: any): Promise
       receiverKeyId: chunks.receiverKeyId,
       senderKeyId: chunks.senderKeyId,
       toType: chunks.toType,
-    };
+    }
   }
-  const { isUserChat, isSelf, chatMid, senderKeyId, receiverKeyId } = chunks;
-  const resolved = await resolveDecryptKeys(ctx, decryptMsg, selfKey, isUserChat, isSelf, chatMid, senderKeyId, receiverKeyId);
+  const { isUserChat, isSelf, chatMid, senderKeyId, receiverKeyId } = chunks
+  const resolved = await resolveDecryptKeys(
+    ctx,
+    decryptMsg,
+    selfKey,
+    isUserChat,
+    isSelf,
+    chatMid,
+    senderKeyId,
+    receiverKeyId,
+  )
   if (!hasDecryptMaterial(resolved)) {
-    return buildMissingDecryptResult(ctx, decryptMsg, chunks);
+    return buildMissingDecryptResult(ctx, decryptMsg, chunks)
   }
   return {
     decrypted: true,
@@ -487,5 +560,5 @@ export async function tryDecryptInner(ctx: KeyManagerContext, msg: any): Promise
       resolved?.candidatePublicKeys ?? null,
       resolved?.resolvedReceiverKeyId ?? receiverKeyId,
     ),
-  };
+  }
 }

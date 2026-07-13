@@ -2,8 +2,8 @@
  * LINE core directory/runtime capability.
  */
 
-import { createContactQueryService } from './contact-query-service.js';
-import { createGroupQueryService } from './group-query-service.js';
+import { createContactQueryService } from './contact-query-service.js'
+import { createGroupQueryService } from './group-query-service.js'
 
 /**
  * Create the directory runtime capability bound to one LINE protocol service.
@@ -20,7 +20,7 @@ export function createDirectoryRuntimeService(service: any) {
      * @returns Cached name or the MID itself.
      */
     resolveName(mid: string): string {
-      return service.nameCache.get(mid) || mid;
+      return service.nameCache.get(mid) || mid
     },
 
     /**
@@ -30,7 +30,7 @@ export function createDirectoryRuntimeService(service: any) {
      * @returns LINE contact profile.
      */
     async getContact(mid: string): Promise<any> {
-      return createContactQueryService(() => service.client).getContact(mid);
+      return createContactQueryService(() => service.client).getContact(mid)
     },
 
     /**
@@ -40,7 +40,7 @@ export function createDirectoryRuntimeService(service: any) {
      * @returns LINE group profile.
      */
     async getGroup(groupId: string): Promise<any> {
-      return createGroupQueryService(() => service.client).getGroup(groupId);
+      return createGroupQueryService(() => service.client).getGroup(groupId)
     },
-  };
+  }
 }

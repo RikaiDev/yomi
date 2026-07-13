@@ -1,13 +1,13 @@
 interface ContactProfile {
-  displayName: string | null;
-  phoneticName: string | null;
-  pictureStatus: string | null;
-  thumbnailUrl: string | null;
-  statusMessage: string | null;
-  displayNameOverridden: string | null;
-  picturePath: string | null;
-  statusMessageContentMetadata: Record<string, unknown>;
-  profileId: string | null;
+  displayName: string | null
+  phoneticName: string | null
+  pictureStatus: string | null
+  thumbnailUrl: string | null
+  statusMessage: string | null
+  displayNameOverridden: string | null
+  picturePath: string | null
+  statusMessageContentMetadata: Record<string, unknown>
+  profileId: string | null
 }
 
 /**
@@ -18,9 +18,9 @@ interface ContactProfile {
  */
 function normalizeNumericValue(value: unknown): number | unknown | null {
   if (typeof value === 'bigint') {
-    return Number(value);
+    return Number(value)
   }
-  return value || null;
+  return value || null
 }
 
 /**
@@ -29,7 +29,9 @@ function normalizeNumericValue(value: unknown): number | unknown | null {
  * @param contact - Raw contact thrift struct.
  * @returns Normalized profile fields.
  */
-function mapContactProfileFields(contact: Record<number, unknown>): ContactProfile {
+function mapContactProfileFields(
+  contact: Record<number, unknown>,
+): ContactProfile {
   return {
     displayName: (contact[22] as string) || null,
     phoneticName: (contact[23] as string) || null,
@@ -38,9 +40,10 @@ function mapContactProfileFields(contact: Record<number, unknown>): ContactProfi
     statusMessage: (contact[26] as string) || null,
     displayNameOverridden: (contact[27] as string) || null,
     picturePath: (contact[37] as string) || null,
-    statusMessageContentMetadata: (contact[43] as Record<string, unknown>) || {},
+    statusMessageContentMetadata:
+      (contact[43] as Record<string, unknown>) || {},
     profileId: (contact[49] as string) || null,
-  };
+  }
 }
 
 /**
@@ -53,7 +56,7 @@ function mapContactCapabilityFields(contact: Record<number, unknown>) {
   return {
     capableVoiceCall: Boolean(contact[31]),
     capableVideoCall: Boolean(contact[32]),
-  };
+  }
 }
 
 /**
@@ -62,9 +65,11 @@ function mapContactCapabilityFields(contact: Record<number, unknown>) {
  * @param contact - Raw contact thrift struct.
  * @returns Normalized contact or null.
  */
-export function mapContactStruct(contact: Record<number, unknown> | null | undefined) {
+export function mapContactStruct(
+  contact: Record<number, unknown> | null | undefined,
+) {
   if (!contact || typeof contact !== 'object') {
-    return null;
+    return null
   }
   return {
     mid: (contact[1] as string) || null,
@@ -75,7 +80,7 @@ export function mapContactStruct(contact: Record<number, unknown> | null | undef
     favoriteTime: normalizeNumericValue(contact[28]),
     ...mapContactCapabilityFields(contact),
     ...mapContactProfileFields(contact),
-  };
+  }
 }
 
 /**
@@ -85,5 +90,9 @@ export function mapContactStruct(contact: Record<number, unknown> | null | undef
  * @returns Normalized contact list.
  */
 export function mapContactList(contacts: unknown): unknown[] {
-  return Array.isArray(contacts) ? contacts.map(contact => mapContactStruct(contact as Record<number, unknown>)).filter(Boolean) : [];
+  return Array.isArray(contacts)
+    ? contacts
+        .map((contact) => mapContactStruct(contact as Record<number, unknown>))
+        .filter(Boolean)
+    : []
 }

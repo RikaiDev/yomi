@@ -10,16 +10,21 @@
  * best-effort resolve display names in list_excluded_chats/get_scope_policy.
  */
 
-import type { LineProtocolService } from '../line/core/service.js';
-import { addExcludedChatIds, deleteMessagesForChats, getExcludedChatIds, removeExcludedChatIds } from '../search/scope.js';
-import { toolError } from './handlers.js';
-import { resolveConversationNames } from './names.js';
-import { getPrivacyPolicyText } from './policy.js';
+import type { LineProtocolService } from '../line/core/service.js'
+import {
+  addExcludedChatIds,
+  deleteMessagesForChats,
+  getExcludedChatIds,
+  removeExcludedChatIds,
+} from '../search/scope.js'
+import { toolError } from './handlers.js'
+import { resolveConversationNames } from './names.js'
+import { getPrivacyPolicyText } from './policy.js'
 
 /** One excluded conversation with its best-effort resolved display name. */
 interface ExcludedChat {
-  chatId: string;
-  name: string | null;
+  chatId: string
+  name: string | null
 }
 
 /**
@@ -34,15 +39,17 @@ interface ExcludedChat {
  *   name resolution and may be absent.
  * @returns Excluded conversations, each `{ chatId, name }`.
  */
-async function listExcludedChatsWithNames(service: LineProtocolService): Promise<ExcludedChat[]> {
-  const chatIds = Array.from(getExcludedChatIds());
+async function listExcludedChatsWithNames(
+  service: LineProtocolService,
+): Promise<ExcludedChat[]> {
+  const chatIds = Array.from(getExcludedChatIds())
   if (chatIds.length === 0) {
-    return [];
+    return []
   }
   const names = service.client
     ? await resolveConversationNames(service, chatIds)
-    : new Map<string, string | null>();
-  return chatIds.map(chatId => ({ chatId, name: names.get(chatId) ?? null }));
+    : new Map<string, string | null>()
+  return chatIds.map((chatId) => ({ chatId, name: names.get(chatId) ?? null }))
 }
 
 /**
@@ -56,13 +63,18 @@ async function listExcludedChatsWithNames(service: LineProtocolService): Promise
  */
 export async function handleExcludeChats(args: { chatIds?: string[] }) {
   if (!args.chatIds || args.chatIds.length === 0) {
-    return toolError('chatIds is required and must be a non-empty array.');
+    return toolError('chatIds is required and must be a non-empty array.')
   }
-  const excluded = addExcludedChatIds(args.chatIds);
-  const purgedMessages = deleteMessagesForChats(args.chatIds);
+  const excluded = addExcludedChatIds(args.chatIds)
+  const purgedMessages = deleteMessagesForChats(args.chatIds)
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify({ excluded, purgedMessages }, null, 2) }],
-  };
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ excluded, purgedMessages }, null, 2),
+      },
+    ],
+  }
 }
 
 /**
@@ -76,12 +88,14 @@ export async function handleExcludeChats(args: { chatIds?: string[] }) {
  */
 export async function handleIncludeChats(args: { chatIds?: string[] }) {
   if (!args.chatIds || args.chatIds.length === 0) {
-    return toolError('chatIds is required and must be a non-empty array.');
+    return toolError('chatIds is required and must be a non-empty array.')
   }
-  const included = removeExcludedChatIds(args.chatIds);
+  const included = removeExcludedChatIds(args.chatIds)
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify({ included }, null, 2) }],
-  };
+    content: [
+      { type: 'text' as const, text: JSON.stringify({ included }, null, 2) },
+    ],
+  }
 }
 
 /**
@@ -95,10 +109,10 @@ export async function handleIncludeChats(args: { chatIds?: string[] }) {
  * @returns MCP tool result with `[{ chatId, name }]`.
  */
 export async function handleListExcludedChats(service: LineProtocolService) {
-  const result = await listExcludedChatsWithNames(service);
+  const result = await listExcludedChatsWithNames(service)
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  };
+  }
 }
 
 /**
@@ -115,12 +129,12 @@ export async function handleListExcludedChats(service: LineProtocolService) {
  * @returns MCP tool result with `{ policy, excludedChats }`.
  */
 export async function handleGetScopePolicy(service: LineProtocolService) {
-  const excludedChats = await listExcludedChatsWithNames(service);
+  const excludedChats = await listExcludedChatsWithNames(service)
   const result = {
     policy: getPrivacyPolicyText(),
     excludedChats,
-  };
+  }
   return {
     content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  };
+  }
 }

@@ -5,7 +5,7 @@
  * byte-for-byte what it always was. Kept separate from ../tools.ts (a flat,
  * static schema registry) because this step is per-connection, not static.
  */
-import { LOGIN_UI_RESOURCE_URI } from './resource.js';
+import { LOGIN_UI_RESOURCE_URI } from './resource.js'
 
 /**
  * Return `tools` as-is for a client without MCP Apps support, or a copy with
@@ -22,20 +22,26 @@ import { LOGIN_UI_RESOURCE_URI } from './resource.js';
 export function toolsForClient<T extends { name: string; _meta?: unknown }>(
   tools: T[],
   supportsMcpApps: boolean,
-): (T | (T & { _meta: { ui: { resourceUri: string; visibility: string[] } } }))[] {
+): (
+  | T
+  | (T & { _meta: { ui: { resourceUri: string; visibility: string[] } } })
+)[] {
   if (!supportsMcpApps) {
-    return tools;
+    return tools
   }
   return tools.map((tool) => {
     if (tool.name !== 'login') {
-      return tool;
+      return tool
     }
     return {
       ...tool,
       _meta: {
         ...(typeof tool._meta === 'object' && tool._meta ? tool._meta : {}),
-        ui: { resourceUri: LOGIN_UI_RESOURCE_URI, visibility: ['model', 'app'] },
+        ui: {
+          resourceUri: LOGIN_UI_RESOURCE_URI,
+          visibility: ['model', 'app'],
+        },
       },
-    };
-  });
+    }
+  })
 }
