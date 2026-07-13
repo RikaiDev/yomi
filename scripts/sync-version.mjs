@@ -11,7 +11,7 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 const versionFile = new URL('../src/version.ts', import.meta.url);
 const src = readFileSync(versionFile, 'utf8');
 
-const pattern = /(export const YOMI_VERSION = ')[^']*(';)/;
+const pattern = /(export const YOMI_VERSION = ')[^']*(')\s*;?/;
 if (!pattern.test(src)) {
   console.error('sync-version: could not find the YOMI_VERSION line in src/version.ts');
   process.exit(1);
