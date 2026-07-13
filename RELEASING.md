@@ -36,13 +36,36 @@ missed edit *after* the package is public.
   so a Release created against the wrong tag never ships under the wrong number;
 - **tests pass** — `bun test`, which includes the `src/version.ts` ↔
   `package.json` drift guard (`src/version.test.ts`);
-- **build is clean** — `tsc` compiles.
+- **build emits** — `tsc` compiles *and writes* `dist/`, which is what the
+  tarball ships;
+- **the tarball actually starts** — `npm pack`, install it into a clean
+  project, then start it as a real MCP stdio server and complete an
+  `initialize` handshake (`scripts/smoke-mcp.mjs`).
 
 Any mismatch fails the workflow and **nothing is published**. Publishing itself
 is credential-free via npm OIDC Trusted Publishing (no token), with a provenance
 attestation attached automatically.
 
+## Why the handshake gate exists
+
+Releases 0.1.0–0.1.2 all built cleanly, passed their tests, and **could not
+start at all**. `files` shipped TypeScript sources, so every install died on
+
+```
+ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING
+```
+
+because Node refuses to strip types for files under `node_modules`. Nobody
+noticed for three releases: the package was only ever run from a repo checkout
+(where that rule does not apply), and CI smoke-tested `--help` — the one command
+that prints a literal string without importing any application code.
+
+**A green build says nothing about whether the published artifact runs.** The
+only check that means anything is installing the tarball the way a user does and
+starting it. That is what `install-smoke.yml` and the publish gate now do, on
+Linux, macOS and Windows.
+
 ## Local safety net
 
-`prepublishOnly` runs `tsc --noEmit` on every `npm publish`, so a broken build
-is refused even outside CI.
+`prepublishOnly` runs `npm run build`, so `dist/` is always freshly emitted
+before anything is packed or published.

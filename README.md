@@ -44,9 +44,13 @@ anything. Run `node --version` first: if the command is missing or reports a ver
 below 24, install the current Node.js release and reopen your terminal before
 continuing.
 
-> **⚠️ Cloud-only tools (ChatGPT, Claude.ai web, etc.) cannot run Yomi.**
-> Use one of the local MCP clients below. Claude Desktop can also make Yomi
-> available inside Cowork.
+> **⚠️ Yomi needs a client that runs it on your own machine.**
+> Cloud-only tools (ChatGPT, Claude.ai web) cannot run Yomi. Configure Yomi in
+> Claude Desktop or Claude Code and it works in both chat and Cowork, because
+> Desktop starts Yomi on your machine and Cowork's local sessions load it. Do not
+> ask Cowork to *install* Yomi for you: Cowork's shell runs inside a throwaway VM,
+> not on your machine, so anything it installs there is gone when the session ends.
+> Follow the steps below yourself, in your own terminal.
 
 Choose the client you actually use and follow only that section. Claude Code and
 Claude Desktop have separate MCP settings; configuring one does not configure the
@@ -69,6 +73,23 @@ other.
    Windows: %APPDATA%\Claude\claude_desktop_config.json
    ```
 
+   > **⚠️ Windows: the documented path may not be the one Claude actually reads.**
+   > Claude Desktop ships as an MSIX package, whose filesystem is virtualized. The
+   > app reads its config from
+   >
+   > ```text
+   > %LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json
+   > ```
+   >
+   > while **Settings → Developer → Edit Config** opens the *un*virtualized
+   > `%APPDATA%\Claude\` file. They are two different files that never sync, so a
+   > correct Yomi config written to the documented path is **silently ignored** — no
+   > error, no log, Yomi simply never appears. This is
+   > [claude-code#26073](https://github.com/anthropics/claude-code/issues/26073),
+   > still open. If Yomi does not show up after a restart, write the same config to
+   > the `LocalCache` path above as well. (Not applicable to Claude Code, or to
+   > Desktop installed outside MSIX.)
+
 3. Add Yomi under `mcpServers`, replacing the example `command` with the full
    path printed in step 1. On Windows, JSON requires each `\` in the path to be
    written as `\\`:
@@ -88,9 +109,10 @@ other.
    `"C:\\Program Files\\nodejs\\npx.cmd"`. Use the path reported on your own
    machine rather than copying either example blindly.
 
-4. Fully quit and reopen Claude Desktop. Yomi will also be available to Cowork
-   through Desktop's local MCP bridge. If it does not appear in Cowork, restart
-   Desktop; the bridge can occasionally be flaky.
+4. Fully quit and reopen Claude Desktop. Confirm Yomi is loaded under **Settings →
+   Developer** before anything else: if Yomi is not listed there, Claude never read
+   your config — on Windows, see the MSIX warning in step 2. Once it is listed, the
+   tools are available in chat and in Cowork's local sessions alike.
 
 You do **not** need to install Claude Code for this setup.
 

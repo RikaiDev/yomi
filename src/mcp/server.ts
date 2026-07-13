@@ -71,6 +71,7 @@ import { LineProtocolService } from '../line/core/service.js'
 import { startCapture } from '../search/capture.js'
 import { getDefaultEmbedder } from '../search/default-embedder.js'
 import { createCliLogger } from '../util/log.js'
+import { YOMI_VERSION } from '../version.js'
 import {
   handleFindContact,
   handleGetChatMessages,
@@ -152,7 +153,7 @@ async function main(): Promise<void> {
     getPrivacyPolicyText()
 
   const server = new Server(
-    { name: 'yomi', version: '0.1.0' },
+    { name: 'yomi', version: YOMI_VERSION },
     { capabilities: { tools: {}, resources: {} }, instructions },
   )
 

@@ -33,16 +33,8 @@ jobs:
       - name: Test (bun)
         run: bun run test
 
-  npx-node:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-
-      - name: Verify npx --help
-        run: npx @rikaidev/yomi --help
+  # NOTE: there is deliberately no `npx @rikaidev/yomi` job here. That would
+  # download the last PUBLISHED version rather than this commit's code, so it
+  # can never fail on a regression introduced by a PR. The install path is
+  # covered for real in install-smoke.yml, which packs THIS commit, installs
+  # the tarball, and starts it as an MCP server.

@@ -51,7 +51,22 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: npm test          # bun test ./src — includes the version.ts <-> package.json drift guard
-      - run: npm run build     # tsc must compile cleanly before we publish
+      - run: npm run build     # tsc must EMIT dist/ — the tarball ships JS, not TS
+
+      # The gate that 0.1.0-0.1.2 needed and did not have: pack the tarball,
+      # install it into a clean project, and start it as a real MCP server.
+      # Building cleanly says nothing about whether the published artifact runs
+      # — those releases all built fine and none of them could start.
+      - name: Verify the tarball installs and starts
+        run: |
+          npm pack
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cp rikaidev-yomi-*.tgz "$RUNNER_TEMP/smoke/"
+          cd "$RUNNER_TEMP/smoke"
+          npm init -y >/dev/null
+          npm install ./rikaidev-yomi-*.tgz --omit=dev --no-audit --no-fund
+          cd "$GITHUB_WORKSPACE"
+          node scripts/smoke-mcp.mjs "$RUNNER_TEMP/smoke/node_modules/@rikaidev/yomi/run.mjs"
 
       # Trusted publishing requires npm >= 11.5.1; the runner's bundled npm
       # may be older, so upgrade before publishing.
