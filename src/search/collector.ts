@@ -27,40 +27,45 @@
  * embedding succeeded, so keyword search keeps working either way.
  */
 
-import type { LineProtocolService } from '../line/core/service.js';
-import { resolveConversationNames, resolveSenderNames } from '../mcp/names.js';
-import { createCliLogger } from '../util/log.js';
-import type { Embedder } from './embedder.js';
-import { getExcludedChatIds } from './scope.js';
-import { getMessagesMissingEmbedding, upsertEmbeddings, upsertMessages, type MessageRecord } from './store.js';
+import type { LineProtocolService } from '../line/core/service.js'
+import { resolveConversationNames, resolveSenderNames } from '../mcp/names.js'
+import { createCliLogger } from '../util/log.js'
+import type { Embedder } from './embedder.js'
+import { getExcludedChatIds } from './scope.js'
+import {
+  getMessagesMissingEmbedding,
+  type MessageRecord,
+  upsertEmbeddings,
+  upsertMessages,
+} from './store.js'
 
-const log = createCliLogger('Yomi');
+const log = createCliLogger('Yomi')
 
-const EMBED_BATCH = 64;
+const EMBED_BATCH = 64
 
 /** Options for one collect_messages run. */
 export interface CollectMessagesOptions {
   /** Chat MIDs to collect from. Omit to collect from all conversations. */
-  chatIds?: string[];
+  chatIds?: string[]
   /** Maximum recent messages to fetch per chat (default 100). */
-  perChat?: number;
+  perChat?: number
   /**
    * Embedder to batch-embed collected messages with, for semantic search.
    * Omit to skip embedding entirely (index stays keyword-only).
    */
-  embedder?: Embedder;
+  embedder?: Embedder
 }
 
 /** Summary of one collect_messages run. */
 export interface CollectMessagesSummary {
-  chatsScanned: number;
-  messagesIndexed: number;
+  chatsScanned: number
+  messagesIndexed: number
   /** Messages successfully embedded for semantic search (0 when no embedder was supplied or embedding failed). */
-  messagesEmbedded: number;
+  messagesEmbedded: number
 }
 
-const DEFAULT_PER_CHAT = 100;
-const DEFAULT_CHAT_LIMIT = 200;
+const DEFAULT_PER_CHAT = 100
+const DEFAULT_CHAT_LIMIT = 200
 
 /**
  * Resolve the target chat ids for a collection run, along with a
@@ -75,16 +80,16 @@ async function resolveTargetChats(
   chatIds: string[] | undefined,
 ): Promise<Map<string, string | null>> {
   if (chatIds && chatIds.length > 0) {
-    return resolveConversationNames(service, chatIds);
+    return resolveConversationNames(service, chatIds)
   }
   const result = await service.client.getMessageBoxes({
     lastMessagesPerMessageBoxCount: 1,
     messageBoxCountLimit: DEFAULT_CHAT_LIMIT,
     withUnreadCount: false,
-  });
-  const boxes = result.messageBoxes || [];
-  const ids = boxes.map((box: any) => box.id).filter(Boolean);
-  return resolveConversationNames(service, ids);
+  })
+  const boxes = result.messageBoxes || []
+  const ids = boxes.map((box: any) => box.id).filter(Boolean)
+  return resolveConversationNames(service, ids)
 }
 
 /**
@@ -105,30 +110,31 @@ export async function collectMessages(
   service: LineProtocolService,
   options: CollectMessagesOptions = {},
 ): Promise<CollectMessagesSummary> {
-  const perChat = options.perChat ?? DEFAULT_PER_CHAT;
-  const chatNames = await resolveTargetChats(service, options.chatIds);
+  const perChat = options.perChat ?? DEFAULT_PER_CHAT
+  const chatNames = await resolveTargetChats(service, options.chatIds)
   // Scoping is a denylist: excluded chats are removed here, before the
   // fetch loop below, so they are never fetched from LINE or indexed —
   // not just filtered out of the results afterward. See ../search/scope.ts.
-  const excluded = getExcludedChatIds();
+  const excluded = getExcludedChatIds()
   for (const chatId of excluded) {
-    chatNames.delete(chatId);
+    chatNames.delete(chatId)
   }
-  let messagesIndexed = 0;
-  let messagesEmbedded = 0;
+  let messagesIndexed = 0
+  let messagesEmbedded = 0
 
   for (const [chatId, chatName] of chatNames) {
-    const messages = await service.getRecentMessages(chatId, perChat);
+    const messages = await service.getRecentMessages(chatId, perChat)
     const withText = messages.filter(
-      (message: any) => typeof message.text === 'string' && message.text.length > 0,
-    );
+      (message: any) =>
+        typeof message.text === 'string' && message.text.length > 0,
+    )
     if (withText.length === 0) {
-      continue;
+      continue
     }
     const senderNames = await resolveSenderNames(
       service,
       withText.map((message: any) => message.from).filter(Boolean),
-    );
+    )
     const rows: MessageRecord[] = withText.map((message: any) => ({
       chatId,
       chatName: chatName ?? null,
@@ -137,9 +143,9 @@ export async function collectMessages(
       fromName: senderNames.get(message.from) ?? null,
       text: message.text,
       createdTime: message.createdTime ?? message.deliveredTime ?? null,
-    }));
-    messagesIndexed += upsertMessages(rows);
-    messagesEmbedded += await embedAndStore(rows, options.embedder);
+    }))
+    messagesIndexed += upsertMessages(rows)
+    messagesEmbedded += await embedAndStore(rows, options.embedder)
   }
 
   // Self-heal embedding coverage: embed anything already in the index that
@@ -149,10 +155,10 @@ export async function collectMessages(
   // from LINE. The rows just embedded above are no longer "missing", so they
   // are not embedded twice.
   if (options.embedder) {
-    messagesEmbedded += await backfillMissingEmbeddings(options.embedder);
+    messagesEmbedded += await backfillMissingEmbeddings(options.embedder)
   }
 
-  return { chatsScanned: chatNames.size, messagesIndexed, messagesEmbedded };
+  return { chatsScanned: chatNames.size, messagesIndexed, messagesEmbedded }
 }
 
 /**
@@ -165,27 +171,34 @@ export async function collectMessages(
  * @param embedder - Injected embedder to embed missing rows with.
  * @returns Number of messages newly embedded and stored.
  */
-export async function backfillMissingEmbeddings(embedder: Embedder): Promise<number> {
-  const missing = getMessagesMissingEmbedding(embedder.modelLabel);
+export async function backfillMissingEmbeddings(
+  embedder: Embedder,
+): Promise<number> {
+  const missing = getMessagesMissingEmbedding(embedder.modelLabel)
   if (missing.length === 0) {
-    return 0;
+    return 0
   }
-  let embedded = 0;
+  let embedded = 0
   for (let i = 0; i < missing.length; i += EMBED_BATCH) {
-    const batch = missing.slice(i, i + EMBED_BATCH);
+    const batch = missing.slice(i, i + EMBED_BATCH)
     try {
-      const vectors = await embedder.embed(batch.map((row) => row.text));
+      const vectors = await embedder.embed(batch.map((row) => row.text))
       embedded += upsertEmbeddings(
-        batch.map((row, j) => ({ messageId: row.messageId, vector: vectors[j] })),
+        batch.map((row, j) => ({
+          messageId: row.messageId,
+          vector: vectors[j],
+        })),
         embedder.modelLabel,
-      );
-    }
-    catch (error: any) {
-      log.warn('backfill.failed', { error: error?.message ?? String(error), remaining: missing.length - embedded });
-      break;
+      )
+    } catch (error: any) {
+      log.warn('backfill.failed', {
+        error: error?.message ?? String(error),
+        remaining: missing.length - embedded,
+      })
+      break
     }
   }
-  return embedded;
+  return embedded
 }
 
 /**
@@ -200,19 +213,24 @@ export async function backfillMissingEmbeddings(embedder: Embedder): Promise<num
  * @param embedder - Injected embedder, or undefined to skip embedding.
  * @returns Number of messages successfully embedded and stored.
  */
-async function embedAndStore(rows: MessageRecord[], embedder: Embedder | undefined): Promise<number> {
+async function embedAndStore(
+  rows: MessageRecord[],
+  embedder: Embedder | undefined,
+): Promise<number> {
   if (!embedder || rows.length === 0) {
-    return 0;
+    return 0
   }
   try {
-    const vectors = await embedder.embed(rows.map((row) => row.text));
+    const vectors = await embedder.embed(rows.map((row) => row.text))
     return upsertEmbeddings(
       rows.map((row, i) => ({ messageId: row.messageId, vector: vectors[i] })),
       embedder.modelLabel,
-    );
-  }
-  catch (error: any) {
-    log.warn('embed.failed', { error: error?.message ?? String(error), count: rows.length });
-    return 0;
+    )
+  } catch (error: any) {
+    log.warn('embed.failed', {
+      error: error?.message ?? String(error),
+      count: rows.length,
+    })
+    return 0
   }
 }

@@ -13,14 +13,14 @@
  *      blocked future capture while leaving old data behind would be fake
  *      privacy.
  *
- * Shares the same bun:sqlite connection as ../search/store.ts via the
+ * Shares the same node:sqlite connection as ../search/store.ts via the
  * exported getDb(), so this table lives in the same search-index.db file
  * rather than a second database.
  */
 
-import { getDb } from './store.js';
+import { getDb } from './store.js'
 
-let tableEnsured = false;
+let tableEnsured = false
 
 /**
  * Create the `excluded_chats` table if it does not already exist. Memoized
@@ -30,15 +30,15 @@ let tableEnsured = false;
  */
 function ensureExcludedTable(): void {
   if (tableEnsured) {
-    return;
+    return
   }
-  const handle = getDb();
-  handle.run(`
+  const handle = getDb()
+  handle.exec(`
     CREATE TABLE IF NOT EXISTS excluded_chats (
       chatId TEXT PRIMARY KEY NOT NULL
     );
-  `);
-  tableEnsured = true;
+  `)
+  tableEnsured = true
 }
 
 /**
@@ -51,7 +51,7 @@ function ensureExcludedTable(): void {
  * @returns Placeholder group, e.g. `(?, ?, ?)`.
  */
 function buildPlaceholders(values: unknown[]): string {
-  return `(${values.map(() => '?').join(', ')})`;
+  return `(${values.map(() => '?').join(', ')})`
 }
 
 /**
@@ -60,10 +60,12 @@ function buildPlaceholders(values: unknown[]): string {
  * @returns Set of excluded chatIds (empty when the denylist is empty).
  */
 export function getExcludedChatIds(): Set<string> {
-  ensureExcludedTable();
-  const handle = getDb();
-  const rows = handle.query('SELECT chatId FROM excluded_chats;').all() as { chatId: string }[];
-  return new Set(rows.map(row => row.chatId));
+  ensureExcludedTable()
+  const handle = getDb()
+  const rows = handle
+    .prepare<{ chatId: string }>('SELECT chatId FROM excluded_chats;')
+    .all()
+  return new Set(rows.map((row) => row.chatId))
 }
 
 /**
@@ -77,18 +79,20 @@ export function getExcludedChatIds(): Set<string> {
  */
 export function addExcludedChatIds(chatIds: string[]): number {
   if (chatIds.length === 0) {
-    return 0;
+    return 0
   }
-  ensureExcludedTable();
-  const handle = getDb();
-  const stmt = handle.prepare('INSERT OR IGNORE INTO excluded_chats (chatId) VALUES (?);');
+  ensureExcludedTable()
+  const handle = getDb()
+  const stmt = handle.prepare(
+    'INSERT OR IGNORE INTO excluded_chats (chatId) VALUES (?);',
+  )
   const insertAll = handle.transaction((ids: string[]) => {
     for (const id of ids) {
-      stmt.run(id);
+      stmt.run(id)
     }
-  });
-  insertAll(chatIds);
-  return chatIds.length;
+  })
+  insertAll(chatIds)
+  return chatIds.length
 }
 
 /**
@@ -102,13 +106,15 @@ export function addExcludedChatIds(chatIds: string[]): number {
  */
 export function removeExcludedChatIds(chatIds: string[]): number {
   if (chatIds.length === 0) {
-    return 0;
+    return 0
   }
-  ensureExcludedTable();
-  const handle = getDb();
-  const placeholders = buildPlaceholders(chatIds);
-  const result = handle.run(`DELETE FROM excluded_chats WHERE chatId IN ${placeholders};`, chatIds);
-  return result.changes;
+  ensureExcludedTable()
+  const handle = getDb()
+  const placeholders = buildPlaceholders(chatIds)
+  const result = handle
+    .prepare(`DELETE FROM excluded_chats WHERE chatId IN ${placeholders};`)
+    .run(...chatIds) as { changes: number }
+  return result.changes
 }
 
 /**
@@ -126,24 +132,26 @@ export function removeExcludedChatIds(chatIds: string[]): number {
  */
 export function deleteMessagesForChats(chatIds: string[]): number {
   if (chatIds.length === 0) {
-    return 0;
+    return 0
   }
-  const handle = getDb();
-  const placeholders = buildPlaceholders(chatIds);
+  const handle = getDb()
+  const placeholders = buildPlaceholders(chatIds)
   const purge = handle.transaction((ids: string[]) => {
     // Count the target rows FIRST: the DELETE's own `.changes` on `messages`
     // is inflated by the AFTER DELETE trigger that maintains messages_fts
     // (one fts write per deleted row), so it cannot serve as the purged
     // count. An explicit COUNT is trigger-independent and honest.
-    const counted = handle.query(
-      `SELECT COUNT(*) as c FROM messages WHERE chatId IN ${placeholders};`,
-    ).get(...ids) as { c: number } | null;
-    handle.run(
+    const counted = handle
+      .prepare<{ c: number }>(
+        `SELECT COUNT(*) as c FROM messages WHERE chatId IN ${placeholders};`,
+      )
+      .get(...ids)
+    handle.exec(
       `DELETE FROM embeddings WHERE messageId IN (SELECT messageId FROM messages WHERE chatId IN ${placeholders});`,
       ids,
-    );
-    handle.run(`DELETE FROM messages WHERE chatId IN ${placeholders};`, ids);
-    return counted?.c ?? 0;
-  });
-  return purge(chatIds);
+    )
+    handle.exec(`DELETE FROM messages WHERE chatId IN ${placeholders};`, ids)
+    return counted?.c ?? 0
+  })
+  return purge(chatIds)
 }

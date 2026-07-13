@@ -1,0 +1,48 @@
+# CI: type-check, lint, and test.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - run: bun install
+
+      - name: Type-check (tsc)
+        run: bun run build
+
+      - name: Lint (biome)
+        run: bun run lint
+
+      - name: Test (bun)
+        run: bun run test
+
+  npx-node:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Verify npx --help
+        run: npx @rikaidev/yomi --help

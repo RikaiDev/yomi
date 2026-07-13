@@ -20,7 +20,7 @@
  * CJK ranges covered: CJK Unified Ideographs + Extension A, CJK
  * Compatibility Ideographs, Hiragana/Katakana, and Hangul Syllables.
  */
-const CJK_PATTERN = /[㐀-鿿豈-﫿぀-ヿ가-퟿]/;
+const CJK_PATTERN = /[㐀-鿿豈-﫿぀-ヿ가-퟿]/
 
 /**
  * Determine whether a single character falls in a CJK range that needs
@@ -30,7 +30,7 @@ const CJK_PATTERN = /[㐀-鿿豈-﫿぀-ヿ가-퟿]/;
  * @returns True when the character is CJK (ideograph, kana, or Hangul).
  */
 function isCjkChar(ch: string): boolean {
-  return CJK_PATTERN.test(ch);
+  return CJK_PATTERN.test(ch)
 }
 
 /**
@@ -41,15 +41,15 @@ function isCjkChar(ch: string): boolean {
  * @returns Space-separated bigrams (or the lone character).
  */
 function bigramsForRun(run: string): string {
-  const chars = Array.from(run);
+  const chars = Array.from(run)
   if (chars.length <= 1) {
-    return chars.join('');
+    return chars.join('')
   }
-  const grams: string[] = [];
+  const grams: string[] = []
   for (let i = 0; i < chars.length - 1; i++) {
-    grams.push(chars[i] + chars[i + 1]);
+    grams.push(chars[i] + chars[i + 1])
   }
-  return grams.join(' ');
+  return grams.join(' ')
 }
 
 /**
@@ -64,33 +64,30 @@ function bigramsForRun(run: string): string {
  */
 export function toSearchText(raw: string): string {
   if (!raw) {
-    return '';
+    return ''
   }
-  const chars = Array.from(raw);
-  const pieces: string[] = [];
-  let runStart = 0;
-  let runIsCjk = chars.length > 0 ? isCjkChar(chars[0]) : false;
+  const chars = Array.from(raw)
+  const pieces: string[] = []
+  let runStart = 0
+  let runIsCjk = chars.length > 0 ? isCjkChar(chars[0]) : false
 
   const flush = (end: number) => {
     if (end <= runStart) {
-      return;
+      return
     }
-    const run = chars.slice(runStart, end).join('');
-    pieces.push(runIsCjk ? bigramsForRun(run) : run);
-  };
+    const run = chars.slice(runStart, end).join('')
+    pieces.push(runIsCjk ? bigramsForRun(run) : run)
+  }
 
   for (let i = 1; i < chars.length; i++) {
-    const cjk = isCjkChar(chars[i]);
+    const cjk = isCjkChar(chars[i])
     if (cjk !== runIsCjk) {
-      flush(i);
-      runStart = i;
-      runIsCjk = cjk;
+      flush(i)
+      runStart = i
+      runIsCjk = cjk
     }
   }
-  flush(chars.length);
+  flush(chars.length)
 
-  return pieces
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return pieces.join(' ').replace(/\s+/g, ' ').trim()
 }

@@ -37,7 +37,10 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "start": "bun run.mjs",
+    "start": "node run.mjs",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "format": "biome format --write src/",
     "test": "bun test",
     "version": "node scripts/sync-version.mjs && git add src/version.ts",
     "prepublishOnly": "npm run build"
@@ -49,8 +52,9 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
     "@types/bun": "^1.3.14",
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.0"
+    "typescript": "^7.0.0"
   }
 }

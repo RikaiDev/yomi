@@ -18,7 +18,7 @@ export interface Embedder {
    * embeddings from a previously-configured model are never compared
    * against vectors from a different model/dimensionality.
    */
-  readonly modelLabel: string;
+  readonly modelLabel: string
 
   /**
    * Embed a batch of *stored document* texts into dense vectors. No query
@@ -29,7 +29,7 @@ export interface Embedder {
    * @param texts - Texts to embed.
    * @returns One unit-normalized vector per input text, in the same order.
    */
-  embed(texts: string[]): Promise<number[][]>;
+  embed(texts: string[]): Promise<number[][]>
 
   /**
    * Embed a single *search query* into a dense vector, applying whatever
@@ -40,5 +40,5 @@ export interface Embedder {
    * @param query - Raw user search query.
    * @returns Unit-normalized query vector.
    */
-  embedQuery(query: string): Promise<number[]>;
+  embedQuery(query: string): Promise<number[]>
 }

@@ -23,18 +23,18 @@
  * recommended instruction for retrieval tasks.
  */
 
-import type { Embedder } from './embedder.js';
+import type { Embedder } from './embedder.js'
 
-const MODEL_ID = 'Xenova/bge-small-zh-v1.5';
-const BGE_QUERY_INSTRUCTION = '为这个句子生成表示以用于检索相关文章：';
+const MODEL_ID = 'Xenova/bge-small-zh-v1.5'
+const BGE_QUERY_INSTRUCTION = '为这个句子生成表示以用于检索相关文章：'
 
 /** Minimal shape of the transformers.js feature-extraction pipeline this module calls. */
 type FeatureExtractionPipeline = (
   texts: string[],
   options: { pooling: 'mean'; normalize: boolean },
-) => Promise<{ dims: number[]; data: Float32Array | number[] }>;
+) => Promise<{ dims: number[]; data: Float32Array | number[] }>
 
-let pipelinePromise: Promise<FeatureExtractionPipeline> | null = null;
+let pipelinePromise: Promise<FeatureExtractionPipeline> | null = null
 
 /**
  * Lazily load (and memoize) the transformers.js feature-extraction
@@ -46,16 +46,21 @@ let pipelinePromise: Promise<FeatureExtractionPipeline> | null = null;
 function getPipeline(): Promise<FeatureExtractionPipeline> {
   if (!pipelinePromise) {
     pipelinePromise = import('@huggingface/transformers')
-      .then(({ pipeline }) => pipeline('feature-extraction', MODEL_ID, { device: 'cpu' }) as unknown as Promise<FeatureExtractionPipeline>)
+      .then(
+        ({ pipeline }) =>
+          pipeline('feature-extraction', MODEL_ID, {
+            device: 'cpu',
+          }) as unknown as Promise<FeatureExtractionPipeline>,
+      )
       .catch((error) => {
         // Reset the memo on failure so a later call can retry (e.g. the
         // first attempt failed offline, network comes back later) instead
         // of permanently caching a rejected promise.
-        pipelinePromise = null;
-        throw error;
-      });
+        pipelinePromise = null
+        throw error
+      })
   }
-  return pipelinePromise;
+  return pipelinePromise
 }
 
 /**
@@ -65,14 +70,17 @@ function getPipeline(): Promise<FeatureExtractionPipeline> {
  * @param output - Raw pipeline output.
  * @returns One vector array per row.
  */
-function splitRows(output: { dims: number[]; data: Float32Array | number[] }): number[][] {
-  const [rows, hidden] = output.dims;
-  const data = output.data;
-  const vectors: number[][] = [];
+function splitRows(output: {
+  dims: number[]
+  data: Float32Array | number[]
+}): number[][] {
+  const [rows, hidden] = output.dims
+  const data = output.data
+  const vectors: number[][] = []
   for (let i = 0; i < rows; i++) {
-    vectors.push(Array.from(data.slice(i * hidden, (i + 1) * hidden)));
+    vectors.push(Array.from(data.slice(i * hidden, (i + 1) * hidden)))
   }
-  return vectors;
+  return vectors
 }
 
 /**
@@ -82,24 +90,24 @@ function splitRows(output: { dims: number[]; data: Float32Array | number[] }): n
  * this module never triggers a download by itself.
  */
 export class DefaultEmbedder implements Embedder {
-  readonly modelLabel = MODEL_ID;
+  readonly modelLabel = MODEL_ID
 
   async embed(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) {
-      return [];
+      return []
     }
-    const extractor = await getPipeline();
-    const output = await extractor(texts, { pooling: 'mean', normalize: true });
-    return splitRows(output);
+    const extractor = await getPipeline()
+    const output = await extractor(texts, { pooling: 'mean', normalize: true })
+    return splitRows(output)
   }
 
   async embedQuery(query: string): Promise<number[]> {
-    const [vector] = await this.embed([`${BGE_QUERY_INSTRUCTION}${query}`]);
-    return vector;
+    const [vector] = await this.embed([`${BGE_QUERY_INSTRUCTION}${query}`])
+    return vector
   }
 }
 
-let defaultEmbedder: DefaultEmbedder | null = null;
+let defaultEmbedder: DefaultEmbedder | null = null
 
 /**
  * Get the process-wide singleton DefaultEmbedder instance. Constructing it
@@ -110,7 +118,7 @@ let defaultEmbedder: DefaultEmbedder | null = null;
  */
 export function getDefaultEmbedder(): DefaultEmbedder {
   if (!defaultEmbedder) {
-    defaultEmbedder = new DefaultEmbedder();
+    defaultEmbedder = new DefaultEmbedder()
   }
-  return defaultEmbedder;
+  return defaultEmbedder
 }

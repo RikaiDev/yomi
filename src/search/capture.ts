@@ -19,18 +19,18 @@
  * triggered here.
  */
 
-import type { LineProtocolService } from '../line/core/service.js';
-import { createCliLogger } from '../util/log.js';
-import { collectMessages } from './collector.js';
-import type { Embedder } from './embedder.js';
-import { saveCaptureState } from './store.js';
+import type { LineProtocolService } from '../line/core/service.js'
+import { createCliLogger } from '../util/log.js'
+import { collectMessages } from './collector.js'
+import type { Embedder } from './embedder.js'
+import { saveCaptureState } from './store.js'
 
-const log = createCliLogger('Yomi');
+const log = createCliLogger('Yomi')
 
 /** Milliseconds to batch new-message signals before indexing affected chats. */
-const FLUSH_DEBOUNCE_MS = 2000;
+const FLUSH_DEBOUNCE_MS = 2000
 /** Recent messages to (re)index per affected chat on a live flush. */
-const LIVE_PER_CHAT = 30;
+const LIVE_PER_CHAT = 30
 
 /**
  * Resolve the chat MID a parsed LINE message belongs to. Group/room messages
@@ -43,12 +43,12 @@ const LIVE_PER_CHAT = 30;
  */
 function resolveChatId(message: any, myMid: string | null): string | null {
   if (!message) {
-    return null;
+    return null
   }
   if (message.toType === 0) {
-    return message.from === myMid ? message.to : message.from;
+    return message.from === myMid ? message.to : message.from
   }
-  return message.to ?? null;
+  return message.to ?? null
 }
 
 /**
@@ -60,48 +60,65 @@ function resolveChatId(message: any, myMid: string | null): string | null {
  * @param embedder - Embedder used to keep semantic vectors current.
  * @returns Promise resolving once startup catch-up completes and polling starts.
  */
-export async function startCapture(service: LineProtocolService, embedder: Embedder): Promise<void> {
+export async function startCapture(
+  service: LineProtocolService,
+  embedder: Embedder,
+): Promise<void> {
   try {
-    const summary = await collectMessages(service, { embedder });
-    log.info('capture.catchup', { chatsScanned: summary.chatsScanned, messagesIndexed: summary.messagesIndexed });
-  }
-  catch (error: any) {
-    log.warn('capture.catchup_failed', { error: error?.message ?? String(error) });
+    const summary = await collectMessages(service, { embedder })
+    log.info('capture.catchup', {
+      chatsScanned: summary.chatsScanned,
+      messagesIndexed: summary.messagesIndexed,
+    })
+  } catch (error: any) {
+    log.warn('capture.catchup_failed', {
+      error: error?.message ?? String(error),
+    })
   }
 
-  const pending = new Set<string>();
-  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  const pending = new Set<string>()
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
 
   const flush = async (): Promise<void> => {
-    flushTimer = null;
-    const chatIds = [...pending];
-    pending.clear();
+    flushTimer = null
+    const chatIds = [...pending]
+    pending.clear()
     if (chatIds.length === 0) {
-      return;
+      return
     }
     try {
-      await collectMessages(service, { chatIds, perChat: LIVE_PER_CHAT, embedder });
+      await collectMessages(service, {
+        chatIds,
+        perChat: LIVE_PER_CHAT,
+        embedder,
+      })
+    } catch (error: any) {
+      log.warn('capture.index_failed', {
+        chats: chatIds.length,
+        error: error?.message ?? String(error),
+      })
     }
-    catch (error: any) {
-      log.warn('capture.index_failed', { chats: chatIds.length, error: error?.message ?? String(error) });
-    }
-    persistCursor(service);
-  };
+    persistCursor(service)
+  }
 
   service.client.on('message', (message: any) => {
-    const chatId = resolveChatId(message, service.profile?.mid ?? null);
+    const chatId = resolveChatId(message, service.profile?.mid ?? null)
     if (chatId) {
-      pending.add(chatId);
+      pending.add(chatId)
     }
     if (!flushTimer) {
-      flushTimer = setTimeout(() => { void flush(); }, FLUSH_DEBOUNCE_MS);
+      flushTimer = setTimeout(() => {
+        void flush()
+      }, FLUSH_DEBOUNCE_MS)
     }
-  });
+  })
 
-  log.info('capture.started', {});
+  log.info('capture.started', {})
   service.client.startPolling().catch((error: any) => {
-    log.error('capture.polling_stopped', { error: error?.message ?? String(error) });
-  });
+    log.error('capture.polling_stopped', {
+      error: error?.message ?? String(error),
+    })
+  })
 }
 
 /**
@@ -116,9 +133,8 @@ function persistCursor(service: LineProtocolService): void {
       globalRevision: Number(service.client.globalRevision ?? 0),
       individualRevision: Number(service.client.individualRevision ?? 0),
       updatedAt: Date.now(),
-    });
-  }
-  catch {
+    })
+  } catch {
     // Cursor persistence is best-effort observability; never let it break capture.
   }
 }
