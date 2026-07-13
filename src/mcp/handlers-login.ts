@@ -359,7 +359,7 @@ async function handleLoginNoElicitation(
     return toolError(
       `Missing ${missing.join(' and ')} for login. This MCP client does not support elicitation, so `
       + `${missing.join('/')} must be supplied as a tool argument, or persisted by running `
-      + '`bun run.mjs login` once in a terminal.',
+      + '`npx @rikaidev/yomi login` once in a terminal.',
     );
   }
 

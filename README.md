@@ -38,26 +38,36 @@ on your own account.
 
 ## Quickstart
 
-You need [**bun**](https://bun.sh) (macOS, Linux, or Windows) and a LINE account.
-Yomi runs straight from npm via `bunx` — no clone, no build step.
+You need [**Node.js**](https://nodejs.org) (v24+, macOS, Linux, or Windows) and a LINE account.
+Yomi runs straight from npm via `npx` — no clone, no build step.
+
+**One-click install** (checks/installs Node.js if needed):
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/RikaiDev/yomi/main/install.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/RikaiDev/yomi/main/install.ps1 | iex
+```
 
 **Claude Code** (one line, any OS):
 
 ```bash
-claude mcp add yomi -- bunx @rikaidev/yomi
+claude mcp add yomi -- npx @rikaidev/yomi
 ```
 
 **Claude Desktop** — edit the config
 (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
 `%APPDATA%\Claude\claude_desktop_config.json` on Windows), then fully quit and
-reopen it. Use an **absolute** path to `bunx` — Desktop launches servers without
-your shell's PATH (find yours with `which bunx`):
+reopen it. Use an **absolute** path to `npx` — Desktop launches servers without
+your shell's PATH (find yours with `which npx` or `where npx`):
 
 ```json
 {
   "mcpServers": {
     "yomi": {
-      "command": "/opt/homebrew/bin/bunx",
+      "command": "npx",
       "args": ["@rikaidev/yomi"]
     }
   }
@@ -145,7 +155,7 @@ depends on your MCP client:
   phone confirms. The agent should call `login_complete` immediately — it does the
   waiting, so there is nothing for you to report back.
 
-- **From a terminal** — `bun run.mjs login` runs the whole flow on stdout, PIN and
+- **From a terminal** — `npx @rikaidev/yomi login` runs the whole flow on stdout, PIN and
   all. Always available as a fallback.
 
 **The one deadline that matters is LINE's:** you have about **3 minutes** from when
@@ -248,6 +258,8 @@ error — never a fake card or placeholder. Silence is honest; a fabricated resu
 ---
 
 ## Development
+
+For contributors working on the Yomi source code (requires [bun](https://bun.sh)):
 
 ```bash
 bun install                 # install dependencies

@@ -29,9 +29,9 @@ import { createPhiAccumulator, maskInto, phiNote } from './phi-guard.js';
 const log = createCliLogger('Yomi');
 
 // Yomi logs in on its own (via the `login`/`login_complete` tools, or
-// `bun run.mjs login`); it does not depend on inboxd for anything.
+// `npx @rikaidev/yomi login`); it does not depend on inboxd for anything.
 export const NO_CREDENTIALS_MESSAGE
-  = 'No persisted LINE session. Call the `login` tool, or run `bun run.mjs login` in a terminal.';
+  = 'No persisted LINE session. Call the `login` tool, or run `npx @rikaidev/yomi login` in a terminal.';
 
 /**
  * Build the always-fresh session-required error payload.

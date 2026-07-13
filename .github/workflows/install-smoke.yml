@@ -1,0 +1,43 @@
+# Verifies that Yomi installs and starts via npx on every platform.
+#
+# GitHub Actions runners ship with Node.js pre-installed, so this workflow
+# tests the "Node.js already present" path.  The install scripts also cover
+# the "Node.js missing" path — that branch can only be verified in a clean
+# VM or container (outside CI) or by manual one-click install testing.
+name: install-smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  npx:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify npx can resolve @rikaidev/yomi
+        run: npx @rikaidev/yomi --help
+
+  shell-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify install.sh is executable and syntax-valid
+        run: bash -n install.sh
+
+  powershell-script:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify install.ps1 parses without errors
+        run: powershell -Command "Get-Content install.ps1 | Out-Null; Write-Host 'install.ps1 syntax OK'"

@@ -8,7 +8,7 @@
  * ../mcp/handlers-login.ts; surfaces the PIN via elicitation on clients
  * that support it, or as a tool-result string with a follow-up
  * `login_complete` call on clients that don't) and `cliLogin` below
- * (surfaces the PIN on stdout, for the guaranteed-to-work `bun run.mjs
+ * (surfaces the PIN on stdout, for the guaranteed-to-work `npx @rikaidev/yomi
  * login` path that needs no MCP client at all). No front-end duplicates
  * the sequence itself.
  */
@@ -103,7 +103,7 @@ function parseLoginArgs(argv: string[]): { phone?: string; region?: string } {
 }
 
 /**
- * TTY front-end: `bun run.mjs login [--phone +886...] [--region TW]`.
+ * TTY front-end: `npx @rikaidev/yomi login [--phone +886...] [--region TW]`.
  *
  * Prints the PIN prominently to stdout (not stderr — there is no MCP
  * client here to hide it from). Falls back to a previously persisted
