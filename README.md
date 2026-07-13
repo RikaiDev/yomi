@@ -26,7 +26,7 @@ reply, send an image, mention someone, and search your whole history locally.
 No official API, no bot account, no webhook. Yomi logs in as a secondary device
 on your own account.
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![runtime](https://img.shields.io/badge/runtime-bun-black) ![protocol](https://img.shields.io/badge/MCP-stdio-green)
+![license](https://img.shields.io/badge/license-MIT-blue) ![runtime](https://img.shields.io/badge/runtime-node%20%7C%20bun-black) ![protocol](https://img.shields.io/badge/MCP-stdio-green) ![npm](https://img.shields.io/badge/npm-@rikaidev%2Fyomi-red)
 
 > **Unofficial.** Yomi is an independent personal project, not affiliated with or
 > endorsed by LINE. Using it may be against LINE's Terms of Service, and running an
@@ -36,38 +36,18 @@ on your own account.
 
 ---
 
-## Quickstart
+## Getting started
 
 You need [**Node.js**](https://nodejs.org) (v24+, macOS, Linux, or Windows) and a LINE account.
 Yomi runs straight from npm via `npx` — no clone, no build step.
 
 > **⚠️ Cloud-only interfaces (ChatGPT, etc.) cannot run Yomi.**
 > Yomi is a local stdio MCP server that runs on your machine. You need
-> **Claude Desktop** or **Claude Code** (both local) to use it.
+> **Claude Desktop**, **Claude Code**, or **Cursor** (all local) to use it.
 > Claude Cowork works if Yomi is configured in `claude_desktop_config.json`,
 > as Desktop bridges local MCP servers into Cowork's VM.
 
-**One-click install** (checks/installs Node.js if needed):
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/RikaiDev/yomi/main/install.sh | bash
-
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/RikaiDev/yomi/main/install.ps1 | iex
-```
-
-**Claude Code** (one line, any OS):
-
-```bash
-claude mcp add yomi -- npx @rikaidev/yomi
-```
-
-**Claude Desktop** — edit the config
-(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
-`%APPDATA%\Claude\claude_desktop_config.json` on Windows), then fully quit and
-reopen it. Use an **absolute** path to `npx` — Desktop launches servers without
-your shell's PATH (find yours with `which npx` or `where npx`):
+**Standard config** works in most MCP clients:
 
 ```json
 {
@@ -80,19 +60,233 @@ your shell's PATH (find yours with `which npx` or `where npx`):
 }
 ```
 
-Once connected, just say:
+<details>
+<summary>Claude Code</summary>
+
+Use the Claude Code CLI to add the Yomi MCP server:
+
+```bash
+claude mcp add yomi -- npx @rikaidev/yomi
+```
+
+</details>
+
+<details>
+<summary>Claude Desktop</summary>
+
+Edit the config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows), then fully quit and reopen it.
+
+Use an **absolute** path to `npx` — Desktop launches servers without your shell's PATH
+(find yours with `which npx` or `where npx`):
+
+```json
+{
+  "mcpServers": {
+    "yomi": {
+      "command": "/usr/local/bin/npx",
+      "args": ["@rikaidev/yomi"]
+    }
+  }
+}
+```
+
+> Claude Cowork works if Yomi is configured in `claude_desktop_config.json`
+> — Desktop bridges local MCP servers into Cowork's VM via its SDK layer.
+> However, bridging can be flaky (see [#26259](https://github.com/anthropics/claude-code/issues/26259));
+> if tools don't appear in Cowork, try restarting Desktop or switching to Claude Code.
+
+</details>
+
+<details>
+<summary>Cursor</summary>
+
+Go to `Cursor Settings` → `MCP` → `Add new MCP Server`. Name it `yomi`, use `command` type with:
+
+```
+npx @rikaidev/yomi
+```
+
+Or add to `.cursor/mcp.json` in your project:
+
+```json
+{
+  "mcpServers": {
+    "yomi": {
+      "command": "npx",
+      "args": ["@rikaidev/yomi"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>VS Code (GitHub Copilot)</summary>
+
+Add to `.vscode/mcp.json` in your workspace:
+
+```json
+{
+  "servers": {
+    "yomi": {
+      "command": "npx",
+      "args": ["@rikaidev/yomi"]
+    }
+  }
+}
+```
+
+Or use the VS Code CLI:
+
+```bash
+code --add-mcp '{"name":"yomi","command":"npx","args":["@rikaidev/yomi"]}'
+```
+
+</details>
+
+<details>
+<summary>opencode</summary>
+
+Add to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "yomi": {
+      "type": "local",
+      "command": ["npx", "@rikaidev/yomi"],
+      "enabled": true
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>Codex</summary>
+
+Use the Codex CLI:
+
+```bash
+codex mcp add yomi npx @rikaidev/yomi
+```
+
+Or add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.yomi]
+command = "npx"
+args = ["@rikaidev/yomi"]
+```
+
+</details>
+
+<details>
+<summary>Cline</summary>
+
+Add to `cline_mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "yomi": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@rikaidev/yomi"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>Windsurf</summary>
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "yomi": {
+      "command": "npx",
+      "args": ["@rikaidev/yomi"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>Amp</summary>
+
+Add via the Amp VS Code extension settings or `settings.json`:
+
+```json
+"amp.mcpServers": {
+  "yomi": {
+    "command": "npx",
+    "args": ["@rikaidev/yomi"]
+  }
+}
+```
+
+Or via CLI:
+
+```bash
+amp mcp add yomi -- npx @rikaidev/yomi
+```
+
+</details>
+
+<details>
+<summary>Goose</summary>
+
+Go to `Advanced settings` → `Extensions` → `Add custom extension`. Name it `yomi`, use type `STDIO`, and set the command to `npx @rikaidev/yomi`.
+
+</details>
+
+<details>
+<summary>Grok</summary>
+
+```bash
+grok mcp add yomi -- npx @rikaidev/yomi
+```
+
+Or add to `~/.grok/config.toml`:
+
+```toml
+[mcp_servers.yomi]
+command = "npx"
+args = ["@rikaidev/yomi"]
+```
+
+</details>
+
+<details>
+<summary>One-click install</summary>
+
+Checks/installs Node.js if needed:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/RikaiDev/yomi/main/install.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/RikaiDev/yomi/main/install.ps1 | iex
+```
+
+</details>
+
+### First login
+
+Once connected, tell the agent:
 
 > *"Log into LINE — my number is +8869XXXXXXXX."*
-
-> **Note:** Yomi is a **local stdio MCP server** — it runs on your machine and
-> communicates over stdin/stdout. Cloud-only interfaces (ChatGPT, etc.) cannot
-> access local processes. Use **Claude Desktop** or **Claude Code** instead.
->
-> **Claude Cowork** works if you've configured Yomi in `claude_desktop_config.json`
-> — Desktop automatically bridges local MCP servers into Cowork's VM via its SDK
-> layer. However, bridging can be flaky (see
-> [#26259](https://github.com/anthropics/claude-code/issues/26259)); if tools
-> don't appear in Cowork, try restarting Desktop or switching to Claude Code.
 
 Approve the device on your phone (see [Logging in](#logging-in)), and:
 
@@ -275,15 +469,14 @@ error — never a fake card or placeholder. Silence is honest; a fabricated resu
 
 ## Development
 
-For contributors working on the Yomi source code (requires [bun](https://bun.sh)):
+For contributors working on the Yomi source code (requires [bun](https://bun.sh) or Node.js 24+):
 
 ```bash
-bun install                 # install dependencies
+bun install                 # install dependencies (or npm install)
 bun run.mjs                 # run the stdio MCP server
 bun run.mjs login           # run the login flow in a terminal
 npm run build               # tsc --noEmit — type-check only (Yomi ships & runs from src/)
 npm test                    # bun test
-npm version patch           # bump + sync src/version.ts + tag (see RELEASING.md)
 ```
 
 The build only type-checks and compiles; this repo does not talk to live LINE
