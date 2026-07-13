@@ -32,8 +32,11 @@ import {
 } from 'node:fs'
 import { platform, arch } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const ROOT = new URL('..', import.meta.url).pathname
+// fileURLToPath, not .pathname: on Windows the latter yields "/D:/a/yomi",
+// which join() turns into "D:\D:\a\yomi".
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const args = process.argv.slice(2)
 const flag = (name, fallback) => {
   const i = args.indexOf(`--${name}`)
@@ -46,10 +49,15 @@ const OUT = join(ROOT, 'build', `mcpb-${TARGET_OS}-${TARGET_CPU}`)
 
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 
-/** Run a command, echoing it, with output inherited. */
+/**
+ * Run a command, echoing it, with output inherited.
+ *
+ * shell: true because on Windows `npm`/`npx` are .cmd shims, which
+ * execFileSync cannot spawn directly (ENOENT).
+ */
 const run = (cmd, cmdArgs, cwd = ROOT) => {
   console.log(`$ ${cmd} ${cmdArgs.join(' ')}`)
-  execFileSync(cmd, cmdArgs, { cwd, stdio: 'inherit' })
+  execFileSync(cmd, cmdArgs, { cwd, stdio: 'inherit', shell: true })
 }
 
 // The bundle ships compiled JS. Shipping src/*.ts would reproduce the bug that
