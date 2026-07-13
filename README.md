@@ -41,6 +41,10 @@ on your own account.
 You need [**Node.js**](https://nodejs.org) (v24+, macOS, Linux, or Windows) and a LINE account.
 Yomi runs straight from npm via `npx` — no clone, no build step.
 
+> **⚠️ Cloud interfaces (Claude Cowork, ChatGPT, etc.) cannot run Yomi.**
+> Yomi is a local stdio MCP server that runs on your machine. You need
+> **Claude Desktop** or **Claude Code** (both local) to use it.
+
 **One-click install** (checks/installs Node.js if needed):
 
 ```bash
@@ -77,6 +81,11 @@ your shell's PATH (find yours with `which npx` or `where npx`):
 Once connected, just say:
 
 > *"Log into LINE — my number is +8869XXXXXXXX."*
+
+> **Note:** Yomi is a **local stdio MCP server** — it runs on your machine and
+> communicates over stdin/stdout. Cloud-based interfaces (Claude Cowork, ChatGPT,
+> etc.) cannot access local processes. Use **Claude Desktop** or **Claude Code**
+> instead.
 
 Approve the device on your phone (see [Logging in](#logging-in)), and:
 
