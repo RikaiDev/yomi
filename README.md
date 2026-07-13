@@ -41,9 +41,11 @@ on your own account.
 You need [**Node.js**](https://nodejs.org) (v24+, macOS, Linux, or Windows) and a LINE account.
 Yomi runs straight from npm via `npx` — no clone, no build step.
 
-> **⚠️ Cloud interfaces (Claude Cowork, ChatGPT, etc.) cannot run Yomi.**
+> **⚠️ Cloud-only interfaces (ChatGPT, etc.) cannot run Yomi.**
 > Yomi is a local stdio MCP server that runs on your machine. You need
 > **Claude Desktop** or **Claude Code** (both local) to use it.
+> Claude Cowork works if Yomi is configured in `claude_desktop_config.json`,
+> as Desktop bridges local MCP servers into Cowork's VM.
 
 **One-click install** (checks/installs Node.js if needed):
 
@@ -83,9 +85,14 @@ Once connected, just say:
 > *"Log into LINE — my number is +8869XXXXXXXX."*
 
 > **Note:** Yomi is a **local stdio MCP server** — it runs on your machine and
-> communicates over stdin/stdout. Cloud-based interfaces (Claude Cowork, ChatGPT,
-> etc.) cannot access local processes. Use **Claude Desktop** or **Claude Code**
-> instead.
+> communicates over stdin/stdout. Cloud-only interfaces (ChatGPT, etc.) cannot
+> access local processes. Use **Claude Desktop** or **Claude Code** instead.
+>
+> **Claude Cowork** works if you've configured Yomi in `claude_desktop_config.json`
+> — Desktop automatically bridges local MCP servers into Cowork's VM via its SDK
+> layer. However, bridging can be flaky (see
+> [#26259](https://github.com/anthropics/claude-code/issues/26259)); if tools
+> don't appear in Cowork, try restarting Desktop or switching to Claude Code.
 
 Approve the device on your phone (see [Logging in](#logging-in)), and:
 
