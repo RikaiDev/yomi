@@ -44,13 +44,6 @@ anything. Run `node --version` first: if the command is missing or reports a ver
 below 24, install the current Node.js release and reopen your terminal before
 continuing.
 
-> **Tried Yomi before and it silently did nothing?** That was a bug in Yomi, not
-> anything you did. Releases 0.1.0–0.1.2 shipped TypeScript sources instead of
-> compiled JavaScript and could not start at all once installed — the server
-> crashed immediately, so clients just showed no tools. Those versions have been
-> removed from npm; `npx @rikaidev/yomi` now always gets a working build. Fixed in
-> [v0.1.3](https://github.com/RikaiDev/yomi/releases/tag/v0.1.3).
-
 > **⚠️ Yomi needs a client that runs it on your own machine.**
 > Cloud-only tools (ChatGPT, Claude.ai web) cannot run Yomi. Configure Yomi in
 > Claude Desktop or Claude Code and it works in both chat and Cowork, because
@@ -64,7 +57,40 @@ Claude Desktop have separate MCP settings; configuring one does not configure th
 other.
 
 <details open>
-<summary><strong>Claude Desktop / Cowork</strong></summary>
+<summary><strong>Claude Desktop — one-click install (no terminal, no Node)</strong></summary>
+
+The easiest path, and the only one that needs no command line at all. Claude
+Desktop ships its own Node runtime, so nothing else has to be installed.
+
+1. Download the bundle for your machine from the
+   [latest release](https://github.com/RikaiDev/yomi/releases/latest):
+
+   | Machine | File |
+   | --- | --- |
+   | Windows (Intel/AMD) | `yomi-win32-x64.mcpb` |
+   | Mac (Apple Silicon) | `yomi-darwin-arm64.mcpb` |
+   | Linux (x64) | `yomi-linux-x64.mcpb` |
+
+2. In Claude Desktop, open **Settings → Extensions**, and drag the downloaded
+   file onto that page (or just double-click the file).
+
+3. Review what it asks for, click **Install**.
+
+4. Start a conversation and say *"log in to LINE"*. Yomi shows a form, you enter
+   your phone number, and you confirm on your phone. No terminal at any point.
+
+This skips the config file entirely, which also sidesteps the Windows MSIX bug
+described below.
+
+> **Note for Cowork users:** do not ask Cowork to install Yomi for you. Cowork's
+> shell runs inside a throwaway VM — not on your machine — and it will not type
+> into your real terminal. Install the bundle yourself with the three clicks
+> above; once installed, Cowork's local sessions can use Yomi like any other tool.
+
+</details>
+
+<details>
+<summary><strong>Claude Desktop — manual config (npx)</strong></summary>
 
 1. Find the full path to `npx`:
 
