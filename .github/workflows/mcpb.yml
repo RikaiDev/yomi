@@ -21,7 +21,7 @@ on:
     types: [published]
 
 permissions:
-  contents: write # attaching bundles to a release
+  contents: read
 
 jobs:
   bundle:
@@ -62,8 +62,21 @@ jobs:
           name: yomi-${{ matrix.target_os }}-${{ matrix.cpu }}.mcpb
           path: build/mcpb-${{ matrix.target_os }}-${{ matrix.cpu }}/yomi-${{ matrix.target_os }}-${{ matrix.cpu }}.mcpb
 
-      - name: Attach the bundle to the release
-        if: github.event_name == 'release'
+  release:
+    if: github.event_name == 'release'
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified bundles
+        uses: actions/download-artifact@v5
+        with:
+          pattern: yomi-*.mcpb
+          path: build/release
+          merge-multiple: true
+
+      - name: Attach verified bundles to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "build/mcpb-${{ matrix.target_os }}-${{ matrix.cpu }}/yomi-${{ matrix.target_os }}-${{ matrix.cpu }}.mcpb" --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" build/release/*.mcpb --clobber --repo "${{ github.repository }}"
