@@ -96,8 +96,122 @@ export class InMemoryStore {
 }
 
 /**
+ * Key prefixes for VOLATILE, recomputable E2EE cache — peer public keys and
+ * group shared keys. These are written on nearly every message decrypt, so
+ * they MUST NOT share the durable credential store: on macOS that would rewrite
+ * the single keychain entry holding the auth token hundreds of times per read,
+ * and any torn/racy write there can strand the session. They live in a plain
+ * JSON file instead; losing them just means refetching keys from LINE.
+ */
+const VOLATILE_KEY_PREFIXES = ['line_e2ee_public_', 'line_e2ee_group_by_mid']
+
+/** Whether a credential key is volatile E2EE cache rather than durable state. */
+function isVolatileKey(key: string): boolean {
+  return VOLATILE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
+}
+
+/**
+ * File-backed store for volatile E2EE cache. In-memory map is the source of
+ * truth for the process; the file is a best-effort persistence layer written
+ * atomically (temp + rename) and coalesced so a burst of decrypt-time writes
+ * flushes once. Never touches the keychain, so it cannot endanger credentials.
+ */
+class VolatileCacheStore {
+  private cache = new Map<string, string>()
+  private loaded = false
+  private dirty = false
+  private writing = false
+
+  constructor(private readonly filePath: string) {}
+
+  private async ensureLoaded(): Promise<void> {
+    if (this.loaded) {
+      return
+    }
+    this.loaded = true
+    try {
+      const fs = await import('node:fs/promises')
+      const blob = await fs.readFile(this.filePath, 'utf-8')
+      const obj = JSON.parse(blob)
+      for (const [k, v] of Object.entries(obj)) {
+        this.cache.set(k, String(v))
+      }
+    } catch {
+      // No file yet, or corrupt — start empty and overwrite on next flush.
+    }
+  }
+
+  async get(key: string): Promise<string | null> {
+    await this.ensureLoaded()
+    return this.cache.get(key) ?? null
+  }
+
+  async set(key: string, value: any): Promise<void> {
+    await this.ensureLoaded()
+    if (value === undefined || value === null) {
+      return
+    }
+    this.cache.set(
+      key,
+      typeof value === 'string' ? value : JSON.stringify(value),
+    )
+    this.scheduleFlush()
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.ensureLoaded()
+    if (this.cache.delete(key)) {
+      this.scheduleFlush()
+    }
+  }
+
+  async clear(): Promise<void> {
+    this.cache.clear()
+    this.loaded = true
+    try {
+      const fs = await import('node:fs/promises')
+      await fs.unlink(this.filePath)
+    } catch {
+      // Already gone — fine.
+    }
+  }
+
+  /** Coalesce bursts of writes into a single atomic flush cycle. */
+  private scheduleFlush(): void {
+    this.dirty = true
+    if (this.writing) {
+      return
+    }
+    this.writing = true
+    void (async () => {
+      const fs = await import('node:fs/promises')
+      while (this.dirty) {
+        this.dirty = false
+        try {
+          const dir = this.filePath.substring(0, this.filePath.lastIndexOf('/'))
+          if (dir) {
+            await fs.mkdir(dir, { recursive: true })
+          }
+          const tmp = `${this.filePath}.tmp`
+          await fs.writeFile(
+            tmp,
+            JSON.stringify(Object.fromEntries(this.cache)),
+          )
+          await fs.rename(tmp, this.filePath)
+        } catch {
+          // Best-effort cache persistence; in-memory copy still serves reads.
+        }
+      }
+      this.writing = false
+    })()
+  }
+}
+
+/**
  * Stores all credentials for a namespace as a single JSON blob in one keychain
- * entry (macOS) or one JSON file (other platforms).
+ * entry (macOS) or one JSON file (other platforms). Volatile E2EE cache keys
+ * (see isVolatileKey) are transparently routed to a separate file store so
+ * decrypt-time writes never touch the durable credential entry.
  *
  * @param namespace - Clean identifier like 'line'.
  * @param fallbackFilePath - File path used on non-macOS platforms.
@@ -111,6 +225,7 @@ export class CredentialStore {
   private readonly keychainAccount: string
   private lastPersistedBlob: string | null
   private persistQueue: Promise<void>
+  private readonly volatile: VolatileCacheStore
 
   constructor(namespace: string, fallbackFilePath: string) {
     this.filePath = fallbackFilePath
@@ -123,6 +238,14 @@ export class CredentialStore {
     this.keychainAccount = namespace
     this.lastPersistedBlob = null
     this.persistQueue = Promise.resolve()
+    // Volatile E2EE cache lives beside the fallback credential file, never in
+    // the keychain. Same directory as fallbackFilePath so it follows whatever
+    // data location the host configured.
+    const slash = fallbackFilePath.lastIndexOf('/')
+    const dir = slash >= 0 ? fallbackFilePath.slice(0, slash) : ''
+    this.volatile = new VolatileCacheStore(
+      dir ? `${dir}/line-e2ee-cache.json` : 'line-e2ee-cache.json',
+    )
   }
 
   /**
@@ -228,6 +351,9 @@ export class CredentialStore {
    * @returns Stored value or null.
    */
   async get(key: string) {
+    if (isVolatileKey(key)) {
+      return this.volatile.get(key)
+    }
     await this.load({ force: true })
     return this.cache.get(key) ?? null
   }
@@ -246,6 +372,9 @@ export class CredentialStore {
    * @param value - Value to store.
    */
   async set(key: string, value: any) {
+    if (isVolatileKey(key)) {
+      return this.volatile.set(key, value)
+    }
     if (value === undefined || value === null) {
       throw new Error(
         `CredentialStore.set('${key}'): refusing to persist ${value === undefined ? 'undefined' : 'null'} — this would silently drop the key from the stored blob`,
@@ -264,6 +393,9 @@ export class CredentialStore {
    * @param key - Credential key to delete.
    */
   async delete(key: string) {
+    if (isVolatileKey(key)) {
+      return this.volatile.delete(key)
+    }
     await this.save((persisted) => {
       delete persisted[key]
       return persisted
@@ -275,6 +407,7 @@ export class CredentialStore {
     this.cache.clear()
     this.loaded = false
     this.lastPersistedBlob = null
+    await this.volatile.clear()
 
     if (this.secureStorageEnabled && this.keychainService) {
       await this.keychainService.deleteCredential(this.keychainAccount)

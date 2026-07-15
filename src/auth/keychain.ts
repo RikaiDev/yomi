@@ -193,6 +193,10 @@ class KeychainCommands {
 export class KeychainService {
   private commands: KeychainCommands
   private legacyCommands: KeychainCommands
+  // Accounts whose canonical entry this process has already seen (read or
+  // written). Once seen, a later read miss is treated as transient and must
+  // NOT fall back to the legacy namespace — see getCredential.
+  private canonicalSeen = new Set<string>()
 
   constructor() {
     this.commands = new KeychainCommands(SERVICE_NAME)
@@ -210,34 +214,26 @@ export class KeychainService {
     account: string,
     password: string,
   ): Promise<CredentialResult> {
-    try {
-      try {
-        const { execSync } = await import('node:child_process')
-        execSync(
-          `security delete-generic-password -s "${SERVICE_NAME}" -a "${account}" 2>/dev/null`,
-          { encoding: 'utf8' },
-        )
-      } catch {
-        // Ignore if entry doesn't exist
-      }
-
-      return await this.commands.set(account, password)
-    } catch (error) {
-      authLog.error('keychain.store.exception', {
-        account,
-        error: (error as Error).message,
-      })
-      return { success: false, error: (error as Error).message }
+    // `add-generic-password -U` updates the item in place when it exists, so
+    // this is a single atomic keychain op. Do NOT delete-then-add: that leaves
+    // a window where the entry is absent, during which a concurrent read falls
+    // through to the legacy namespace and resurrects stale credentials over the
+    // current ones (the root of the "session silently logged out" bug).
+    const result = await this.commands.set(account, password)
+    if (result.success) {
+      this.canonicalSeen.add(account)
     }
+    return result
   }
 
   /**
    * Retrieves a credential from Keychain.
    *
-   * Tries the canonical namespace first. On a miss, falls back to the
-   * legacy namespace; a legacy hit is copied into the canonical namespace
-   * as a one-time migration write and then returned. The legacy entry
-   * itself is left untouched.
+   * Tries the canonical namespace first. Only if this process has NEVER seen
+   * the canonical entry does it fall back to the legacy namespace and migrate a
+   * hit forward (one-time). Once the canonical entry has been seen, a later
+   * miss is transient (item mid-update) and returns the miss as-is rather than
+   * resurrecting a stale legacy copy on top of the live session.
    *
    * @param account - Account name.
    * @returns Promise resolving to credential result.
@@ -245,12 +241,17 @@ export class KeychainService {
   async getCredential(account: string): Promise<CredentialResult> {
     const primary = await this.commands.get(account)
     if (primary.success) {
+      this.canonicalSeen.add(account)
+      return primary
+    }
+    if (this.canonicalSeen.has(account)) {
       return primary
     }
 
     const legacy = await this.legacyCommands.get(account)
     if (legacy.success && legacy.password) {
       await this.commands.set(account, legacy.password)
+      this.canonicalSeen.add(account)
       authLog.info('keychain.migrated_from_legacy', { account })
     }
     return legacy
