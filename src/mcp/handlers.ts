@@ -63,7 +63,8 @@ export function toolError(message: string) {
 }
 
 /**
- * Handle `list_conversations`.
+ * Handle `list_conversations` — list LINE conversations (chats, groups, rooms)
+ * with unread counts, a last-message preview, and a resolved display name.
  *
  * @param service - Resumed LineProtocolService.
  * @param args - Tool arguments.
@@ -511,7 +512,58 @@ export async function handleSendSticker(
 }
 
 /**
- * Handle `get_chat_messages`.
+ * Handle `list_stickers` — the sticker packages the account owns (and can
+ * therefore send). Read-only.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleListStickers(
+  service: LineProtocolService,
+  args: { language?: string },
+) {
+  const packages = await service.listStickerPackages(args?.language)
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ total: packages.length, packages }, null, 2),
+      },
+    ],
+  }
+}
+
+/**
+ * Handle `search_stickers` — search the account's OWNED sticker packages by
+ * title and expand matches into individual sticker ids ready for send_sticker.
+ * Read-only.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSearchStickers(
+  service: LineProtocolService,
+  args: { query: string; language?: string; limit?: number },
+) {
+  if (!args?.query) {
+    return toolError('query is required.')
+  }
+  const result = await service.searchStickerPackages(
+    args.query,
+    args.language,
+    args.limit,
+  )
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+  }
+}
+
+/**
+ * Handle `get_chat_messages` — fetch messages from one conversation,
+ * E2EE-decrypted when key material is available, each with a resolved sender
+ * name; pages older history with `before`.
  *
  * Without `before`, returns the most recent `count` messages (unchanged
  * behavior). With `before`, fetches exactly one page of messages older
@@ -592,7 +644,8 @@ export async function handleGetChatMessages(
 }
 
 /**
- * Handle `get_message_image`.
+ * Handle `get_message_image` — download and decrypt one image message (legacy
+ * alias of get_message_media restricted to images).
  *
  * @param service - Resumed LineProtocolService.
  * @param args - Tool arguments.

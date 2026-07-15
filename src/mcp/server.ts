@@ -1,13 +1,13 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes twenty-two tools:
+ * On startup resumes any persisted LINE session. Exposes twenty-four tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
  * send_message, send_image, send_file, send_contact, send_sticker,
- * find_contact, list_contacts, get_group_members, collect_messages,
- * search_messages, exclude_chats, include_chats, list_excluded_chats,
- * get_scope_policy.
+ * list_stickers, search_stickers, find_contact, list_contacts,
+ * get_group_members, collect_messages, search_messages, exclude_chats,
+ * include_chats, list_excluded_chats, get_scope_policy.
  *
  * find_contact/list_contacts/get_group_members expose LINE's raw
  * people/membership data only — no affinity scoring, no interaction-
@@ -82,7 +82,9 @@ import {
   handleGetUnreadDigest,
   handleListContacts,
   handleListConversations,
+  handleListStickers,
   handleMarkRead,
+  handleSearchStickers,
   handleSendContact,
   handleSendFile,
   handleSendImage,
@@ -315,6 +317,20 @@ async function main(): Promise<void> {
               stickerId: string
               packageId: string
               version?: string
+            },
+          )
+        case 'list_stickers':
+          return await handleListStickers(
+            service,
+            (args ?? {}) as { language?: string },
+          )
+        case 'search_stickers':
+          return await handleSearchStickers(
+            service,
+            (args ?? {}) as {
+              query: string
+              language?: string
+              limit?: number
             },
           )
         case 'find_contact':

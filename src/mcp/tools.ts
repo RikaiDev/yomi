@@ -322,6 +322,47 @@ export const TOOLS = [
   },
   {
     description:
+      "List the sticker packages this LINE account OWNS — the only stickers it can send (LINE rejects sending a non-owned sticker). Returns each package's packageId (STKPKGID), title, and version (STKVER). To actually send, get an individual sticker id via search_stickers, then call send_sticker. Read-only.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        language: {
+          type: 'string',
+          description:
+            "Locale for package titles, e.g. 'en' or 'zh-Hant'. Defaults to 'en'.",
+        },
+      },
+    },
+    name: 'list_stickers',
+  },
+  {
+    description:
+      'Search the account\'s OWNED sticker packages by title and expand each match into its individual sticker ids (STKID), so the result can be passed straight to send_sticker. Use this to turn a request like "send a happy cat sticker" into a concrete (stickerId, packageId, version). Matches are case-insensitive substrings of the package title. Read-only.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'Substring to match against owned package titles (case-insensitive).',
+        },
+        language: {
+          type: 'string',
+          description:
+            "Locale for package titles to match against, e.g. 'en' or 'zh-Hant'. Defaults to 'en'.",
+        },
+        limit: {
+          type: 'number',
+          description:
+            'Max matching packages to expand with sticker ids (default 8).',
+        },
+      },
+      required: ['query'],
+    },
+    name: 'search_stickers',
+  },
+  {
+    description:
       'Send a LINE read receipt (mark a conversation read up to a message) — this is a real, side-effecting action the other party can see. Marks read up to `messageId`, or the latest message when `messageId` is omitted. Use ONLY when the user explicitly wants to mark a chat read; reading messages (get_chat_messages, get_unread_digest) and background capture never mark read. Honest failure if there is no message to mark.',
     inputSchema: {
       type: 'object' as const,

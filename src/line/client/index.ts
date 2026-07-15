@@ -7,11 +7,13 @@
  *   - talk-service/    — TalkService read/write capabilities
  *   - sync-service/    — Polling: sync, longPoll, startPolling
  *   - e2ee-service/    — E2EE transport capabilities
+ *   - shop-service/    — ShopService: owned sticker packages
  *
  * Endpoints:
  *   /AS4    — AuthService
  *   /S4     — TalkService
  *   /SYNC4  — SyncService
+ *   /TSHOP4 — ShopService
  */
 
 import { EventEmitter } from 'node:events'
@@ -22,6 +24,8 @@ import type { ThriftFieldTuple } from '../core/thrift/types.js'
 import { createAuthClient } from './auth-service/client.js'
 import { createE2EEClient } from './e2ee-service/client.js'
 import { parseOperation } from './parsers.js'
+import type { OwnedStickerPackage } from './shop-service/client.js'
+import { createShopClient } from './shop-service/client.js'
 import { createSyncClient } from './sync-service/client.js'
 import { createTalkCommandClient } from './talk-service/command-client.js'
 import { createTalkQueryClient } from './talk-service/query-client.js'
@@ -154,6 +158,10 @@ export class LineClient extends EventEmitter {
     requestId?: string,
   ) => Promise<Buffer>
   public logoutZ!: () => Promise<any>
+  public getOwnedStickerPackages!: (
+    language?: string,
+    country?: string,
+  ) => Promise<OwnedStickerPackage[]>
 
   constructor(authToken, config: any = {}) {
     super()
@@ -176,21 +184,26 @@ export class LineClient extends EventEmitter {
       createTalkCommandClient(this),
       createSyncClient(this),
       createE2EEClient(this),
+      createShopClient(this),
     )
   }
 
   /**
-   * Send a TalkService request to the LINE server.
+   * Send a TCompact Thrift call to an arbitrary LINE service endpoint path.
+   * sendTalk is the /S4 (TalkService) special case; other services (e.g. the
+   * unified shop at /TSHOP4) share the same envelope, auth header, and
+   * token-rotation/exception handling.
    *
-   * @param method - The TalkService method name
-   * @param args - The method arguments as Thrift field tuples
-   * @returns The decoded server response
+   * @param path - Service endpoint path (e.g. /S4, /TSHOP4).
+   * @param method - Thrift method name.
+   * @param args - Method arguments as Thrift field tuples.
+   * @returns The decoded server response.
    */
-  async sendTalk(method: string, args: ThriftFieldTuple[]) {
+  async sendCompact(path: string, method: string, args: ThriftFieldTuple[]) {
     const data = encodeCallMessage(method, this.seq++, args)
     const result = await sendRequest(
       this.host,
-      LINE_APP_CONFIG.talkPath,
+      path,
       data,
       { 'X-Line-Access': this.authToken },
       30000,
@@ -206,17 +219,28 @@ export class LineClient extends EventEmitter {
       const normalized = normalizeTalkException(exc)
       throw new LineRequestError(
         'RequestError',
-        `Request internal failed, ${method}(${LINE_APP_CONFIG.talkPath}) -> ${normalized.message}`,
+        `Request internal failed, ${method}(${path}) -> ${normalized.message}`,
         {
           code: normalized.code,
           rawCode: normalized.rawCode,
           method,
-          path: LINE_APP_CONFIG.talkPath,
+          path,
           exception: exc,
         },
       )
     }
     return result
+  }
+
+  /**
+   * Send a TalkService (/S4) request to the LINE server.
+   *
+   * @param method - The TalkService method name
+   * @param args - The method arguments as Thrift field tuples
+   * @returns The decoded server response
+   */
+  async sendTalk(method: string, args: ThriftFieldTuple[]) {
+    return this.sendCompact(LINE_APP_CONFIG.talkPath, method, args)
   }
 
   /**

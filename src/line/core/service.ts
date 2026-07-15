@@ -66,6 +66,12 @@ export class LineProtocolService extends EventEmitter {
   public resolveName!: (mid: string) => string
   public getContact!: (mid: string) => Promise<any>
   public getGroup!: (groupId: string) => Promise<any>
+  public listStickerPackages!: (language?: string) => Promise<any[]>
+  public searchStickerPackages!: (
+    query: string,
+    language?: string,
+    limit?: number,
+  ) => Promise<{ total: number; packages: any[] }>
   public sendMessage!: (
     to: string,
     text: string,
