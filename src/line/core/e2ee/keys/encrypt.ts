@@ -103,16 +103,15 @@ export async function encryptE2EEMessage(
     receiverKeyId = Number(publicKey.keyId)
     sharedSecret = computeSharedSecret(selfKey.privateKey, publicKey.keyData)
   } else {
-    const groupKey = await getGroupKey(
-      ctx,
-      to,
-      null,
-      selfMid,
-      selfKey.keyId,
-      true,
-    )
+    // Never mint: resolve an EXISTING group key or fail. Registering a new
+    // group key is an account-visible write that rotates the group's shared
+    // secret for every member and strands all history under the previous
+    // secret — Yomi must never do that (see getGroupKey).
+    const groupKey = await getGroupKey(ctx, to, null, selfMid, selfKey.keyId)
     if (!groupKey) {
-      throw new Error(`Failed to resolve LINE group E2EE key for ${to}`)
+      throw new Error(
+        `No existing LINE group E2EE key for ${to}; Yomi will not register one (that would rotate the group key for every member). Let the official LINE client establish the group's E2EE key first.`,
+      )
     }
     receiverKeyId = Number(groupKey.keyId)
     sharedSecret = computeSharedSecret(groupKey.privateKey, selfKey.publicKey)

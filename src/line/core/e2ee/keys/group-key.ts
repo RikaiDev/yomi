@@ -1,11 +1,9 @@
 import { Buffer } from 'node:buffer'
-import crypto from 'node:crypto'
 import {
   aesDecrypt,
   computeSharedSecret,
   deriveKeyAndIV,
 } from '../crypto/crypto-primitives.js'
-import { normalizeGroupPublicKeys } from './key-payload.js'
 import type { GroupKey, KeyManagerContext } from './key-types.js'
 import { getPeerPublicKey } from './peer-key.js'
 
@@ -237,16 +235,19 @@ async function deriveAndCacheGroupKey(
 /**
  * Resolve and cache the group shared key for a chat.
  *
+ * Yomi is read/send-only over group keys: it resolves an EXISTING shared key
+ * or returns undefined. It NEVER registers (mints) a group key. Minting is an
+ * account-visible write that rotates the group's shared secret for every
+ * member; every message encrypted under the previous secret — all of it, for
+ * every sender — then fails to decrypt, and members who don't adopt the new
+ * secret are stranded too. Group-key lifecycle belongs to the official LINE
+ * clients / the primary device, never to Yomi.
+ *
  * @param ctx - KeyManager context
  * @param chatMid - Group chat MID
  * @param receiverKeyId - Local receiver key ID
  * @param senderMid - Sender MID
  * @param senderKeyId - Sender key ID
- * @param allowMint - Register a new group shared key when LINE reports none.
- *   Send path only. MUST stay false on the decrypt/read path: minting a group
- *   key is an account-visible write that binds the group to whatever self key
- *   this device holds, which can strand the user's other devices — reading
- *   must never mutate account key state.
  * @returns Group key or undefined when unavailable
  */
 export async function getGroupKey(
@@ -255,7 +256,6 @@ export async function getGroupKey(
   receiverKeyId: string | null,
   senderMid: string | null,
   senderKeyId: string | null,
-  allowMint = false,
 ): Promise<GroupKey | undefined> {
   if (!receiverKeyId) {
     const cachedLatest = await lookupCachedGroupKey(ctx, chatMid, null)
@@ -306,14 +306,13 @@ export async function getGroupKey(
       resolutionSource = 'register_fallback'
     }
     if (!shared) {
-      if (allowMint) {
-        shared = await tryRegisterE2EEGroupKey(ctx, chatMid)
-      } else {
-        ctx.logGroupKeyEvent('e2ee.group_key.mint_suppressed', {
-          chat: chatMid,
-          receiver_key_id: receiverKeyId,
-        })
-      }
+      // Yomi never mints. LINE has no readable group key for this
+      // (receiverKeyId, chat) — fail cleanly rather than register one and
+      // rotate the group's secret out from under every other member.
+      ctx.logGroupKeyEvent('e2ee.group_key.mint_suppressed', {
+        chat: chatMid,
+        receiver_key_id: receiverKeyId,
+      })
     }
     if (!shared) {
       ctx.logGroupKeyEvent('e2ee.group_key.unavailable', {
@@ -344,72 +343,6 @@ export async function getGroupKey(
   } finally {
     ctx.groupKeyFetches.delete(fetchKey)
   }
-}
-
-/**
- * Try to create and register a group shared key when LINE has not created one
- * yet for the current chat. This mirrors linejs tryRegisterE2EEGroupKey():
- * fetch the latest member public keys, generate one random 32-byte group key,
- * encrypt it for each member using our current self key, then register the
- * resulting bundle back to LINE.
- *
- * @param ctx - KeyManager context
- * @param chatMid - Group chat MID
- * @returns Newly registered group-shared-key payload or undefined
- */
-export async function tryRegisterE2EEGroupKey(
-  ctx: KeyManagerContext,
-  chatMid: string,
-): Promise<any> {
-  const client = ctx.getClient()
-  const selfMid = ctx.getProfileMid()
-  if (!client || !selfMid) {
-    return undefined
-  }
-
-  const keyMap = normalizeGroupPublicKeys(
-    await client.getLastE2EEPublicKeys?.(chatMid),
-  )
-  const selfPublicKey = keyMap.get(selfMid)
-  if (!selfPublicKey) {
-    ctx.raiseWarning('missing_self_key', { profileMid: selfMid, chatMid })
-    return undefined
-  }
-  const selfKey =
-    ctx.getSelfKeyById(selfPublicKey.keyId) || ctx.getSelfKeyByMid(selfMid)
-  if (!selfKey) {
-    ctx.raiseWarning('missing_self_key', {
-      receiverKeyId: selfPublicKey.keyId,
-      chatMid,
-    })
-    return undefined
-  }
-
-  const groupPrivateKey = crypto.randomBytes(32)
-  const members: string[] = []
-  const keyIds: number[] = []
-  const encryptedSharedKeys: Buffer[] = []
-
-  for (const [memberMid, memberKey] of keyMap.entries()) {
-    const aesSecret = computeSharedSecret(selfKey.privateKey, memberKey.keyData)
-    const { key, iv } = deriveKeyAndIV(aesSecret)
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
-    const encryptedSharedKey = Buffer.concat([
-      cipher.update(groupPrivateKey),
-      cipher.final(),
-    ])
-    members.push(memberMid)
-    keyIds.push(Number(memberKey.keyId))
-    encryptedSharedKeys.push(encryptedSharedKey)
-  }
-
-  return client.registerE2EEGroupKey?.(
-    1,
-    chatMid,
-    members,
-    keyIds,
-    encryptedSharedKeys,
-  )
 }
 
 /**
