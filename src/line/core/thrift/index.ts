@@ -15,6 +15,7 @@ export {
   i64Field,
   listField,
   mapField,
+  setField,
   stringField,
   structField,
 } from './fields/builders.js'

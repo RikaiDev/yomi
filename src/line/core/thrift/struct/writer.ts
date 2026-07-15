@@ -20,6 +20,7 @@ const COMPACT_TYPE_BY_THRIFT_TYPE: Record<number, number> = {
   11: 8,
   12: 12,
   13: 11,
+  14: 10,
   15: 9,
 }
 
@@ -177,7 +178,9 @@ function writeFieldValue(
     writeMap(parts, value as ThriftMapValue)
     return
   }
-  if (type === 15) {
+  if (type === 15 || type === 14) {
+    // SET (14) is wire-identical to LIST (15) in TCompact — same header and
+    // element payload; only the field-header type nibble (set above) differs.
     writeList(parts, value as ThriftListValue)
   }
 }

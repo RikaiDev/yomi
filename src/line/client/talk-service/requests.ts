@@ -5,6 +5,7 @@ import {
   i32Field,
   listField,
   mapField,
+  setField,
   stringField,
   structField,
 } from '../../core/thrift/index.js'
@@ -232,5 +233,104 @@ export function buildSendChatCheckedRequest(
     stringField(2, chatMid),
     stringField(3, lastMessageId),
     byteField(4, sessionId),
+  ]
+}
+
+/**
+ * Build the updateChat request fields to rename a group/chat.
+ *
+ * LINE's modern unified chat API updates a Chat struct and names which
+ * attribute changed via `updatedAttribute` (NAME=1). The whole request is a
+ * single struct arg at field 1: `{ seq, chat{ type, chatMid, name }, attr }`.
+ *
+ * @param chatMid - Chat/group MID to rename.
+ * @param name - New chat name.
+ * @returns Thrift request fields.
+ */
+export function buildUpdateChatNameRequest(chatMid, name) {
+  return [
+    structField(1, [
+      i32Field(1, 0),
+      structField(2, [
+        i32Field(1, 1),
+        stringField(2, chatMid),
+        stringField(6, name),
+      ]),
+      i32Field(3, 1),
+    ]),
+  ]
+}
+
+/**
+ * Build the inviteIntoChat request fields.
+ *
+ * Single struct arg at field 1: `{ seq, to, targetMids }`.
+ *
+ * @param chatMid - Chat/group MID to invite into.
+ * @param mids - MIDs to invite.
+ * @returns Thrift request fields.
+ */
+export function buildInviteIntoChatRequest(chatMid, mids) {
+  return [
+    structField(1, [
+      i32Field(1, 0),
+      stringField(2, chatMid),
+      setField(3, 11, mids),
+    ]),
+  ]
+}
+
+/**
+ * Build the deleteOtherFromChat request fields (kick members).
+ *
+ * Single struct arg at field 1: `{ seq, to, targetMids }`.
+ *
+ * @param chatMid - Chat/group MID to remove members from.
+ * @param mids - MIDs to remove.
+ * @returns Thrift request fields.
+ */
+export function buildDeleteOtherFromChatRequest(chatMid, mids) {
+  return [
+    structField(1, [
+      i32Field(1, 0),
+      stringField(2, chatMid),
+      setField(3, 11, mids),
+    ]),
+  ]
+}
+
+/**
+ * Build the deleteSelfFromChat request fields (leave a chat/group).
+ *
+ * Single struct arg at field 1: `{ seq, to }`.
+ *
+ * @param chatMid - Chat/group MID to leave.
+ * @returns Thrift request fields.
+ */
+export function buildDeleteSelfFromChatRequest(chatMid) {
+  return [structField(1, [i32Field(1, 0), stringField(2, chatMid)])]
+}
+
+/**
+ * Build the createChat request fields (create a new group/room).
+ *
+ * Single struct arg at field 1: CreateChatRequest
+ * `{ reqSeq, type, name, targetUserMids }`. `type` is the LINE chat type —
+ * 0 = GROUP (invitees must accept before joining), 1 = ROOM (members are added
+ * directly). targetUserMids is a set on the wire; a list encodes identically.
+ *
+ * @param name - Chat name.
+ * @param mids - Initial member MIDs.
+ * @param chatType - LINE chat type (0 = group, 1 = room).
+ * @returns Thrift request fields.
+ */
+export function buildCreateChatRequest(name, mids, chatType = 1) {
+  return [
+    structField(1, [
+      i32Field(1, 0),
+      i32Field(2, chatType),
+      stringField(3, name),
+      setField(4, 11, mids),
+    ]),
   ]
 }

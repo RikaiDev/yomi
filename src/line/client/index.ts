@@ -162,6 +162,18 @@ export class LineClient extends EventEmitter {
     language?: string,
     country?: string,
   ) => Promise<OwnedStickerPackage[]>
+  public updateChatName!: (chatMid: string, name: string) => Promise<boolean>
+  public inviteIntoChat!: (chatMid: string, mids: string[]) => Promise<boolean>
+  public deleteOtherFromChat!: (
+    chatMid: string,
+    mids: string[],
+  ) => Promise<boolean>
+  public deleteSelfFromChat!: (chatMid: string) => Promise<boolean>
+  public createChat!: (
+    name: string,
+    mids: string[],
+    chatType?: number,
+  ) => Promise<any>
 
   constructor(authToken, config: any = {}) {
     super()

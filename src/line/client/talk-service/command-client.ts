@@ -7,8 +7,13 @@
 import { Buffer } from 'node:buffer'
 import { parseMessage } from '../parsers.js'
 import {
+  buildCreateChatRequest,
+  buildDeleteOtherFromChatRequest,
+  buildDeleteSelfFromChatRequest,
+  buildInviteIntoChatRequest,
   buildSendChatCheckedRequest,
   buildSendMessageRequest,
+  buildUpdateChatNameRequest,
   normalizeSendMessageOptions,
 } from './requests.js'
 
@@ -74,6 +79,104 @@ export function createTalkCommandClient(runtime) {
         throw new Error(`sendChatChecked failed: ${result.error}`)
       }
       return true
+    },
+
+    /**
+     * Rename a group/chat via TalkService updateChat. Side effect visible to
+     * every member. Throws on LINE error.
+     *
+     * @param chatMid - Group/chat MID to rename.
+     * @param name - New name.
+     * @returns True when the rename was accepted.
+     */
+    async updateChatName(chatMid, name) {
+      const result = await runtime.sendTalk(
+        'updateChat',
+        buildUpdateChatNameRequest(chatMid, name),
+      )
+      if (result.error) {
+        throw new Error(`updateChat failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Invite members into a group/chat via TalkService inviteIntoChat. The
+     * invitees must accept before joining a group. Throws on LINE error.
+     *
+     * @param chatMid - Group/chat MID to invite into.
+     * @param mids - MIDs to invite.
+     * @returns True when the invitation was accepted.
+     */
+    async inviteIntoChat(chatMid, mids) {
+      const result = await runtime.sendTalk(
+        'inviteIntoChat',
+        buildInviteIntoChatRequest(chatMid, mids),
+      )
+      if (result.error) {
+        throw new Error(`inviteIntoChat failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Remove (kick) members from a group/chat via TalkService
+     * deleteOtherFromChat. Side effect visible to every member; the removed
+     * member loses access. Throws on LINE error.
+     *
+     * @param chatMid - Group/chat MID to remove members from.
+     * @param mids - MIDs to remove.
+     * @returns True when the removal was accepted.
+     */
+    async deleteOtherFromChat(chatMid, mids) {
+      const result = await runtime.sendTalk(
+        'deleteOtherFromChat',
+        buildDeleteOtherFromChatRequest(chatMid, mids),
+      )
+      if (result.error) {
+        throw new Error(`deleteOtherFromChat failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Leave a group/chat via TalkService deleteSelfFromChat — the authenticated
+     * account itself exits. Throws on LINE error.
+     *
+     * @param chatMid - Group/chat MID to leave.
+     * @returns True when the departure was accepted.
+     */
+    async deleteSelfFromChat(chatMid) {
+      const result = await runtime.sendTalk(
+        'deleteSelfFromChat',
+        buildDeleteSelfFromChatRequest(chatMid),
+      )
+      if (result.error) {
+        throw new Error(`deleteSelfFromChat failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Create a new group/room via TalkService createChat with an initial member
+     * set. Does NOT mint or register any E2EE group key (key material is
+     * established lazily on first E2EE send/receive) — see the never-mint fix.
+     * Throws on LINE error.
+     *
+     * @param name - New chat name.
+     * @param mids - Initial member MIDs.
+     * @param chatType - LINE chat type (0 = group, 1 = room). Default 1.
+     * @returns The created Chat struct.
+     */
+    async createChat(name, mids, chatType = 1) {
+      const result = await runtime.sendTalk(
+        'createChat',
+        buildCreateChatRequest(name, mids, chatType),
+      )
+      if (result.error) {
+        throw new Error(`createChat failed: ${result.error}`)
+      }
+      return result.fields?.[0] ?? null
     },
   }
 }

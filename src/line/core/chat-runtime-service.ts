@@ -307,5 +307,80 @@ export function createChatRuntimeService(service: any) {
       await service.client.sendChatChecked(chatId, lastMessageId, 0)
       return { marked: true, chatId, lastMessageId }
     },
+
+    /**
+     * Rename a group/chat (TalkService updateChat). Side effect visible to all
+     * members.
+     *
+     * @param chatId - Group/chat MID.
+     * @param name - New name.
+     * @returns `{ renamed, chatId, name }`.
+     */
+    async renameGroup(chatId: string, name: string): Promise<any> {
+      await service.client.updateChatName(chatId, name)
+      return { renamed: true, chatId, name }
+    },
+
+    /**
+     * Invite members into a group/chat (TalkService inviteIntoChat).
+     *
+     * @param chatId - Group/chat MID.
+     * @param mids - Member MIDs to invite.
+     * @returns `{ invited, chatId, mids }`.
+     */
+    async inviteToGroup(chatId: string, mids: string[]): Promise<any> {
+      await service.client.inviteIntoChat(chatId, mids)
+      return { invited: true, chatId, mids }
+    },
+
+    /**
+     * Remove (kick) members from a group/chat (TalkService
+     * deleteOtherFromChat).
+     *
+     * @param chatId - Group/chat MID.
+     * @param mids - Member MIDs to remove.
+     * @returns `{ removed, chatId, mids }`.
+     */
+    async kickFromGroup(chatId: string, mids: string[]): Promise<any> {
+      await service.client.deleteOtherFromChat(chatId, mids)
+      return { removed: true, chatId, mids }
+    },
+
+    /**
+     * Leave a group/chat — the authenticated account itself exits (TalkService
+     * deleteSelfFromChat).
+     *
+     * @param chatId - Group/chat MID to leave.
+     * @returns `{ left, chatId }`.
+     */
+    async leaveGroup(chatId: string): Promise<any> {
+      await service.client.deleteSelfFromChat(chatId)
+      return { left: true, chatId }
+    },
+
+    /**
+     * Create a new group/room with an initial member set (TalkService
+     * createChat). Does not mint any E2EE group key.
+     *
+     * @param name - New chat name.
+     * @param mids - Initial member MIDs.
+     * @param chatType - LINE chat type (0 = group, 1 = room). Default 1.
+     * @returns `{ created, chatId, name, chat }`.
+     */
+    async createGroup(
+      name: string,
+      mids: string[],
+      chatType = 1,
+    ): Promise<any> {
+      const chat = await service.client.createChat(name, mids, chatType)
+      // The created Chat struct carries its MID at thrift field 2 (see
+      // mapChatStruct in chat-query.ts); field 6 is the name.
+      return {
+        created: true,
+        chatId: chat?.[2] ?? chat?.chatMid ?? null,
+        name,
+        chat,
+      }
+    },
   }
 }

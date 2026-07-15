@@ -145,6 +145,15 @@ export class LineProtocolService extends EventEmitter {
     lastMessageId?: string
     reason?: string
   }>
+  public renameGroup!: (chatId: string, name: string) => Promise<any>
+  public inviteToGroup!: (chatId: string, mids: string[]) => Promise<any>
+  public kickFromGroup!: (chatId: string, mids: string[]) => Promise<any>
+  public leaveGroup!: (chatId: string) => Promise<any>
+  public createGroup!: (
+    name: string,
+    mids: string[],
+    chatType?: number,
+  ) => Promise<any>
 
   constructor(options: any = {}) {
     super()

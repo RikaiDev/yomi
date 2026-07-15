@@ -1,12 +1,13 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes twenty-eight tools:
+ * On startup resumes any persisted LINE session. Exposes thirty-three tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
  * send_message, send_image, send_file, send_audio, send_video,
  * send_location, send_contact, send_sticker, list_stickers, search_stickers,
  * preview_sticker, find_contact, list_contacts, get_group_members,
+ * rename_group, invite_member, kick_member, leave_group, create_group,
  * collect_messages, search_messages, exclude_chats, include_chats,
  * list_excluded_chats, get_scope_policy.
  *
@@ -75,17 +76,22 @@ import { getDefaultEmbedder } from '../search/default-embedder.js'
 import { createCliLogger } from '../util/log.js'
 import { YOMI_VERSION } from '../version.js'
 import {
+  handleCreateGroup,
   handleFindContact,
   handleGetChatMessages,
   handleGetGroupMembers,
   handleGetMessageImage,
   handleGetMessageMedia,
   handleGetUnreadDigest,
+  handleInviteMember,
+  handleKickMember,
+  handleLeaveGroup,
   handleListContacts,
   handleListConversations,
   handleListStickers,
   handleMarkRead,
   handlePreviewSticker,
+  handleRenameGroup,
   handleSearchStickers,
   handleSendAudio,
   handleSendContact,
@@ -391,6 +397,35 @@ async function main(): Promise<void> {
           return await handleGetGroupMembers(
             service,
             (args ?? {}) as { chatId: string },
+          )
+        case 'rename_group':
+          return await handleRenameGroup(
+            service,
+            (args ?? {}) as { chatId: string; name: string },
+          )
+        case 'invite_member':
+          return await handleInviteMember(
+            service,
+            (args ?? {}) as { chatId: string; mids: string[] },
+          )
+        case 'kick_member':
+          return await handleKickMember(
+            service,
+            (args ?? {}) as { chatId: string; mids: string[] },
+          )
+        case 'leave_group':
+          return await handleLeaveGroup(
+            service,
+            (args ?? {}) as { chatId: string },
+          )
+        case 'create_group':
+          return await handleCreateGroup(
+            service,
+            (args ?? {}) as {
+              name: string
+              mids: string[]
+              chatType?: number
+            },
           )
         case 'collect_messages':
           return await handleCollectMessages(

@@ -152,3 +152,25 @@ export function listField(
 ): ThriftFieldTuple {
   return field(15, fieldId, [elementType, items])
 }
+
+/**
+ * Build a SET field tuple.
+ *
+ * A thrift SET (type 14) is wire-identical to a LIST in TCompact — same
+ * element-type/count header and element payload — only the field header's
+ * type nibble differs. LINE distinguishes them: e.g. inviteIntoChat /
+ * deleteOtherFromChat / createChat read `targetUserMids` as a SET and see an
+ * empty collection if it arrives as a LIST.
+ *
+ * @param fieldId - Thrift field ID.
+ * @param elementType - Element thrift type.
+ * @param items - Set items.
+ * @returns Thrift field tuple.
+ */
+export function setField(
+  fieldId: number,
+  elementType: ThriftType,
+  items: ThriftListItems,
+): ThriftFieldTuple {
+  return field(14, fieldId, [elementType, items])
+}

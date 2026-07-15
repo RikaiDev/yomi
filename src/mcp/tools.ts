@@ -554,6 +554,103 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY renames a real LINE group/chat right now (TalkService updateChat). The new name is visible to every member. Works on groups/rooms (chatId starting with `c`/`r`). Exactly one rename per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE group/room MID to rename, as returned by list_conversations.',
+        },
+        name: { type: 'string', description: 'New group name.' },
+      },
+      required: ['chatId', 'name'],
+    },
+    name: 'rename_group',
+  },
+  {
+    description:
+      'REALLY invites members into a real LINE group right now (TalkService inviteIntoChat). For a group, invitees must accept before they join. Provide `mids` (the people to invite, e.g. from find_contact or get_group_members). Exactly one call per invite batch.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE group/room MID to invite into, as returned by list_conversations.',
+        },
+        mids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'MIDs of the people to invite.',
+        },
+      },
+      required: ['chatId', 'mids'],
+    },
+    name: 'invite_member',
+  },
+  {
+    description:
+      'REALLY removes (kicks) members from a real LINE group right now (TalkService deleteOtherFromChat). The removed members lose access immediately and this is visible to every member; re-adding requires a fresh invite. Provide `mids` (the members to remove, e.g. from get_group_members). Exactly one call per removal batch.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE group/room MID to remove members from, as returned by list_conversations.',
+        },
+        mids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'MIDs of the members to remove.',
+        },
+      },
+      required: ['chatId', 'mids'],
+    },
+    name: 'kick_member',
+  },
+  {
+    description:
+      'REALLY makes THIS LINE account leave a real group right now (TalkService deleteSelfFromChat). After leaving, the account loses access to the group and its history. Exactly one leave per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE group/room MID to leave, as returned by list_conversations.',
+        },
+      },
+      required: ['chatId'],
+    },
+    name: 'leave_group',
+  },
+  {
+    description:
+      'REALLY creates a new LINE group/room right now with the given members (TalkService createChat). `chatType` 0 = group (invitees must accept before joining), 1 = room (members are added directly); defaults to 1. Provide `name` and `mids` (initial members, e.g. from find_contact). Does not send any message. Exactly one create per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Name for the new group.' },
+        mids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'MIDs of the initial members to add.',
+        },
+        chatType: {
+          type: 'number',
+          description:
+            'LINE chat type: 0 = group (invite-based), 1 = room (direct add). Default 1.',
+        },
+      },
+      required: ['name', 'mids'],
+    },
+    name: 'create_group',
+  },
+  {
+    description:
       'Explicitly collect recent messages from LINE conversations into Yomi\'s local cross-conversation search index, so search_messages has something to query. LINE has no native "search all my chats" primitive — this is how Yomi builds one locally. Fetches up to `perChat` recent messages per chat (default 100) for the given `chatIds`, or for all conversations when `chatIds` is omitted. Also batch-embeds each chat\'s messages (best-effort, local ONNX model) so search_messages can rank by meaning, not just keywords, and before returning sweeps the whole index to embed any messages still missing a vector — so re-running this repairs a partially-embedded index (legacy keyword-only rows, or a run where the model failed to load) without re-fetching from LINE. This tool is the explicit, manual path: one call = one bulk fetch, no internal loop or retry. It is NOT the only writer of the index, though — Yomi also runs a background capture loop (a startup catch-up plus a live SYNC4 poll that indexes incoming messages as they arrive, silently and denylist-gated), so the index generally stays current on its own; call this only to force a reconcile or backfill a specific set of chats. Messages without decryptable/plaintext text are skipped, not fabricated.',
     inputSchema: {
       type: 'object' as const,
