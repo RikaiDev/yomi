@@ -92,6 +92,12 @@ export class LineProtocolService extends EventEmitter {
     fileBytes: Buffer,
     fileName: string,
   ) => Promise<any>
+  public sendAudio!: (
+    to: string,
+    audioBytes: Buffer,
+    fileName: string | null,
+    durationMs?: number,
+  ) => Promise<any>
   public sendContact!: (
     to: string,
     contactMid: string,

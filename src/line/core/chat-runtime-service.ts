@@ -105,6 +105,27 @@ export function createChatRuntimeService(service: any) {
     },
 
     /**
+     * Send one E2EE audio message through the shared media-send pipeline.
+     *
+     * @param to - Recipient chat MID.
+     * @param audioBytes - Raw (plaintext) audio bytes.
+     * @param fileName - Original filename (for the OBS upload name).
+     * @param durationMs - Audio duration in ms, when known.
+     * @returns `{ sent, messageId, oid }` describing the delivered audio.
+     */
+    async sendAudio(
+      to: string,
+      audioBytes: Buffer,
+      fileName: string | null,
+      durationMs?: number,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendAudio(to, audioBytes, fileName, durationMs)
+    },
+
+    /**
      * Share a LINE contact card (contentType CONTACT) — not media.
      *
      * @param to - Recipient chat MID.

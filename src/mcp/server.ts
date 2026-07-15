@@ -1,11 +1,11 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes twenty-four tools:
+ * On startup resumes any persisted LINE session. Exposes twenty-five tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
- * send_message, send_image, send_file, send_contact, send_sticker,
- * list_stickers, search_stickers, find_contact, list_contacts,
+ * send_message, send_image, send_file, send_audio, send_contact,
+ * send_sticker, list_stickers, search_stickers, find_contact, list_contacts,
  * get_group_members, collect_messages, search_messages, exclude_chats,
  * include_chats, list_excluded_chats, get_scope_policy.
  *
@@ -85,6 +85,7 @@ import {
   handleListStickers,
   handleMarkRead,
   handleSearchStickers,
+  handleSendAudio,
   handleSendContact,
   handleSendFile,
   handleSendImage,
@@ -298,6 +299,17 @@ async function main(): Promise<void> {
               filePath?: string
               fileBase64?: string
               fileName?: string
+            },
+          )
+        case 'send_audio':
+          return await handleSendAudio(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              filePath?: string
+              audioBase64?: string
+              fileName?: string
+              durationMs?: number
             },
           )
         case 'send_contact':

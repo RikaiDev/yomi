@@ -5,9 +5,10 @@ import { CONTENT_TYPE } from './constants.js'
 import { encryptLineMediaBytes } from './media-encrypt.js'
 import { i32Field } from './thrift/fields/builders.js'
 
-/** LINE OBS service namespace per media kind (image vs. file attachment). */
+/** LINE OBS service namespace per media kind (image / file / audio). */
 const OBS_SID_IMAGE = 'emi'
 const OBS_SID_FILE = 'emf'
+const OBS_SID_AUDIO = 'ema'
 
 /** Per-kind knobs for the one shared E2EE media send pipeline. */
 interface E2EEMediaSpec {
@@ -279,6 +280,47 @@ export function createMessageCommandService(getClient, e2eeManager) {
         // Files carry FILE_SIZE (plaintext size) and NO MEDIA_CONTENT_INFO —
         // this matches what LINE's own clients emit for a file attachment.
         metadata: () => ({ FILE_SIZE: String(fileBytes.length) }),
+      })
+    },
+
+    /**
+     * Send one E2EE audio message through the same upload-then-send pipeline as
+     * image/file. Audio uses the whole-file AES path (like image), so unlike a
+     * file its name is not sealed. contentMetadata carries FILE_SIZE and, when
+     * known, DURATION (milliseconds) for the recipient's player progress bar.
+     *
+     * @param to - Recipient MID (1:1 `u...`, group `c...`, or room `r...`).
+     * @param audioBytes - Raw (plaintext) audio bytes.
+     * @param fileName - Original filename (used only for the OBS upload name).
+     * @param durationMs - Audio duration in ms; omitted when unknown.
+     * @returns The sent message id and the uploaded object id.
+     */
+    async sendAudio(
+      to,
+      audioBytes: Buffer,
+      fileName: string | null,
+      durationMs?: number,
+    ) {
+      const client = requireLineClient(getClient)
+      const mid = e2eeManager.getProfileMid?.()
+      if (!mid) {
+        throw new Error(
+          'Cannot send audio without an authenticated LINE profile MID',
+        )
+      }
+      return sendE2EEMedia(client, mid, e2eeManager, to, audioBytes, {
+        sid: OBS_SID_AUDIO,
+        contentType: CONTENT_TYPE.AUDIO,
+        uploadName: fileName ?? 'audio.m4a',
+        metadata: () => {
+          const meta: Record<string, string> = {
+            FILE_SIZE: String(audioBytes.length),
+          }
+          if (durationMs != null && Number.isFinite(durationMs)) {
+            meta.DURATION = String(Math.round(durationMs))
+          }
+          return meta
+        },
       })
     },
 

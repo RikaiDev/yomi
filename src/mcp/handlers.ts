@@ -512,6 +512,94 @@ export async function handleSendSticker(
 }
 
 /**
+ * Handle `send_audio` — REALLY sends an E2EE audio message to a real
+ * conversation now, via the same upload-then-send pipeline as send_file.
+ * Bytes come from `filePath` or `audioBase64`; `durationMs` (when known)
+ * drives the recipient's player progress bar. One send per call.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSendAudio(
+  service: LineProtocolService,
+  args: {
+    chatId: string
+    filePath?: string
+    audioBase64?: string
+    fileName?: string
+    durationMs?: number
+  },
+) {
+  if (!args.chatId) {
+    return toolError('chatId is required.')
+  }
+  const hasPath = Boolean(args.filePath)
+  const hasBase64 = Boolean(args.audioBase64)
+  if (hasPath === hasBase64) {
+    return toolError('Provide exactly one of filePath or audioBase64.')
+  }
+
+  let audioBytes: Buffer
+  let fileName: string | null = args.fileName ?? null
+  if (args.filePath) {
+    try {
+      audioBytes = await fs.readFile(args.filePath)
+    } catch (error: any) {
+      return toolError(
+        `Could not read filePath "${args.filePath}": ${error?.message ?? String(error)}`,
+      )
+    }
+    fileName = fileName ?? path.basename(args.filePath)
+  } else {
+    audioBytes = Buffer.from(args.audioBase64 as string, 'base64')
+  }
+
+  if (audioBytes.length === 0) {
+    return toolError('Resolved audio is empty.')
+  }
+
+  const result = await service.sendAudio(
+    args.chatId,
+    audioBytes,
+    fileName,
+    args.durationMs,
+  )
+  log.info('send_audio.sent', {
+    chatId: args.chatId,
+    messageId: result?.messageId,
+    oid: result?.oid,
+  })
+  let read = false
+  try {
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_audio.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
+  }
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            messageId: result?.messageId ?? null,
+            oid: result?.oid ?? null,
+            sent: true,
+            read,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }
+}
+
+/**
  * Handle `list_stickers` — the sticker packages the account owns (and can
  * therefore send). Read-only.
  *

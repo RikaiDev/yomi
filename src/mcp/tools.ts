@@ -268,6 +268,42 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY sends an E2EE audio message to a real LINE conversation right now (upload-then-send, same pipeline as send_file). Provide exactly one of filePath or audioBase64. Optionally pass durationMs (audio length in milliseconds) so the recipient sees the correct player length. Works for 1:1 chats, groups, and rooms. Exactly one send per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE chat/group/room MID to send to, as returned by list_conversations.',
+        },
+        filePath: {
+          type: 'string',
+          description:
+            'Local filesystem path to the audio file. Mutually exclusive with audioBase64.',
+        },
+        audioBase64: {
+          type: 'string',
+          description:
+            'Base64-encoded audio bytes. Mutually exclusive with filePath.',
+        },
+        fileName: {
+          type: 'string',
+          description:
+            'Optional original filename (used for the upload name; defaults to the basename of filePath or audio.m4a).',
+        },
+        durationMs: {
+          type: 'number',
+          description:
+            'Optional audio duration in milliseconds, for the recipient player progress bar.',
+        },
+      },
+      required: ['chatId'],
+    },
+    name: 'send_audio',
+  },
+  {
+    description:
       'REALLY shares a LINE contact card to a real conversation right now — the recipient sees a tappable card for the shared person. This is NOT a file/image and NOT E2EE media: it is a CONTACT message naming the shared person by their LINE mid. Provide `contactMid` (the person to share, e.g. from find_contact or get_group_members); `displayName` is optional and resolved from the mid when omitted. Works for 1:1 chats, groups, and rooms. Exactly one send per call.',
     inputSchema: {
       type: 'object' as const,
