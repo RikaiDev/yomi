@@ -24,11 +24,21 @@ missed edit *after* the package is public.
    ```
 
 3. **Create the GitHub Release** for that tag — this triggers
-   `.github/workflows/publish.yml`:
+   `.github/workflows/publish.yml`. The notes are generated deterministically
+   from the range's Conventional Commits by `scripts/release-notes.mjs`, so
+   every release reads the same way (grouped Features / Fixes / Performance /
+   Refactoring / Internal, with a compare link) — do NOT hand-write them or use
+   `--generate-notes`:
 
    ```bash
-   gh release create "v$(node -p "require('./package.json').version")" --generate-notes
+   TAG="v$(node -p "require('./package.json').version")"
+   gh release create "$TAG" --title "$TAG" \
+     --notes "$(node scripts/release-notes.mjs "$TAG")"
    ```
+
+   Preview the notes for any tag first with `node scripts/release-notes.mjs <tag>`.
+   Pass `--headline "<one sentence>"` to prepend a single lead line above the
+   sections when a release warrants one; the section structure stays fixed.
 
 ## What the publish workflow verifies before `npm publish`
 
