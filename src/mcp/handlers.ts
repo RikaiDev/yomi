@@ -516,6 +516,78 @@ export async function handleSendSticker(
 }
 
 /**
+ * Handle `send_location` — REALLY sends a location message (a map pin) to a
+ * real conversation now. Not media and not E2EE: a LOCATION message carrying
+ * latitude/longitude plus an optional title/address. One send per call.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSendLocation(
+  service: LineProtocolService,
+  args: {
+    chatId: string
+    latitude: number
+    longitude: number
+    title?: string
+    address?: string
+  },
+) {
+  if (!args.chatId) {
+    return toolError('chatId is required.')
+  }
+  if (
+    typeof args.latitude !== 'number' ||
+    typeof args.longitude !== 'number' ||
+    !Number.isFinite(args.latitude) ||
+    !Number.isFinite(args.longitude)
+  ) {
+    return toolError('latitude and longitude (finite numbers) are required.')
+  }
+
+  const result = await service.sendLocation(
+    args.chatId,
+    args.latitude,
+    args.longitude,
+    args.title,
+    args.address,
+  )
+  log.info('send_location.sent', {
+    chatId: args.chatId,
+    messageId: result?.messageId,
+  })
+  let read = false
+  try {
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_location.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
+  }
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            messageId: result?.messageId ?? null,
+            latitude: args.latitude,
+            longitude: args.longitude,
+            sent: true,
+            read,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }
+}
+
+/**
  * Handle `send_audio` — REALLY sends an E2EE audio message to a real
  * conversation now, via the same upload-then-send pipeline as send_file.
  * Bytes come from `filePath` or `audioBase64`; `durationMs` (when known)

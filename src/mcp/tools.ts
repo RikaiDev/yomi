@@ -304,6 +304,38 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY sends a location (map pin) to a real LINE conversation right now. Not media and not E2EE: a LOCATION message with latitude/longitude and an optional title (place name) and address. Works for 1:1 chats, groups, and rooms. Exactly one send per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE chat/group/room MID to send to, as returned by list_conversations.',
+        },
+        latitude: {
+          type: 'number',
+          description: 'Latitude in decimal degrees.',
+        },
+        longitude: {
+          type: 'number',
+          description: 'Longitude in decimal degrees.',
+        },
+        title: {
+          type: 'string',
+          description: 'Optional place name shown on the pin.',
+        },
+        address: {
+          type: 'string',
+          description: 'Optional address shown under the pin.',
+        },
+      },
+      required: ['chatId', 'latitude', 'longitude'],
+    },
+    name: 'send_location',
+  },
+  {
+    description:
       'REALLY shares a LINE contact card to a real conversation right now — the recipient sees a tappable card for the shared person. This is NOT a file/image and NOT E2EE media: it is a CONTACT message naming the shared person by their LINE mid. Provide `contactMid` (the person to share, e.g. from find_contact or get_group_members); `displayName` is optional and resolved from the mid when omitted. Works for 1:1 chats, groups, and rooms. Exactly one send per call.',
     inputSchema: {
       type: 'object' as const,

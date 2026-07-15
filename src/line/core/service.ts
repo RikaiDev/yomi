@@ -109,6 +109,13 @@ export class LineProtocolService extends EventEmitter {
     packageId: string,
     version?: string,
   ) => Promise<any>
+  public sendLocation!: (
+    to: string,
+    latitude: number,
+    longitude: number,
+    title?: string,
+    address?: string,
+  ) => Promise<any>
   public getRecentMessages!: (chatId: string, count?: number) => Promise<any[]>
   public getPreviousMessages!: (
     chatId: string,

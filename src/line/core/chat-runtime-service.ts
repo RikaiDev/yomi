@@ -166,6 +166,29 @@ export function createChatRuntimeService(service: any) {
     },
 
     /**
+     * Send a location message (contentType LOCATION) — not media, not E2EE.
+     *
+     * @param to - Recipient chat MID.
+     * @param latitude - Latitude.
+     * @param longitude - Longitude.
+     * @param title - Optional place name.
+     * @param address - Optional address.
+     * @returns `{ sent, messageId }` describing the delivered location.
+     */
+    async sendLocation(
+      to: string,
+      latitude: number,
+      longitude: number,
+      title?: string,
+      address?: string,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendLocation(to, latitude, longitude, title, address)
+    },
+
+    /**
      * Fetch recent LINE messages through the explicit message-query boundary.
      *
      * @param chatId - LINE chat MID.

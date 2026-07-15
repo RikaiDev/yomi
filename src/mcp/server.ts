@@ -1,14 +1,14 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes twenty-six tools:
+ * On startup resumes any persisted LINE session. Exposes twenty-seven tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
- * send_message, send_image, send_file, send_audio, send_contact,
- * send_sticker, list_stickers, search_stickers, preview_sticker,
- * find_contact, list_contacts, get_group_members, collect_messages,
- * search_messages, exclude_chats, include_chats, list_excluded_chats,
- * get_scope_policy.
+ * send_message, send_image, send_file, send_audio, send_location,
+ * send_contact, send_sticker, list_stickers, search_stickers,
+ * preview_sticker, find_contact, list_contacts, get_group_members,
+ * collect_messages, search_messages, exclude_chats, include_chats,
+ * list_excluded_chats, get_scope_policy.
  *
  * find_contact/list_contacts/get_group_members expose LINE's raw
  * people/membership data only — no affinity scoring, no interaction-
@@ -91,6 +91,7 @@ import {
   handleSendContact,
   handleSendFile,
   handleSendImage,
+  handleSendLocation,
   handleSendMessage,
   handleSendSticker,
   NO_CREDENTIALS_MESSAGE,
@@ -312,6 +313,17 @@ async function main(): Promise<void> {
               audioBase64?: string
               fileName?: string
               durationMs?: number
+            },
+          )
+        case 'send_location':
+          return await handleSendLocation(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              latitude: number
+              longitude: number
+              title?: string
+              address?: string
             },
           )
         case 'send_contact':

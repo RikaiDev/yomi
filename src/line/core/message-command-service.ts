@@ -366,6 +366,49 @@ export function createMessageCommandService(getClient, e2eeManager) {
      * @param version - Sticker version (STKVER); defaults to '1'.
      * @returns The sent message id.
      */
+    /**
+     * Send a location message (contentType LOCATION) — a plain, non-E2EE
+     * message carrying a Location struct (title, address, latitude, longitude).
+     *
+     * @param to - Recipient MID (1:1 `u...`, group `c...`, or room `r...`).
+     * @param latitude - Latitude (Thrift double).
+     * @param longitude - Longitude (Thrift double).
+     * @param title - Optional place name shown on the pin.
+     * @param address - Optional address shown under the pin.
+     * @returns The sent message id.
+     */
+    async sendLocation(
+      to,
+      latitude: number,
+      longitude: number,
+      title = '',
+      address = '',
+    ) {
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        throw new Error(
+          'Cannot send location without finite latitude/longitude',
+        )
+      }
+      // LINE Letter-Seals location too ("can not send using plain mode"
+      // otherwise). encryptE2EEMessage wraps an object at contentType 15 as
+      // {"location": data} and encrypts it into the chunks — coordinates ride
+      // inside the ciphertext, not a plaintext Thrift Location struct.
+      const encrypted = await e2eeManager.encryptE2EEMessage(
+        to,
+        { title, address, latitude, longitude },
+        CONTENT_TYPE.LOCATION,
+      )
+      const sent = await requireLineClient(getClient).sendMessage({
+        to,
+        text: null,
+        contentType: CONTENT_TYPE.LOCATION,
+        contentMetadata: encrypted.contentMetadata,
+        chunks: encrypted.chunks,
+        relatedMessageId: null,
+      })
+      return { messageId: sent?.id ?? null, sent: true }
+    },
+
     async sendSticker(to, stickerId: string, packageId: string, version = '1') {
       if (!stickerId || !packageId) {
         throw new Error('Cannot send sticker without stickerId and packageId')
