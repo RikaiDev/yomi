@@ -98,6 +98,12 @@ export class LineProtocolService extends EventEmitter {
     fileName: string | null,
     durationMs?: number,
   ) => Promise<any>
+  public sendVideo!: (
+    to: string,
+    videoBytes: Buffer,
+    fileName: string | null,
+    durationMs?: number,
+  ) => Promise<any>
   public sendContact!: (
     to: string,
     contactMid: string,

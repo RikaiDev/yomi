@@ -304,6 +304,42 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY sends an E2EE video to a real LINE conversation right now (upload-then-send, same pipeline as send_file). The video uses LINE chunked video encryption so it plays and integrity-verifies on official LINE clients. Provide exactly one of filePath or videoBase64. Optionally pass durationMs (video length in milliseconds) so the recipient sees the correct scrubber length. Works for 1:1 chats, groups, and rooms. Exactly one send per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE chat/group/room MID to send to, as returned by list_conversations.',
+        },
+        filePath: {
+          type: 'string',
+          description:
+            'Local filesystem path to the video file. Mutually exclusive with videoBase64.',
+        },
+        videoBase64: {
+          type: 'string',
+          description:
+            'Base64-encoded video bytes. Mutually exclusive with filePath.',
+        },
+        fileName: {
+          type: 'string',
+          description:
+            'Optional original filename (used for the upload name; defaults to the basename of filePath or video.mp4).',
+        },
+        durationMs: {
+          type: 'number',
+          description:
+            'Optional video duration in milliseconds, for the recipient player scrubber.',
+        },
+      },
+      required: ['chatId'],
+    },
+    name: 'send_video',
+  },
+  {
+    description:
       'REALLY sends a location (map pin) to a real LINE conversation right now. Not media and not E2EE: a LOCATION message with latitude/longitude and an optional title (place name) and address. Works for 1:1 chats, groups, and rooms. Exactly one send per call.',
     inputSchema: {
       type: 'object' as const,

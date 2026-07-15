@@ -126,6 +126,27 @@ export function createChatRuntimeService(service: any) {
     },
 
     /**
+     * Send one E2EE video message through the shared media-send pipeline.
+     *
+     * @param to - Recipient chat MID.
+     * @param videoBytes - Raw (plaintext) video bytes.
+     * @param fileName - Original filename (for the OBS upload name).
+     * @param durationMs - Video duration in ms, when known.
+     * @returns `{ sent, messageId, oid }` describing the delivered video.
+     */
+    async sendVideo(
+      to: string,
+      videoBytes: Buffer,
+      fileName: string | null,
+      durationMs?: number,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendVideo(to, videoBytes, fileName, durationMs)
+    },
+
+    /**
      * Share a LINE contact card (contentType CONTACT) — not media.
      *
      * @param to - Recipient chat MID.

@@ -676,6 +676,96 @@ export async function handleSendAudio(
 }
 
 /**
+ * Handle `send_video` — REALLY sends an E2EE video message to a real
+ * conversation now, through the same upload-then-send pipeline as send_file.
+ * Bytes come from `filePath` or `videoBase64`; `durationMs` (when known) drives
+ * the recipient's player scrubber. The video uses LINE's chunked video E2EE
+ * (per-128KB-chunk hash MAC) so it plays and verifies on official clients. One
+ * send per call.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSendVideo(
+  service: LineProtocolService,
+  args: {
+    chatId: string
+    filePath?: string
+    videoBase64?: string
+    fileName?: string
+    durationMs?: number
+  },
+) {
+  if (!args.chatId) {
+    return toolError('chatId is required.')
+  }
+  const hasPath = Boolean(args.filePath)
+  const hasBase64 = Boolean(args.videoBase64)
+  if (hasPath === hasBase64) {
+    return toolError('Provide exactly one of filePath or videoBase64.')
+  }
+
+  let videoBytes: Buffer
+  let fileName: string | null = args.fileName ?? null
+  if (args.filePath) {
+    try {
+      videoBytes = await fs.readFile(args.filePath)
+    } catch (error: any) {
+      return toolError(
+        `Could not read filePath "${args.filePath}": ${error?.message ?? String(error)}`,
+      )
+    }
+    fileName = fileName ?? path.basename(args.filePath)
+  } else {
+    videoBytes = Buffer.from(args.videoBase64 as string, 'base64')
+  }
+
+  if (videoBytes.length === 0) {
+    return toolError('Resolved video is empty.')
+  }
+
+  const result = await service.sendVideo(
+    args.chatId,
+    videoBytes,
+    fileName,
+    args.durationMs,
+  )
+  log.info('send_video.sent', {
+    chatId: args.chatId,
+    messageId: result?.messageId,
+    oid: result?.oid,
+  })
+  let read = false
+  try {
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_video.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
+  }
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            messageId: result?.messageId ?? null,
+            oid: result?.oid ?? null,
+            sent: true,
+            read,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }
+}
+
+/**
  * Handle `preview_sticker` — render sticker images so the caller can SEE them
  * (returns MCP image content from the public sticker CDN). With `stickerId`,
  * previews that one sticker; otherwise previews the first `limit` stickers of

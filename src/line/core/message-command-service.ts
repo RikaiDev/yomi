@@ -2,13 +2,19 @@ import crypto from 'node:crypto'
 import { uploadLineObsMediaObject } from '../client/obs-media-client.js'
 import { requireLineClient } from './client-runtime.js'
 import { CONTENT_TYPE } from './constants.js'
-import { encryptLineMediaBytes } from './media-encrypt.js'
+import {
+  buildLineVideoChunkHashes,
+  encryptLineMediaBytes,
+  encryptLineVideoBytes,
+} from './media-encrypt.js'
 import { i32Field } from './thrift/fields/builders.js'
+import { extractVideoThumbnail } from './video-thumbnail.js'
 
-/** LINE OBS service namespace per media kind (image / file / audio). */
+/** LINE OBS service namespace per media kind (image / file / audio / video). */
 const OBS_SID_IMAGE = 'emi'
 const OBS_SID_FILE = 'emf'
 const OBS_SID_AUDIO = 'ema'
+const OBS_SID_VIDEO = 'emv'
 
 /** Per-kind knobs for the one shared E2EE media send pipeline. */
 interface E2EEMediaSpec {
@@ -28,6 +34,30 @@ interface E2EEMediaSpec {
    * clients emit. OID/SID/e2eeVersion are added by the pipeline for both.
    */
   metadata: (encryptedLength: number) => Record<string, string>
+  /**
+   * Produce the main OBS body from plaintext + key material. Defaults to the
+   * whole-file AES-256-CTR path (image/audio/file), whose MAC covers the whole
+   * ciphertext. Video overrides with {@link encryptLineVideoBytes}, whose MAC
+   * covers the per-chunk hashes instead.
+   */
+  encrypt?: (bytes: Buffer, keyMaterial: string) => Promise<Buffer>
+  /**
+   * Auxiliary OBS objects uploaded alongside the main object (each keyed by an
+   * oid suffix) plus extra plaintext contentMetadata to merge. Receives the
+   * already-encrypted main body and the media key material (so a kind can
+   * encrypt a side object — e.g. a video thumbnail — under the same key).
+   * Defaults to the protocol-required `__ud-preview` carrying the same
+   * ciphertext, with no extra metadata. Video overrides this to upload the
+   * `__ud-hash` chunk-hash manifest a streaming receiver needs, plus an
+   * encrypted `__ud-preview` thumbnail and its `MEDIA_THUMB_INFO`.
+   */
+  auxObjects?: (
+    mainBody: Buffer,
+    keyMaterial: string,
+  ) => Promise<{
+    objects: Array<{ suffix: string; data: Buffer }>
+    metadata?: Record<string, string>
+  }>
 }
 
 /**
@@ -58,7 +88,10 @@ async function sendE2EEMedia(
 ): Promise<{ messageId: string | null; oid: string; sent: true }> {
   const accessToken = await acquireUploadAccessToken(client)
   const keyMaterial = crypto.randomBytes(32).toString('base64')
-  const encryptedFile = await encryptLineMediaBytes(bytes, keyMaterial)
+  const encryptedFile = await (spec.encrypt ?? encryptLineMediaBytes)(
+    bytes,
+    keyMaterial,
+  )
 
   const { oid } = await uploadLineObsMediaObject({
     accessToken,
@@ -69,17 +102,24 @@ async function sendE2EEMedia(
     sid: spec.sid,
   })
 
-  // The preview object is required by the LINE protocol even when there is no
-  // separate thumbnail to offer — upload the same ciphertext under the preview
-  // path.
-  await uploadLineObsMediaObject({
-    accessToken,
-    data: encryptedFile,
-    mid,
-    objectPath: `${oid}__ud-preview`,
-    params: {},
-    sid: spec.sid,
-  })
+  // Auxiliary objects addressed by an oid suffix, plus any extra plaintext
+  // metadata they contribute. Default: the `__ud-preview` object the LINE
+  // protocol requires even without a separate thumbnail (same ciphertext).
+  // Video swaps in the `__ud-hash` chunk-hash manifest and a real encrypted
+  // `__ud-preview` thumbnail (with MEDIA_THUMB_INFO).
+  const aux = spec.auxObjects
+    ? await spec.auxObjects(encryptedFile, keyMaterial)
+    : { objects: [{ suffix: '__ud-preview', data: encryptedFile }] }
+  for (const object of aux.objects) {
+    await uploadLineObsMediaObject({
+      accessToken,
+      data: object.data,
+      mid,
+      objectPath: `${oid}${object.suffix}`,
+      params: {},
+      sid: spec.sid,
+    })
+  }
 
   const encrypted = await e2eeManager.encryptE2EEMessage(
     to,
@@ -92,6 +132,7 @@ async function sendE2EEMedia(
     OID: oid,
     SID: spec.sid,
     ...spec.metadata(encryptedFile.length),
+    ...(aux.metadata ?? {}),
   }
 
   const sent = await client.sendMessage({
@@ -315,6 +356,87 @@ export function createMessageCommandService(getClient, e2eeManager) {
         metadata: () => {
           const meta: Record<string, string> = {
             FILE_SIZE: String(audioBytes.length),
+          }
+          if (durationMs != null && Number.isFinite(durationMs)) {
+            meta.DURATION = String(Math.round(durationMs))
+          }
+          return meta
+        },
+      })
+    },
+
+    /**
+     * Send one E2EE video through the shared upload-then-send pipeline. Video
+     * reuses everything image/file/audio do — the ciphertext is the same
+     * whole-file AES-256-CTR bytes — and differs in only two `spec` knobs:
+     * `encrypt` swaps the MAC to cover the per-128KB-chunk hashes (so a receiver
+     * can verify integrity while streaming), and `auxObjects` uploads the
+     * `__ud-hash` chunk-hash manifest that receiver reads. A poster frame is
+     * extracted with ffmpeg (best-effort) and uploaded as the encrypted
+     * `__ud-preview` (with MEDIA_THUMB_INFO) so the video shows a thumbnail
+     * before download; when ffmpeg is unavailable the video still sends, just
+     * without a poster.
+     *
+     * @param to - Recipient MID (1:1 `u...`, group `c...`, or room `r...`).
+     * @param videoBytes - Raw (plaintext) video bytes.
+     * @param fileName - Original filename (used only for the OBS upload name).
+     * @param durationMs - Video duration in ms; omitted when unknown.
+     * @returns The sent message id and the uploaded object id.
+     */
+    async sendVideo(
+      to,
+      videoBytes: Buffer,
+      fileName: string | null,
+      durationMs?: number,
+    ) {
+      const client = requireLineClient(getClient)
+      const mid = e2eeManager.getProfileMid?.()
+      if (!mid) {
+        throw new Error(
+          'Cannot send video without an authenticated LINE profile MID',
+        )
+      }
+      // Extract the poster once, up front, so the auxObjects hook can seal it
+      // under the pipeline's key material. null (no ffmpeg / failure) => no
+      // poster, and the video still sends.
+      const thumbnail = await extractVideoThumbnail(videoBytes)
+      return sendE2EEMedia(client, mid, e2eeManager, to, videoBytes, {
+        sid: OBS_SID_VIDEO,
+        contentType: CONTENT_TYPE.VIDEO,
+        uploadName: fileName ?? 'video.mp4',
+        encrypt: encryptLineVideoBytes,
+        // Two auxiliary objects. `__ud-hash`: the concatenated per-chunk SHA-256
+        // hashes over the ciphertext WITHOUT its trailing 32-byte MAC — exactly
+        // the bytes a streaming receiver re-hashes per chunk (omitted for an
+        // empty ciphertext). `__ud-preview`: the poster, encrypted under the
+        // SAME key material via the whole-file media path (like an image), with
+        // its dimensions surfaced as MEDIA_THUMB_INFO.
+        auxObjects: async (mainBody, keyMaterial) => {
+          const objects: Array<{ suffix: string; data: Buffer }> = []
+          const hashes = buildLineVideoChunkHashes(
+            mainBody.subarray(0, Math.max(0, mainBody.length - 32)),
+          )
+          if (hashes.length > 0) {
+            objects.push({ suffix: '__ud-hash', data: hashes })
+          }
+          let metadata: Record<string, string> | undefined
+          if (thumbnail) {
+            objects.push({
+              suffix: '__ud-preview',
+              data: await encryptLineMediaBytes(thumbnail.jpeg, keyMaterial),
+            })
+            metadata = {
+              MEDIA_THUMB_INFO: JSON.stringify({
+                width: thumbnail.width,
+                height: thumbnail.height,
+              }),
+            }
+          }
+          return { objects, metadata }
+        },
+        metadata: () => {
+          const meta: Record<string, string> = {
+            FILE_SIZE: String(videoBytes.length),
           }
           if (durationMs != null && Number.isFinite(durationMs)) {
             meta.DURATION = String(Math.round(durationMs))
