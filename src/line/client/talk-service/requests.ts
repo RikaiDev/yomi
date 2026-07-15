@@ -3,6 +3,7 @@ import {
   boolField,
   byteField,
   i32Field,
+  i64Field,
   listField,
   mapField,
   setField,
@@ -333,4 +334,39 @@ export function buildCreateChatRequest(name, mids, chatType = 1) {
       setField(4, 11, mids),
     ]),
   ]
+}
+
+/**
+ * Build the react request fields (add a predefined reaction to a message).
+ *
+ * Single struct arg at field 1: `{ reqSeq, messageId, reactionType{ predefined } }`.
+ * The messageId is a thrift i64 (LINE message ids are 64-bit), so it is passed
+ * as a BigInt. `reactionType` is LINE's predefinedReactionType enum:
+ * 2 = LIKE 👍, 3 = LOVE ❤️, 4 = LAUGH 😆, 5 = SURPRISE 😮, 6 = SAD 😢, 7 = ANGRY 😡.
+ *
+ * @param messageId - Target message id (numeric string).
+ * @param reactionType - Predefined reaction type (default 2 = LIKE).
+ * @returns Thrift request fields.
+ */
+export function buildReactRequest(messageId, reactionType = 2) {
+  return [
+    structField(1, [
+      i32Field(1, 0),
+      i64Field(2, BigInt(messageId)),
+      structField(3, [i32Field(1, reactionType)]),
+    ]),
+  ]
+}
+
+/**
+ * Build the cancelReaction request fields (remove this account's reaction).
+ *
+ * Single struct arg at field 1: `{ reqSeq, messageId }`. The messageId is a
+ * thrift i64, passed as a BigInt.
+ *
+ * @param messageId - Target message id (numeric string).
+ * @returns Thrift request fields.
+ */
+export function buildCancelReactionRequest(messageId) {
+  return [structField(1, [i32Field(1, 0), i64Field(2, BigInt(messageId))])]
 }

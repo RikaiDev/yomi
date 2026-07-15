@@ -1,15 +1,15 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes thirty-three tools:
+ * On startup resumes any persisted LINE session. Exposes thirty-five tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
  * send_message, send_image, send_file, send_audio, send_video,
  * send_location, send_contact, send_sticker, list_stickers, search_stickers,
  * preview_sticker, find_contact, list_contacts, get_group_members,
  * rename_group, invite_member, kick_member, leave_group, create_group,
- * collect_messages, search_messages, exclude_chats, include_chats,
- * list_excluded_chats, get_scope_policy.
+ * react_message, cancel_reaction, collect_messages, search_messages,
+ * exclude_chats, include_chats, list_excluded_chats, get_scope_policy.
  *
  * find_contact/list_contacts/get_group_members expose LINE's raw
  * people/membership data only — no affinity scoring, no interaction-
@@ -76,6 +76,7 @@ import { getDefaultEmbedder } from '../search/default-embedder.js'
 import { createCliLogger } from '../util/log.js'
 import { YOMI_VERSION } from '../version.js'
 import {
+  handleCancelReaction,
   handleCreateGroup,
   handleFindContact,
   handleGetChatMessages,
@@ -91,6 +92,7 @@ import {
   handleListStickers,
   handleMarkRead,
   handlePreviewSticker,
+  handleReactMessage,
   handleRenameGroup,
   handleSearchStickers,
   handleSendAudio,
@@ -426,6 +428,16 @@ async function main(): Promise<void> {
               mids: string[]
               chatType?: number
             },
+          )
+        case 'react_message':
+          return await handleReactMessage(
+            service,
+            (args ?? {}) as { messageId: string; reactionType?: number },
+          )
+        case 'cancel_reaction':
+          return await handleCancelReaction(
+            service,
+            (args ?? {}) as { messageId: string },
           )
         case 'collect_messages':
           return await handleCollectMessages(

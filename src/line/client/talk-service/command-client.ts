@@ -7,10 +7,12 @@
 import { Buffer } from 'node:buffer'
 import { parseMessage } from '../parsers.js'
 import {
+  buildCancelReactionRequest,
   buildCreateChatRequest,
   buildDeleteOtherFromChatRequest,
   buildDeleteSelfFromChatRequest,
   buildInviteIntoChatRequest,
+  buildReactRequest,
   buildSendChatCheckedRequest,
   buildSendMessageRequest,
   buildUpdateChatNameRequest,
@@ -177,6 +179,44 @@ export function createTalkCommandClient(runtime) {
         throw new Error(`createChat failed: ${result.error}`)
       }
       return result.fields?.[0] ?? null
+    },
+
+    /**
+     * Add a predefined reaction to a message via TalkService react. Visible to
+     * the conversation. Throws on LINE error.
+     *
+     * @param messageId - Target message id (numeric string).
+     * @param reactionType - Predefined reaction type (2=LIKE, 3=LOVE, 4=LAUGH,
+     * 5=SURPRISE, 6=SAD, 7=ANGRY). Default 2.
+     * @returns True when the reaction was accepted.
+     */
+    async react(messageId, reactionType = 2) {
+      const result = await runtime.sendTalk(
+        'react',
+        buildReactRequest(messageId, reactionType),
+      )
+      if (result.error) {
+        throw new Error(`react failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Remove this account's reaction from a message via TalkService
+     * cancelReaction. Throws on LINE error.
+     *
+     * @param messageId - Target message id (numeric string).
+     * @returns True when the cancellation was accepted.
+     */
+    async cancelReaction(messageId) {
+      const result = await runtime.sendTalk(
+        'cancelReaction',
+        buildCancelReactionRequest(messageId),
+      )
+      if (result.error) {
+        throw new Error(`cancelReaction failed: ${result.error}`)
+      }
+      return true
     },
   }
 }

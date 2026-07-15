@@ -1363,6 +1363,51 @@ export async function handleLeaveGroup(
 }
 
 /**
+ * Handle `react_message` — REALLY adds a predefined reaction to a real LINE
+ * message now (TalkService react). Visible to the conversation. `reactionType`:
+ * 2=LIKE 👍, 3=LOVE ❤️, 4=LAUGH 😆, 5=SURPRISE 😮, 6=SAD 😢, 7=ANGRY 😡
+ * (default 2).
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleReactMessage(
+  service: LineProtocolService,
+  args: { messageId: string; reactionType?: number },
+) {
+  if (!args.messageId) {
+    return toolError('messageId is required.')
+  }
+  const result = await service.reactToMessage(args.messageId, args.reactionType)
+  log.info('react_message.done', {
+    messageId: args.messageId,
+    reactionType: result?.reactionType,
+  })
+  return jsonResult(result)
+}
+
+/**
+ * Handle `cancel_reaction` — REALLY removes THIS account's reaction from a real
+ * LINE message now (TalkService cancelReaction).
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleCancelReaction(
+  service: LineProtocolService,
+  args: { messageId: string },
+) {
+  if (!args.messageId) {
+    return toolError('messageId is required.')
+  }
+  const result = await service.cancelReaction(args.messageId)
+  log.info('cancel_reaction.done', { messageId: args.messageId })
+  return jsonResult(result)
+}
+
+/**
  * Handle `create_group` — REALLY creates a new LINE group/room now with the
  * given members (TalkService createChat). `chatType` 0 = group (invitees must
  * accept), 1 = room (members added directly); defaults to 1.

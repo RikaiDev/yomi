@@ -651,6 +651,43 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY adds a reaction to a real LINE message right now (TalkService react). Visible to the conversation. `reactionType` is a predefined reaction: 2 = 👍 LIKE, 3 = ❤️ LOVE, 4 = 😆 LAUGH, 5 = 😮 SURPRISE, 6 = 😢 SAD, 7 = 😡 ANGRY (defaults to 2). One reaction per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        messageId: {
+          type: 'string',
+          description:
+            'LINE message id to react to, as returned by get_chat_messages.',
+        },
+        reactionType: {
+          type: 'number',
+          description:
+            'Predefined reaction: 2=👍LIKE, 3=❤️LOVE, 4=😆LAUGH, 5=😮SURPRISE, 6=😢SAD, 7=😡ANGRY. Default 2.',
+        },
+      },
+      required: ['messageId'],
+    },
+    name: 'react_message',
+  },
+  {
+    description:
+      "REALLY removes THIS account's reaction from a real LINE message right now (TalkService cancelReaction). Undoes a react_message. One cancellation per call.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        messageId: {
+          type: 'string',
+          description:
+            'LINE message id whose reaction to remove, as returned by get_chat_messages.',
+        },
+      },
+      required: ['messageId'],
+    },
+    name: 'cancel_reaction',
+  },
+  {
+    description:
       'Explicitly collect recent messages from LINE conversations into Yomi\'s local cross-conversation search index, so search_messages has something to query. LINE has no native "search all my chats" primitive — this is how Yomi builds one locally. Fetches up to `perChat` recent messages per chat (default 100) for the given `chatIds`, or for all conversations when `chatIds` is omitted. Also batch-embeds each chat\'s messages (best-effort, local ONNX model) so search_messages can rank by meaning, not just keywords, and before returning sweeps the whole index to embed any messages still missing a vector — so re-running this repairs a partially-embedded index (legacy keyword-only rows, or a run where the model failed to load) without re-fetching from LINE. This tool is the explicit, manual path: one call = one bulk fetch, no internal loop or retry. It is NOT the only writer of the index, though — Yomi also runs a background capture loop (a startup catch-up plus a live SYNC4 poll that indexes incoming messages as they arrive, silently and denylist-gated), so the index generally stays current on its own; call this only to force a reconcile or backfill a specific set of chats. Messages without decryptable/plaintext text are skipped, not fabricated.',
     inputSchema: {
       type: 'object' as const,

@@ -382,5 +382,30 @@ export function createChatRuntimeService(service: any) {
         chat,
       }
     },
+
+    /**
+     * Add a predefined reaction to a message (TalkService react).
+     *
+     * @param messageId - Target message id.
+     * @param reactionType - Predefined reaction type (2=LIKE, 3=LOVE, 4=LAUGH,
+     * 5=SURPRISE, 6=SAD, 7=ANGRY). Default 2.
+     * @returns `{ reacted, messageId, reactionType }`.
+     */
+    async reactToMessage(messageId: string, reactionType = 2): Promise<any> {
+      await service.client.react(messageId, reactionType)
+      return { reacted: true, messageId, reactionType }
+    },
+
+    /**
+     * Remove this account's reaction from a message (TalkService
+     * cancelReaction).
+     *
+     * @param messageId - Target message id.
+     * @returns `{ cancelled, messageId }`.
+     */
+    async cancelReaction(messageId: string): Promise<any> {
+      await service.client.cancelReaction(messageId)
+      return { cancelled: true, messageId }
+    },
   }
 }

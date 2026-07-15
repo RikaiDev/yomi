@@ -154,6 +154,11 @@ export class LineProtocolService extends EventEmitter {
     mids: string[],
     chatType?: number,
   ) => Promise<any>
+  public reactToMessage!: (
+    messageId: string,
+    reactionType?: number,
+  ) => Promise<any>
+  public cancelReaction!: (messageId: string) => Promise<any>
 
   constructor(options: any = {}) {
     super()

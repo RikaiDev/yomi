@@ -174,6 +174,8 @@ export class LineClient extends EventEmitter {
     mids: string[],
     chatType?: number,
   ) => Promise<any>
+  public react!: (messageId: string, reactionType?: number) => Promise<boolean>
+  public cancelReaction!: (messageId: string) => Promise<boolean>
 
   constructor(authToken, config: any = {}) {
     super()
