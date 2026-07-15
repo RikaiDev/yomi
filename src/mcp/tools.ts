@@ -199,6 +199,11 @@ export const TOOLS = [
             required: ['mid', 'start', 'end'],
           },
         },
+        replyToMessageId: {
+          type: 'string',
+          description:
+            'Optional. Message id (from get_chat_messages) that this message replies to — LINE renders it as a quoted reply. Omit for a normal message.',
+        },
       },
       required: ['chatId', 'text'],
     },
@@ -286,6 +291,34 @@ export const TOOLS = [
       required: ['chatId', 'contactMid'],
     },
     name: 'send_contact',
+  },
+  {
+    description:
+      "REALLY sends a LINE sticker to a real conversation right now. Not media and not E2EE: a STICKER message naming the sticker by package + id. Provide stickerId (STKID) and packageId (STKPKGID) — e.g. from a received sticker message's contentMetadata. Works for 1:1 chats, groups, and rooms. Exactly one send per call.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE chat/group/room MID to send to, as returned by list_conversations.',
+        },
+        stickerId: {
+          type: 'string',
+          description: 'LINE sticker id (STKID).',
+        },
+        packageId: {
+          type: 'string',
+          description: 'LINE sticker package id (STKPKGID).',
+        },
+        version: {
+          type: 'string',
+          description: 'Sticker version (STKVER). Defaults to "1".',
+        },
+      },
+      required: ['chatId', 'stickerId', 'packageId'],
+    },
+    name: 'send_sticker',
   },
   {
     description:

@@ -1,12 +1,13 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes twenty-one tools:
+ * On startup resumes any persisted LINE session. Exposes twenty-two tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
- * send_message, send_image, send_file, send_contact, find_contact,
- * list_contacts, get_group_members, collect_messages, search_messages,
- * exclude_chats, include_chats, list_excluded_chats, get_scope_policy.
+ * send_message, send_image, send_file, send_contact, send_sticker,
+ * find_contact, list_contacts, get_group_members, collect_messages,
+ * search_messages, exclude_chats, include_chats, list_excluded_chats,
+ * get_scope_policy.
  *
  * find_contact/list_contacts/get_group_members expose LINE's raw
  * people/membership data only — no affinity scoring, no interaction-
@@ -86,6 +87,7 @@ import {
   handleSendFile,
   handleSendImage,
   handleSendMessage,
+  handleSendSticker,
   NO_CREDENTIALS_MESSAGE,
   sessionRequiredError,
   toolError,
@@ -274,6 +276,7 @@ async function main(): Promise<void> {
               chatId: string
               text: string
               mentions?: Mention[]
+              replyToMessageId?: string
             },
           )
         case 'send_image':
@@ -302,6 +305,16 @@ async function main(): Promise<void> {
               chatId: string
               contactMid: string
               displayName?: string
+            },
+          )
+        case 'send_sticker':
+          return await handleSendSticker(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              stickerId: string
+              packageId: string
+              version?: string
             },
           )
         case 'find_contact':

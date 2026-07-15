@@ -134,7 +134,12 @@ export async function handleListConversations(
  */
 export async function handleSendMessage(
   service: LineProtocolService,
-  args: { chatId: string; text: string; mentions?: Mention[] },
+  args: {
+    chatId: string
+    text: string
+    mentions?: Mention[]
+    replyToMessageId?: string
+  },
 ) {
   if (!args.chatId || !args.text) {
     return toolError('chatId and text are required.')
@@ -149,10 +154,24 @@ export async function handleSendMessage(
       return toolError(`Invalid mentions: ${error?.message ?? String(error)}`)
     }
   }
+  // A reply sets three request fields (NOT contentMetadata): relatedMessageId
+  // (21), messageRelationType (22 = MessageRelationType.REPLY = 3), and
+  // relatedMessageServiceCode (24 = ServiceCode.TALK = 1). The latter two are
+  // i32 enums; LINE rejects the message if they are missing or the wrong type.
+  // LINE renders the quote from these and reflects the relation into the
+  // recipient's contentMetadata on delivery.
+  const reply = args.replyToMessageId
+    ? {
+        relatedMessageId: args.replyToMessageId,
+        messageRelationType: 3,
+        relatedMessageServiceCode: 1,
+      }
+    : undefined
   const sent = await service.sendMessage(
     args.chatId,
     args.text,
     contentMetadata,
+    reply,
   )
   const messageId = sent?.id ?? sent?.messageId ?? null
   log.info('send_message.sent', { chatId: args.chatId, messageId })
@@ -414,6 +433,72 @@ export async function handleSendContact(
             messageId: result?.messageId ?? null,
             contactMid: args.contactMid,
             displayName,
+            sent: true,
+            read,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }
+}
+
+/**
+ * Handle `send_sticker` — REALLY sends a LINE sticker to a real conversation
+ * now. Not media: it names the sticker by package + id. One send per call.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSendSticker(
+  service: LineProtocolService,
+  args: {
+    chatId: string
+    stickerId: string
+    packageId: string
+    version?: string
+  },
+) {
+  if (!args.chatId) {
+    return toolError('chatId is required.')
+  }
+  if (!args.stickerId || !args.packageId) {
+    return toolError('stickerId and packageId are required.')
+  }
+
+  const result = await service.sendSticker(
+    args.chatId,
+    args.stickerId,
+    args.packageId,
+    args.version,
+  )
+  log.info('send_sticker.sent', {
+    chatId: args.chatId,
+    stickerId: args.stickerId,
+    packageId: args.packageId,
+    messageId: result?.messageId,
+  })
+  let read = false
+  try {
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_sticker.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
+  }
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            messageId: result?.messageId ?? null,
+            stickerId: args.stickerId,
+            packageId: args.packageId,
             sent: true,
             read,
           },

@@ -534,14 +534,16 @@ how you use it. The software is provided "as is", without warranty of any kind �
 
 ## Acknowledgments
 
-Yomi's LINE protocol implementation was written with reference to two open-source
-projects, whose field layouts, E2EE chunk ordering, and request shapes informed
-this independent implementation:
+Yomi's LINE protocol implementation was written with reference to three open-source
+projects, whose field layouts, E2EE chunk ordering, request shapes, and Thrift
+definitions informed this independent implementation:
 
 - **[evex-dev/linejs](https://github.com/evex-dev/linejs)** (MIT) — request shapes
   and the Letter-Sealing E2EE payload layout.
 - **[DeachSword/CHRLINE](https://github.com/DeachSword/CHRLINE)** (BSD-3-Clause) —
   protocol field layouts and the passwordless login flow.
+- **[er1ce/LINE-Protocol](https://github.com/er1ce/LINE-Protocol)** (Apache-2.0) —
+  Thrift enum definitions (ContentType, MessageRelationType, ServiceCode).
 
 Their copyright notices and full license texts are reproduced in [`NOTICE`](NOTICE),
 as their licenses require.

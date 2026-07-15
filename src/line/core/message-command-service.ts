@@ -176,6 +176,8 @@ export function createMessageCommandService(getClient, e2eeManager) {
             : encrypted.contentMetadata,
           chunks: encrypted.chunks,
           relatedMessageId: text.relatedMessageId ?? null,
+          messageRelationType: text.messageRelationType ?? null,
+          relatedMessageServiceCode: text.relatedMessageServiceCode ?? null,
         })
       }
 
@@ -304,6 +306,36 @@ export function createMessageCommandService(getClient, e2eeManager) {
           mid: contactMid,
           displayName: displayName ?? '',
           app_extension_type: 'null',
+        },
+        relatedMessageId: null,
+      })
+      return { messageId: sent?.id ?? null, sent: true }
+    },
+
+    /**
+     * Send a LINE sticker. Like send_contact this is a plain message with a
+     * dedicated contentType (STICKER) whose contentMetadata names the sticker
+     * by package + id — no OBS, no media E2EE. Shape { STKID, STKPKGID, STKVER }
+     * mirrors what LINE clients emit (LINE's server adds STKTXT/seq).
+     *
+     * @param to - Recipient MID (1:1 `u...`, group `c...`, or room `r...`).
+     * @param stickerId - LINE sticker id (STKID).
+     * @param packageId - LINE sticker package id (STKPKGID).
+     * @param version - Sticker version (STKVER); defaults to '1'.
+     * @returns The sent message id.
+     */
+    async sendSticker(to, stickerId: string, packageId: string, version = '1') {
+      if (!stickerId || !packageId) {
+        throw new Error('Cannot send sticker without stickerId and packageId')
+      }
+      const sent = await requireLineClient(getClient).sendMessage({
+        to,
+        text: null,
+        contentType: CONTENT_TYPE.STICKER,
+        contentMetadata: {
+          STKID: stickerId,
+          STKPKGID: packageId,
+          STKVER: version,
         },
         relatedMessageId: null,
       })

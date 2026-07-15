@@ -43,11 +43,23 @@ export function createChatRuntimeService(service: any) {
       to: string,
       text: string,
       contentMetadata?: Record<string, string>,
+      reply?: {
+        relatedMessageId: string
+        messageRelationType: number
+        relatedMessageServiceCode?: number
+      },
     ): Promise<any> {
       return createMessageCommandService(
         () => service.client,
         service.e2eeManager,
-      ).sendMessage(to, { e2ee: true, text, contentMetadata })
+      ).sendMessage(to, {
+        e2ee: true,
+        text,
+        contentMetadata,
+        relatedMessageId: reply?.relatedMessageId ?? null,
+        messageRelationType: reply?.messageRelationType ?? null,
+        relatedMessageServiceCode: reply?.relatedMessageServiceCode ?? null,
+      })
     },
 
     /**
@@ -109,6 +121,27 @@ export function createChatRuntimeService(service: any) {
         () => service.client,
         service.e2eeManager,
       ).sendContact(to, contactMid, displayName)
+    },
+
+    /**
+     * Send a LINE sticker (contentType STICKER) — not media.
+     *
+     * @param to - Recipient chat MID.
+     * @param stickerId - Sticker id (STKID).
+     * @param packageId - Sticker package id (STKPKGID).
+     * @param version - Sticker version (STKVER).
+     * @returns `{ sent, messageId }` describing the delivered sticker.
+     */
+    async sendSticker(
+      to: string,
+      stickerId: string,
+      packageId: string,
+      version?: string,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendSticker(to, stickerId, packageId, version)
     },
 
     /**

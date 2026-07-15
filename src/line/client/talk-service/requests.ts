@@ -25,6 +25,8 @@ export function normalizeSendMessageOptions(to, text) {
       contentMetadata: to.contentMetadata ?? {},
       chunks: to.chunks ?? null,
       relatedMessageId: to.relatedMessageId ?? null,
+      messageRelationType: to.messageRelationType ?? null,
+      relatedMessageServiceCode: to.relatedMessageServiceCode ?? null,
       location: to.location ?? null,
     }
   }
@@ -36,6 +38,8 @@ export function normalizeSendMessageOptions(to, text) {
     contentMetadata: {},
     chunks: null,
     relatedMessageId: null,
+    messageRelationType: null,
+    relatedMessageServiceCode: null,
     location: null,
   }
 }
@@ -63,6 +67,16 @@ export function buildSendMessagePayload(options) {
   }
   if (options.relatedMessageId) {
     fields.push(stringField(21, options.relatedMessageId))
+    // A reply needs messageRelationType (field 22, MessageRelationType enum,
+    // REPLY=3) AND relatedMessageServiceCode (field 24, ServiceCode enum,
+    // TALK=1) alongside the related id — both are i32 enums, not strings, and
+    // relatedMessageId alone is not rendered as a quoted reply.
+    if (options.messageRelationType != null) {
+      fields.push(i32Field(22, options.messageRelationType))
+    }
+    if (options.relatedMessageServiceCode != null) {
+      fields.push(i32Field(24, options.relatedMessageServiceCode))
+    }
   }
   if (options.location) {
     fields.push(structField(11, options.location))

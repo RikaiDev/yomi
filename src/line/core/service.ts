@@ -70,6 +70,11 @@ export class LineProtocolService extends EventEmitter {
     to: string,
     text: string,
     contentMetadata?: Record<string, string>,
+    reply?: {
+      relatedMessageId: string
+      messageRelationType: number
+      relatedMessageServiceCode?: number
+    },
   ) => Promise<any>
   public sendImage!: (
     to: string,
@@ -85,6 +90,12 @@ export class LineProtocolService extends EventEmitter {
     to: string,
     contactMid: string,
     displayName: string,
+  ) => Promise<any>
+  public sendSticker!: (
+    to: string,
+    stickerId: string,
+    packageId: string,
+    version?: string,
   ) => Promise<any>
   public getRecentMessages!: (chatId: string, count?: number) => Promise<any[]>
   public getPreviousMessages!: (
