@@ -1,4 +1,3 @@
-import { invalidateGroupKey } from './group-key.js'
 import type { KeyManagerContext } from './key-types.js'
 import { tryDecryptInner } from './message-decrypt.js'
 
@@ -113,11 +112,12 @@ async function handleDecryptFailure(
   senderKeyId?: string | null
   receiverKeyId?: string | null
 }> {
-  const isGroup = Number(msg?.toType) !== 0
-  const chatMid = isGroup && typeof msg?.to === 'string' ? msg.to : null
-  if (chatMid) {
-    await invalidateGroupKey(ctx, chatMid)
-  }
+  // Do NOT invalidate the group key on failure. Keys are cached per epoch
+  // (chat:groupKeyId) and are never the wrong secret for their id; a group
+  // decrypt failure means the message's epoch is one LINE can no longer hand
+  // us (it only returns the latest), which a refetch cannot fix. Dropping the
+  // key here would only evict epochs this device can still read and churn the
+  // credential store.
   ctx.logGroupKeyEvent?.(
     'e2ee.message.decrypt_failed',
     buildDecryptFailureContext(ctx, msg, error),

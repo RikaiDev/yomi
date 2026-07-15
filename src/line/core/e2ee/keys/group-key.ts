@@ -109,8 +109,17 @@ async function lookupCachedGroupKey(
   chatMid: string,
   receiverKeyId: string | null,
 ): Promise<GroupKey | null> {
-  const cached = ctx.groupKeys.get(chatMid)
-  if (cached && (!receiverKeyId || cached.keyId === receiverKeyId)) {
+  // Epoch-aware cache: keys are stored per (chat, groupKeyId) and never
+  // overwritten, so once this device has seen a group-key epoch it keeps
+  // decrypting that epoch's messages even after the group rekeys. Without a
+  // specific epoch (the send path asks for "latest"), skip the cache and let
+  // the caller fetch the current key from LINE.
+  if (!receiverKeyId) {
+    return null
+  }
+  const cacheKey = `${chatMid}:${receiverKeyId}`
+  const cached = ctx.groupKeys.get(cacheKey)
+  if (cached) {
     ctx.logGroupKeyEvent('e2ee.group_key.cache_hit', {
       chat: chatMid,
       source: 'memory',
@@ -121,19 +130,16 @@ async function lookupCachedGroupKey(
   }
 
   const store = ctx.getStore()
-  const persisted = await store?.get?.(`line_e2ee_group_by_mid:${chatMid}`)
+  const persisted = await store?.get?.(`line_e2ee_group_by_mid:${cacheKey}`)
   if (!persisted) {
     return null
   }
   const parsed = JSON.parse(persisted)
-  if (receiverKeyId && String(parsed.keyId) !== String(receiverKeyId)) {
-    return null
-  }
   const groupKey = {
     keyId: String(parsed.keyId),
     privateKey: Buffer.from(parsed.privateKey, 'base64'),
   }
-  ctx.groupKeys.set(chatMid, groupKey)
+  ctx.groupKeys.set(cacheKey, groupKey)
   ctx.logGroupKeyEvent('e2ee.group_key.cache_hit', {
     chat: chatMid,
     source: 'persisted',
@@ -211,10 +217,14 @@ async function deriveAndCacheGroupKey(
   const plainText = aesDecrypt(encrypted, key, iv)
   const groupKey: GroupKey = { keyId: groupKeyId, privateKey: plainText }
 
-  ctx.groupKeys.set(chatMid, groupKey)
+  // Cache under (chat, groupKeyId) — only ever add, never overwrite a
+  // different epoch, so a later rekey cannot strand messages this device can
+  // already read.
+  const cacheKey = `${chatMid}:${groupKey.keyId}`
+  ctx.groupKeys.set(cacheKey, groupKey)
   const store = ctx.getStore()
   await store?.set?.(
-    `line_e2ee_group_by_mid:${chatMid}`,
+    `line_e2ee_group_by_mid:${cacheKey}`,
     JSON.stringify({
       keyId: groupKey.keyId,
       privateKey: groupKey.privateKey.toString('base64'),
@@ -343,28 +353,6 @@ export async function getGroupKey(
   } finally {
     ctx.groupKeyFetches.delete(fetchKey)
   }
-}
-
-/**
- * Drop one cached/persisted group key so the next decrypt attempt refetches it
- * from LINE instead of trusting a stale local copy with the same key id.
- *
- * @param ctx - KeyManager context
- * @param chatMid - Group or room MID
- */
-export async function invalidateGroupKey(
-  ctx: KeyManagerContext,
-  chatMid: string,
-): Promise<void> {
-  ctx.groupKeys.delete(chatMid)
-  for (const key of Array.from(ctx.groupKeyFetches.keys())) {
-    if (key.startsWith(`${chatMid}:`)) {
-      ctx.groupKeyFetches.delete(key)
-    }
-  }
-  const store = ctx.getStore()
-  await store?.delete?.(`line_e2ee_group_by_mid:${chatMid}`)
-  ctx.logGroupKeyEvent('e2ee.group_key.invalidated', { chat: chatMid })
 }
 
 export { normalizeGroupPublicKeys } from './key-payload.js'
