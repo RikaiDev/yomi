@@ -11,6 +11,10 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import {
+  fetchStickerImage,
+  fetchStickerPackageMeta,
+} from '../line/client/sticker-meta.js'
 import { buildMentionMetadata, type Mention } from '../line/core/mention.js'
 import { decryptLineMessage } from '../line/core/message-query-service.js'
 import type { LineProtocolService } from '../line/core/service.js'
@@ -597,6 +601,60 @@ export async function handleSendAudio(
       },
     ],
   }
+}
+
+/**
+ * Handle `preview_sticker` — render sticker images so the caller can SEE them
+ * (returns MCP image content from the public sticker CDN). With `stickerId`,
+ * previews that one sticker; otherwise previews the first `limit` stickers of
+ * `packageId`. Each image is preceded by a text line naming its ids so the
+ * caller can map an image back to a (stickerId, packageId) for send_sticker.
+ * Read-only.
+ *
+ * @param service - Resumed LineProtocolService (unused; CDN-only).
+ * @param args - Tool arguments.
+ * @returns MCP tool result with interleaved id labels and images.
+ */
+export async function handlePreviewSticker(
+  _service: LineProtocolService,
+  args: { packageId: string; stickerId?: string; limit?: number },
+) {
+  if (!args?.packageId) {
+    return toolError('packageId is required.')
+  }
+  let ids: string[]
+  if (args.stickerId) {
+    ids = [args.stickerId]
+  } else {
+    const meta = await fetchStickerPackageMeta(args.packageId)
+    if (!meta) {
+      return toolError(
+        `No sticker package found for packageId "${args.packageId}".`,
+      )
+    }
+    ids = meta.stickerIds.slice(0, args.limit ?? 8)
+  }
+
+  const content: any[] = []
+  for (const id of ids) {
+    const img = await fetchStickerImage(id)
+    if (!img) {
+      continue
+    }
+    content.push({
+      type: 'text' as const,
+      text: `stickerId ${id} (packageId ${args.packageId}) — pass these to send_sticker`,
+    })
+    content.push({
+      type: 'image' as const,
+      data: img.toString('base64'),
+      mimeType: 'image/png',
+    })
+  }
+  if (content.length === 0) {
+    return toolError('No sticker previews available for that package/sticker.')
+  }
+  return { content }
 }
 
 /**

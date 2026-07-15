@@ -45,3 +45,21 @@ export async function fetchStickerPackageMeta(
       .filter((id: string | null): id is string => id !== null),
   }
 }
+
+/**
+ * Fetch one sticker's PNG preview image from the public sticker CDN.
+ *
+ * @param stickerId - LINE sticker id (STKID).
+ * @returns PNG bytes, or null when the CDN has no such sticker.
+ */
+export async function fetchStickerImage(
+  stickerId: string,
+): Promise<Buffer | null> {
+  const res = await fetch(
+    `${CDN.replace('/product', '/sticker')}/${stickerId}/android/sticker.png`,
+  )
+  if (!res.ok) {
+    return null
+  }
+  return Buffer.from(await res.arrayBuffer())
+}

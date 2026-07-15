@@ -399,6 +399,31 @@ export const TOOLS = [
   },
   {
     description:
+      'Show sticker images so you (and the user) can actually SEE them before sending — returns sticker preview images as MCP image content from the public sticker CDN. Give a packageId (from list_stickers/search_stickers) to preview its first several stickers, or add a specific stickerId to preview just that one. Each image is labeled with its stickerId + packageId so you can pass the chosen one to send_sticker. Read-only.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        packageId: {
+          type: 'string',
+          description: 'Sticker package id (STKPKGID) to preview.',
+        },
+        stickerId: {
+          type: 'string',
+          description:
+            'Optional specific sticker id (STKID) to preview just that sticker.',
+        },
+        limit: {
+          type: 'number',
+          description:
+            'Max stickers to preview when no stickerId is given (default 8).',
+        },
+      },
+      required: ['packageId'],
+    },
+    name: 'preview_sticker',
+  },
+  {
+    description:
       'Send a LINE read receipt (mark a conversation read up to a message) — this is a real, side-effecting action the other party can see. Marks read up to `messageId`, or the latest message when `messageId` is omitted. Use ONLY when the user explicitly wants to mark a chat read; reading messages (get_chat_messages, get_unread_digest) and background capture never mark read. Honest failure if there is no message to mark.',
     inputSchema: {
       type: 'object' as const,
