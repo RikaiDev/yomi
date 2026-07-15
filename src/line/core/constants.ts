@@ -28,6 +28,9 @@ export const OP_TYPE = {
   KICKOUT_FROM_GROUP: 36,
 }
 
+// Values mirror LINE's Thrift `ContentType` enum exactly. Do not renumber to
+// match intuition: a wrong value silently misroutes a message type (e.g. FILE
+// was 19 = MUSIC, so file attachments were never recognized as downloadable).
 export const CONTENT_TYPE = {
   NONE: 0,
   IMAGE: 1,
@@ -39,11 +42,17 @@ export const CONTENT_TYPE = {
   STICKER: 7,
   PRESENCE: 8,
   GIFT: 9,
-  GROUPBOARD_NOTE: 10,
-  GROUPBOARD_COMMENT: 11,
+  GROUPBOARD: 10,
+  APPLINK: 11,
+  LINK: 12,
+  CONTACT: 13,
+  FILE: 14,
   LOCATION: 15,
-  RICH_MESSAGE: 16,
-  CONTACT: 18,
-  FILE: 19,
+  POSTNOTIFICATION: 16,
+  RICH: 17,
+  CHATEVENT: 18,
+  MUSIC: 19,
+  PAYMENT: 20,
+  EXTIMAGE: 21,
   FLEX: 22,
 }
