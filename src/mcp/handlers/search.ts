@@ -23,9 +23,9 @@
  * `keyword`), never hidden.
  */
 
-import type { LineProtocolService } from '../line/core/service.js'
-import { collectMessages } from '../search/collector.js'
-import { getDefaultEmbedder } from '../search/default-embedder.js'
+import type { LineProtocolService } from '../../line/core/service.js'
+import { collectMessages } from '../../search/collector.js'
+import { getDefaultEmbedder } from '../../search/default-embedder.js'
 import {
   getEmbeddingCount,
   getIndexedMessageCount,
@@ -33,10 +33,10 @@ import {
   type SemanticSearchResult,
   searchMessages,
   semanticSearch,
-} from '../search/store.js'
-import { createCliLogger } from '../util/log.js'
-import { toolError } from './handlers.js'
-import { createPhiAccumulator, maskInto, phiNote } from './phi-guard.js'
+} from '../../search/store.js'
+import { createCliLogger } from '../../util/log.js'
+import { createPhiAccumulator, maskInto, phiNote } from '../phi-guard.js'
+import { toolError } from './shared.js'
 
 const log = createCliLogger('Yomi')
 

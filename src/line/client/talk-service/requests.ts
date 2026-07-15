@@ -370,3 +370,18 @@ export function buildReactRequest(messageId, reactionType = 2) {
 export function buildCancelReactionRequest(messageId) {
   return [structField(1, [i32Field(1, 0), i64Field(2, BigInt(messageId))])]
 }
+
+/**
+ * Build the unsendMessage request fields (retract one of this account's own
+ * messages for everyone).
+ *
+ * Top-level fields (NOT wrapped in a request struct): `{ seq, messageId }`.
+ * Unlike react, unsendMessage takes the messageId as a plain string, not an
+ * i64.
+ *
+ * @param messageId - Message id to unsend (numeric string).
+ * @returns Thrift request fields.
+ */
+export function buildUnsendMessageRequest(messageId) {
+  return [i32Field(1, 0), stringField(2, messageId)]
+}

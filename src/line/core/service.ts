@@ -159,6 +159,7 @@ export class LineProtocolService extends EventEmitter {
     reactionType?: number,
   ) => Promise<any>
   public cancelReaction!: (messageId: string) => Promise<any>
+  public unsendMessage!: (messageId: string) => Promise<any>
 
   constructor(options: any = {}) {
     super()

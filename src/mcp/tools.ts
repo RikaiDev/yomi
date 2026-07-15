@@ -688,6 +688,27 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY retracts (unsends) one of YOUR OWN LINE messages for everyone right now (TalkService unsendMessage). This deletes the message from the conversation for all participants and CANNOT be undone. LINE only allows unsending your own messages. SAFETY GATE: you must pass confirm: true — the call refuses otherwise so it can never fire by accident. One unsend per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        messageId: {
+          type: 'string',
+          description:
+            'LINE message id to retract (must be your own), as returned by get_chat_messages.',
+        },
+        confirm: {
+          type: 'boolean',
+          description:
+            'Must be true to proceed. Retraction is irreversible; the call refuses unless this is explicitly true.',
+        },
+      },
+      required: ['messageId', 'confirm'],
+    },
+    name: 'unsend_message',
+  },
+  {
+    description:
       'Explicitly collect recent messages from LINE conversations into Yomi\'s local cross-conversation search index, so search_messages has something to query. LINE has no native "search all my chats" primitive — this is how Yomi builds one locally. Fetches up to `perChat` recent messages per chat (default 100) for the given `chatIds`, or for all conversations when `chatIds` is omitted. Also batch-embeds each chat\'s messages (best-effort, local ONNX model) so search_messages can rank by meaning, not just keywords, and before returning sweeps the whole index to embed any messages still missing a vector — so re-running this repairs a partially-embedded index (legacy keyword-only rows, or a run where the model failed to load) without re-fetching from LINE. This tool is the explicit, manual path: one call = one bulk fetch, no internal loop or retry. It is NOT the only writer of the index, though — Yomi also runs a background capture loop (a startup catch-up plus a live SYNC4 poll that indexes incoming messages as they arrive, silently and denylist-gated), so the index generally stays current on its own; call this only to force a reconcile or backfill a specific set of chats. Messages without decryptable/plaintext text are skipped, not fabricated.',
     inputSchema: {
       type: 'object' as const,

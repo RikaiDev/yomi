@@ -15,6 +15,7 @@ import {
   buildReactRequest,
   buildSendChatCheckedRequest,
   buildSendMessageRequest,
+  buildUnsendMessageRequest,
   buildUpdateChatNameRequest,
   normalizeSendMessageOptions,
 } from './requests.js'
@@ -215,6 +216,25 @@ export function createTalkCommandClient(runtime) {
       )
       if (result.error) {
         throw new Error(`cancelReaction failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Unsend (retract) one of this account's own messages via TalkService
+     * unsendMessage — it is removed for everyone in the conversation. LINE only
+     * permits unsending the caller's own messages. Throws on LINE error.
+     *
+     * @param messageId - Message id to unsend (numeric string).
+     * @returns True when the unsend was accepted.
+     */
+    async unsendMessage(messageId) {
+      const result = await runtime.sendTalk(
+        'unsendMessage',
+        buildUnsendMessageRequest(messageId),
+      )
+      if (result.error) {
+        throw new Error(`unsendMessage failed: ${result.error}`)
       }
       return true
     },

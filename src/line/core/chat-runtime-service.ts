@@ -407,5 +407,17 @@ export function createChatRuntimeService(service: any) {
       await service.client.cancelReaction(messageId)
       return { cancelled: true, messageId }
     },
+
+    /**
+     * Unsend (retract) one of this account's own messages for everyone
+     * (TalkService unsendMessage). LINE only permits unsending own messages.
+     *
+     * @param messageId - Message id to unsend.
+     * @returns `{ unsent, messageId }`.
+     */
+    async unsendMessage(messageId: string): Promise<any> {
+      await service.client.unsendMessage(messageId)
+      return { unsent: true, messageId }
+    },
   }
 }

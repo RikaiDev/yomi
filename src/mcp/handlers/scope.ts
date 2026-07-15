@@ -10,16 +10,16 @@
  * best-effort resolve display names in list_excluded_chats/get_scope_policy.
  */
 
-import type { LineProtocolService } from '../line/core/service.js'
+import type { LineProtocolService } from '../../line/core/service.js'
 import {
   addExcludedChatIds,
   deleteMessagesForChats,
   getExcludedChatIds,
   removeExcludedChatIds,
-} from '../search/scope.js'
-import { toolError } from './handlers.js'
-import { resolveConversationNames } from './names.js'
-import { getPrivacyPolicyText } from './policy.js'
+} from '../../search/scope.js'
+import { resolveConversationNames } from '../names.js'
+import { getPrivacyPolicyText } from '../policy.js'
+import { toolError } from './shared.js'
 
 /** One excluded conversation with its best-effort resolved display name. */
 interface ExcludedChat {

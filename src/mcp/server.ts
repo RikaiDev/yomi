@@ -1,15 +1,16 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes thirty-five tools:
+ * On startup resumes any persisted LINE session. Exposes thirty-six tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
  * send_message, send_image, send_file, send_audio, send_video,
  * send_location, send_contact, send_sticker, list_stickers, search_stickers,
  * preview_sticker, find_contact, list_contacts, get_group_members,
  * rename_group, invite_member, kick_member, leave_group, create_group,
- * react_message, cancel_reaction, collect_messages, search_messages,
- * exclude_chats, include_chats, list_excluded_chats, get_scope_policy.
+ * react_message, cancel_reaction, unsend_message, collect_messages,
+ * search_messages, exclude_chats, include_chats, list_excluded_chats,
+ * get_scope_policy.
  *
  * find_contact/list_contacts/get_group_members expose LINE's raw
  * people/membership data only — no affinity scoring, no interaction-
@@ -56,7 +57,8 @@
  *     background send. Each also best-effort sends a read receipt for that
  *     chat after a successful send (see the `read` field in the response).
  *
- * Tool handler bodies live in handlers.ts/search-handlers.ts and the tool
+ * Tool handler bodies live in the handlers/ folder (one single-responsibility
+ * module per domain, re-exported through handlers/index.ts) and the tool
  * schema list lives in tools.ts, to keep this file, the wiring/dispatch
  * surface, under the project's 200-scc-line cap for MCP server files.
  */
@@ -77,23 +79,31 @@ import { createCliLogger } from '../util/log.js'
 import { YOMI_VERSION } from '../version.js'
 import {
   handleCancelReaction,
+  handleCollectMessages,
   handleCreateGroup,
+  handleExcludeChats,
   handleFindContact,
   handleGetChatMessages,
   handleGetGroupMembers,
   handleGetMessageImage,
   handleGetMessageMedia,
+  handleGetScopePolicy,
   handleGetUnreadDigest,
+  handleIncludeChats,
   handleInviteMember,
   handleKickMember,
   handleLeaveGroup,
   handleListContacts,
   handleListConversations,
+  handleListExcludedChats,
   handleListStickers,
+  handleLogin,
+  handleLoginComplete,
   handleMarkRead,
   handlePreviewSticker,
   handleReactMessage,
   handleRenameGroup,
+  handleSearchMessages,
   handleSearchStickers,
   handleSendAudio,
   handleSendContact,
@@ -103,22 +113,12 @@ import {
   handleSendMessage,
   handleSendSticker,
   handleSendVideo,
+  handleUnsendMessage,
   NO_CREDENTIALS_MESSAGE,
   sessionRequiredError,
   toolError,
-} from './handlers.js'
-import { handleLogin, handleLoginComplete } from './handlers-login.js'
+} from './handlers/index.js'
 import { getPrivacyPolicyText } from './policy.js'
-import {
-  handleExcludeChats,
-  handleGetScopePolicy,
-  handleIncludeChats,
-  handleListExcludedChats,
-} from './scope-handlers.js'
-import {
-  handleCollectMessages,
-  handleSearchMessages,
-} from './search-handlers.js'
 import { TOOLS } from './tools.js'
 import { supportsMcpApps } from './ui/capability.js'
 import {
@@ -438,6 +438,11 @@ async function main(): Promise<void> {
           return await handleCancelReaction(
             service,
             (args ?? {}) as { messageId: string },
+          )
+        case 'unsend_message':
+          return await handleUnsendMessage(
+            service,
+            (args ?? {}) as { messageId: string; confirm?: boolean },
           )
         case 'collect_messages':
           return await handleCollectMessages(
