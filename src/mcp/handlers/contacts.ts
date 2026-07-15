@@ -1,6 +1,9 @@
 import type { LineProtocolService } from '../../line/core/service.js'
+import { createCliLogger } from '../../util/log.js'
 import { resolveUserNames } from '../names.js'
-import { toolError } from './shared.js'
+import { jsonResult, toolError } from './shared.js'
+
+const log = createCliLogger('Yomi')
 
 /** One resolved LINE contact/member shape shared by the contact/group tools. */
 interface ContactSummary {
@@ -136,4 +139,64 @@ export async function handleGetGroupMembers(
       { type: 'text' as const, text: JSON.stringify(summaries, null, 2) },
     ],
   }
+}
+
+/**
+ * Handle `add_friend` — REALLY adds a person to THIS account's LINE friends now
+ * by MID (TalkService findAndAddContactsByMid).
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleAddFriend(
+  service: LineProtocolService,
+  args: { mid: string },
+) {
+  if (!args.mid) {
+    return toolError('mid is required.')
+  }
+  const result = await service.addFriend(args.mid)
+  log.info('add_friend.done', { mid: args.mid })
+  return jsonResult(result)
+}
+
+/**
+ * Handle `block_contact` — REALLY blocks a contact for THIS account now
+ * (TalkService blockContact). Reversible with unblock_contact.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleBlockContact(
+  service: LineProtocolService,
+  args: { mid: string },
+) {
+  if (!args.mid) {
+    return toolError('mid is required.')
+  }
+  const result = await service.blockContact(args.mid)
+  log.info('block_contact.done', { mid: args.mid })
+  return jsonResult(result)
+}
+
+/**
+ * Handle `unblock_contact` — REALLY unblocks a previously blocked contact for
+ * THIS account now (TalkService unblockContact).
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleUnblockContact(
+  service: LineProtocolService,
+  args: { mid: string },
+) {
+  if (!args.mid) {
+    return toolError('mid is required.')
+  }
+  const result = await service.unblockContact(args.mid)
+  log.info('unblock_contact.done', { mid: args.mid })
+  return jsonResult(result)
 }

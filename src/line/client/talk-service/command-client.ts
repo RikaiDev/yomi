@@ -7,10 +7,13 @@
 import { Buffer } from 'node:buffer'
 import { parseMessage } from '../parsers.js'
 import {
+  buildAcceptChatInvitationRequest,
   buildCancelReactionRequest,
+  buildContactMidActionRequest,
   buildCreateChatRequest,
   buildDeleteOtherFromChatRequest,
   buildDeleteSelfFromChatRequest,
+  buildFindAndAddContactsByMidRequest,
   buildInviteIntoChatRequest,
   buildReactRequest,
   buildSendChatCheckedRequest,
@@ -235,6 +238,77 @@ export function createTalkCommandClient(runtime) {
       )
       if (result.error) {
         throw new Error(`unsendMessage failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Add a friend by MID via TalkService findAndAddContactsByMid. Throws on
+     * LINE error.
+     *
+     * @param mid - MID of the person to add.
+     * @param reference - JSON reference breadcrumb (optional).
+     * @returns The added contact result (raw response fields).
+     */
+    async findAndAddContactByMid(mid, reference) {
+      const result = await runtime.sendTalk(
+        'findAndAddContactsByMid',
+        buildFindAndAddContactsByMidRequest(mid, reference),
+      )
+      if (result.error) {
+        throw new Error(`findAndAddContactsByMid failed: ${result.error}`)
+      }
+      return result.fields?.[0] ?? null
+    },
+
+    /**
+     * Block a contact via TalkService blockContact. Throws on LINE error.
+     *
+     * @param mid - Contact MID to block.
+     * @returns True when the block was accepted.
+     */
+    async blockContact(mid) {
+      const result = await runtime.sendTalk(
+        'blockContact',
+        buildContactMidActionRequest(mid),
+      )
+      if (result.error) {
+        throw new Error(`blockContact failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Unblock a contact via TalkService unblockContact. Throws on LINE error.
+     *
+     * @param mid - Contact MID to unblock.
+     * @returns True when the unblock was accepted.
+     */
+    async unblockContact(mid) {
+      const result = await runtime.sendTalk(
+        'unblockContact',
+        buildContactMidActionRequest(mid),
+      )
+      if (result.error) {
+        throw new Error(`unblockContact failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /**
+     * Accept a group/chat invitation via TalkService acceptChatInvitation —
+     * this account joins the chat. Throws on LINE error.
+     *
+     * @param chatMid - Group/chat MID to accept the invitation for.
+     * @returns True when the acceptance was accepted.
+     */
+    async acceptChatInvitation(chatMid) {
+      const result = await runtime.sendTalk(
+        'acceptChatInvitation',
+        buildAcceptChatInvitationRequest(chatMid),
+      )
+      if (result.error) {
+        throw new Error(`acceptChatInvitation failed: ${result.error}`)
       }
       return true
     },

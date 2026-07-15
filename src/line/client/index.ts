@@ -177,6 +177,13 @@ export class LineClient extends EventEmitter {
   public react!: (messageId: string, reactionType?: number) => Promise<boolean>
   public cancelReaction!: (messageId: string) => Promise<boolean>
   public unsendMessage!: (messageId: string) => Promise<boolean>
+  public findAndAddContactByMid!: (
+    mid: string,
+    reference?: string,
+  ) => Promise<any>
+  public blockContact!: (mid: string) => Promise<boolean>
+  public unblockContact!: (mid: string) => Promise<boolean>
+  public acceptChatInvitation!: (chatMid: string) => Promise<boolean>
 
   constructor(authToken, config: any = {}) {
     super()

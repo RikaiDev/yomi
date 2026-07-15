@@ -1,16 +1,16 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes thirty-six tools:
+ * On startup resumes any persisted LINE session. Exposes forty tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
  * send_message, send_image, send_file, send_audio, send_video,
  * send_location, send_contact, send_sticker, list_stickers, search_stickers,
  * preview_sticker, find_contact, list_contacts, get_group_members,
  * rename_group, invite_member, kick_member, leave_group, create_group,
- * react_message, cancel_reaction, unsend_message, collect_messages,
- * search_messages, exclude_chats, include_chats, list_excluded_chats,
- * get_scope_policy.
+ * react_message, cancel_reaction, unsend_message, add_friend, block_contact,
+ * unblock_contact, accept_invitation, collect_messages, search_messages,
+ * exclude_chats, include_chats, list_excluded_chats, get_scope_policy.
  *
  * find_contact/list_contacts/get_group_members expose LINE's raw
  * people/membership data only — no affinity scoring, no interaction-
@@ -78,6 +78,9 @@ import { getDefaultEmbedder } from '../search/default-embedder.js'
 import { createCliLogger } from '../util/log.js'
 import { YOMI_VERSION } from '../version.js'
 import {
+  handleAcceptInvitation,
+  handleAddFriend,
+  handleBlockContact,
   handleCancelReaction,
   handleCollectMessages,
   handleCreateGroup,
@@ -113,6 +116,7 @@ import {
   handleSendMessage,
   handleSendSticker,
   handleSendVideo,
+  handleUnblockContact,
   handleUnsendMessage,
   NO_CREDENTIALS_MESSAGE,
   sessionRequiredError,
@@ -443,6 +447,23 @@ async function main(): Promise<void> {
           return await handleUnsendMessage(
             service,
             (args ?? {}) as { messageId: string; confirm?: boolean },
+          )
+        case 'add_friend':
+          return await handleAddFriend(service, (args ?? {}) as { mid: string })
+        case 'block_contact':
+          return await handleBlockContact(
+            service,
+            (args ?? {}) as { mid: string },
+          )
+        case 'unblock_contact':
+          return await handleUnblockContact(
+            service,
+            (args ?? {}) as { mid: string },
+          )
+        case 'accept_invitation':
+          return await handleAcceptInvitation(
+            service,
+            (args ?? {}) as { chatId: string },
           )
         case 'collect_messages':
           return await handleCollectMessages(

@@ -127,3 +127,23 @@ export async function handleCreateGroup(
   })
   return jsonResult(result)
 }
+
+/**
+ * Handle `accept_invitation` — REALLY accepts a group/chat invitation for THIS
+ * account now (TalkService acceptChatInvitation); the account joins the chat.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleAcceptInvitation(
+  service: LineProtocolService,
+  args: { chatId: string },
+) {
+  if (!args.chatId) {
+    return toolError('chatId is required.')
+  }
+  const result = await service.acceptInvitation(args.chatId)
+  log.info('accept_invitation.done', { chatId: args.chatId })
+  return jsonResult(result)
+}

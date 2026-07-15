@@ -160,6 +160,10 @@ export class LineProtocolService extends EventEmitter {
   ) => Promise<any>
   public cancelReaction!: (messageId: string) => Promise<any>
   public unsendMessage!: (messageId: string) => Promise<any>
+  public addFriend!: (mid: string, reference?: string) => Promise<any>
+  public blockContact!: (mid: string) => Promise<any>
+  public unblockContact!: (mid: string) => Promise<any>
+  public acceptInvitation!: (chatMid: string) => Promise<any>
 
   constructor(options: any = {}) {
     super()

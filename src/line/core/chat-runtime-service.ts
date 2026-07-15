@@ -419,5 +419,54 @@ export function createChatRuntimeService(service: any) {
       await service.client.unsendMessage(messageId)
       return { unsent: true, messageId }
     },
+
+    /**
+     * Add a friend by MID (TalkService findAndAddContactsByMid).
+     *
+     * @param mid - MID of the person to add.
+     * @param reference - Optional JSON reference breadcrumb.
+     * @returns `{ added, mid, contact }`.
+     */
+    async addFriend(mid: string, reference?: string): Promise<any> {
+      const contact = await service.client.findAndAddContactByMid(
+        mid,
+        reference,
+      )
+      return { added: true, mid, contact }
+    },
+
+    /**
+     * Block a contact (TalkService blockContact).
+     *
+     * @param mid - Contact MID to block.
+     * @returns `{ blocked, mid }`.
+     */
+    async blockContact(mid: string): Promise<any> {
+      await service.client.blockContact(mid)
+      return { blocked: true, mid }
+    },
+
+    /**
+     * Unblock a contact (TalkService unblockContact).
+     *
+     * @param mid - Contact MID to unblock.
+     * @returns `{ unblocked, mid }`.
+     */
+    async unblockContact(mid: string): Promise<any> {
+      await service.client.unblockContact(mid)
+      return { unblocked: true, mid }
+    },
+
+    /**
+     * Accept a group/chat invitation — this account joins the chat (TalkService
+     * acceptChatInvitation).
+     *
+     * @param chatMid - Group/chat MID to accept.
+     * @returns `{ accepted, chatId }`.
+     */
+    async acceptInvitation(chatMid: string): Promise<any> {
+      await service.client.acceptChatInvitation(chatMid)
+      return { accepted: true, chatId: chatMid }
+    },
   }
 }

@@ -651,6 +651,68 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY adds a person to YOUR LINE friends right now by their MID (TalkService findAndAddContactsByMid). Provide `mid` (e.g. from get_group_members or find_contact). One add per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        mid: {
+          type: 'string',
+          description:
+            'MID of the person to add as a friend, e.g. from get_group_members.',
+        },
+      },
+      required: ['mid'],
+    },
+    name: 'add_friend',
+  },
+  {
+    description:
+      'REALLY blocks a contact for YOUR LINE account right now (TalkService blockContact). Blocked contacts can no longer message you. Reversible with unblock_contact. One block per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        mid: {
+          type: 'string',
+          description: 'MID of the contact to block.',
+        },
+      },
+      required: ['mid'],
+    },
+    name: 'block_contact',
+  },
+  {
+    description:
+      'REALLY unblocks a previously blocked contact for YOUR LINE account right now (TalkService unblockContact). Undoes block_contact. One unblock per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        mid: {
+          type: 'string',
+          description: 'MID of the contact to unblock.',
+        },
+      },
+      required: ['mid'],
+    },
+    name: 'unblock_contact',
+  },
+  {
+    description:
+      'REALLY accepts a group/chat invitation for YOUR LINE account right now (TalkService acceptChatInvitation) — you join the chat. Use for a group you were invited to (its chatId appears with invited status). One accept per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE group/room MID whose invitation to accept, as returned by list_conversations.',
+        },
+      },
+      required: ['chatId'],
+    },
+    name: 'accept_invitation',
+  },
+  {
+    description:
       'REALLY adds a reaction to a real LINE message right now (TalkService react). Visible to the conversation. `reactionType` is a predefined reaction: 2 = 👍 LIKE, 3 = ❤️ LOVE, 4 = 😆 LAUGH, 5 = 😮 SURPRISE, 6 = 😢 SAD, 7 = 😡 ANGRY (defaults to 2). One reaction per call.',
     inputSchema: {
       type: 'object' as const,

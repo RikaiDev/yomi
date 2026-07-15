@@ -385,3 +385,49 @@ export function buildCancelReactionRequest(messageId) {
 export function buildUnsendMessageRequest(messageId) {
   return [i32Field(1, 0), stringField(2, messageId)]
 }
+
+/**
+ * Build the findAndAddContactsByMid request fields (add a friend by MID).
+ *
+ * Top-level fields: `{ reqSeq, mid, type, reference }`. `type` is 0; `reference`
+ * is a JSON breadcrumb LINE records for where the add came from.
+ *
+ * @param mid - MID of the person to add.
+ * @param reference - JSON reference breadcrumb.
+ * @returns Thrift request fields.
+ */
+export function buildFindAndAddContactsByMidRequest(
+  mid,
+  reference = '{"screen":"chat","spec":"native"}',
+) {
+  return [
+    i32Field(1, 0),
+    stringField(2, mid),
+    i32Field(3, 0),
+    stringField(4, reference),
+  ]
+}
+
+/**
+ * Build a `{ reqSeq, mid }` contact-action request — shared by blockContact and
+ * unblockContact, which have identical wire shapes (only the method differs).
+ *
+ * @param mid - Target contact MID.
+ * @returns Thrift request fields.
+ */
+export function buildContactMidActionRequest(mid) {
+  return [i32Field(1, 0), stringField(2, mid)]
+}
+
+/**
+ * Build the acceptChatInvitation request fields (join a group you were invited
+ * to).
+ *
+ * Single struct arg at field 1: `{ reqSeq, to }`.
+ *
+ * @param chatMid - Group/chat MID to accept the invitation for.
+ * @returns Thrift request fields.
+ */
+export function buildAcceptChatInvitationRequest(chatMid) {
+  return [structField(1, [i32Field(1, 0), stringField(2, chatMid)])]
+}
