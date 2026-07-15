@@ -232,6 +232,63 @@ export const TOOLS = [
   },
   {
     description:
+      'REALLY sends an E2EE file attachment (any type — .docx, .pdf, .zip, …) to a real LINE conversation right now; it is delivered to the other party/parties immediately, not a draft. Same upload-then-send pipeline as send_image: the file is encrypted and uploaded to LINE OBS before the E2EE data message pointing at it is sent, and the original filename is sealed end-to-end so the recipient sees it. Works for 1:1 chats, groups, and rooms. Exactly one send per call — no retries. If the encryption key cannot be resolved or the upload is rejected, the call fails honestly instead of fabricating a success. Provide exactly one of filePath or fileBase64; fileName is required with fileBase64 (and overrides the basename when given with filePath).',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE chat/group/room MID to send to, as returned by list_conversations.',
+        },
+        filePath: {
+          type: 'string',
+          description:
+            'Local filesystem path to the file. Mutually exclusive with fileBase64.',
+        },
+        fileBase64: {
+          type: 'string',
+          description:
+            'Base64-encoded file bytes. Mutually exclusive with filePath; requires fileName.',
+        },
+        fileName: {
+          type: 'string',
+          description:
+            'Original filename shown to the recipient (sealed E2EE). Required with fileBase64; optional with filePath (defaults to its basename).',
+        },
+      },
+      required: ['chatId'],
+    },
+    name: 'send_file',
+  },
+  {
+    description:
+      'REALLY shares a LINE contact card to a real conversation right now — the recipient sees a tappable card for the shared person. This is NOT a file/image and NOT E2EE media: it is a CONTACT message naming the shared person by their LINE mid. Provide `contactMid` (the person to share, e.g. from find_contact or get_group_members); `displayName` is optional and resolved from the mid when omitted. Works for 1:1 chats, groups, and rooms. Exactly one send per call.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'LINE chat/group/room MID to send to, as returned by list_conversations.',
+        },
+        contactMid: {
+          type: 'string',
+          description:
+            'MID of the person whose contact card to share, as returned by find_contact or get_group_members.',
+        },
+        displayName: {
+          type: 'string',
+          description:
+            'Optional display name for the card. Resolved from contactMid when omitted.',
+        },
+      },
+      required: ['chatId', 'contactMid'],
+    },
+    name: 'send_contact',
+  },
+  {
+    description:
       'Send a LINE read receipt (mark a conversation read up to a message) — this is a real, side-effecting action the other party can see. Marks read up to `messageId`, or the latest message when `messageId` is omitted. Use ONLY when the user explicitly wants to mark a chat read; reading messages (get_chat_messages, get_unread_digest) and background capture never mark read. Honest failure if there is no message to mark.',
     inputSchema: {
       type: 'object' as const,

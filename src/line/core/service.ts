@@ -76,6 +76,16 @@ export class LineProtocolService extends EventEmitter {
     imageBytes: Buffer,
     fileName: string | null,
   ) => Promise<any>
+  public sendFile!: (
+    to: string,
+    fileBytes: Buffer,
+    fileName: string,
+  ) => Promise<any>
+  public sendContact!: (
+    to: string,
+    contactMid: string,
+    displayName: string,
+  ) => Promise<any>
   public getRecentMessages!: (chatId: string, count?: number) => Promise<any[]>
   public getPreviousMessages!: (
     chatId: string,

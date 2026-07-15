@@ -259,6 +259,173 @@ export async function handleSendImage(
 }
 
 /**
+ * Handle `send_file` — REALLY sends an E2EE file attachment to a real LINE
+ * conversation right now. Mirrors handleSendImage but for arbitrary files: the
+ * bytes come from `filePath` or `fileBase64`, and `fileName` (required for the
+ * base64 form) is sealed E2EE so the recipient sees the original name. One send
+ * per call; on any failure it returns an honest error and sends nothing.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSendFile(
+  service: LineProtocolService,
+  args: {
+    chatId: string
+    filePath?: string
+    fileBase64?: string
+    fileName?: string
+  },
+) {
+  if (!args.chatId) {
+    return toolError('chatId is required.')
+  }
+  const hasPath = Boolean(args.filePath)
+  const hasBase64 = Boolean(args.fileBase64)
+  if (hasPath === hasBase64) {
+    return toolError('Provide exactly one of filePath or fileBase64.')
+  }
+
+  let fileBytes: Buffer
+  let fileName: string
+  if (args.filePath) {
+    try {
+      fileBytes = await fs.readFile(args.filePath)
+    } catch (error: any) {
+      return toolError(
+        `Could not read filePath "${args.filePath}": ${error?.message ?? String(error)}`,
+      )
+    }
+    fileName = args.fileName || path.basename(args.filePath)
+  } else {
+    if (!args.fileName) {
+      return toolError('fileName is required when sending fileBase64.')
+    }
+    fileBytes = Buffer.from(args.fileBase64 as string, 'base64')
+    fileName = args.fileName
+  }
+
+  if (fileBytes.length === 0) {
+    return toolError('Resolved file is empty.')
+  }
+
+  const result = await service.sendFile(args.chatId, fileBytes, fileName)
+  log.info('send_file.sent', {
+    chatId: args.chatId,
+    messageId: result?.messageId,
+    oid: result?.oid,
+    fileName,
+  })
+  let read = false
+  try {
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_file.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
+  }
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            messageId: result?.messageId ?? null,
+            oid: result?.oid ?? null,
+            fileName,
+            sent: true,
+            read,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }
+}
+
+/**
+ * Handle `send_contact` — REALLY shares a LINE contact card (contentType
+ * CONTACT) to a real conversation now. Not media: it carries the shared
+ * person's mid in contentMetadata. `displayName` is resolved from the mid when
+ * the caller omits it. One send per call; honest error on failure.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSendContact(
+  service: LineProtocolService,
+  args: { chatId: string; contactMid: string; displayName?: string },
+) {
+  if (!args.chatId) {
+    return toolError('chatId is required.')
+  }
+  if (!args.contactMid) {
+    return toolError('contactMid is required.')
+  }
+
+  let displayName = args.displayName ?? ''
+  if (!displayName) {
+    try {
+      displayName = service.resolveName(args.contactMid) || ''
+    } catch {
+      displayName = ''
+    }
+    if (!displayName) {
+      try {
+        const contact = await service.getContact(args.contactMid)
+        displayName = contact?.displayName ?? ''
+      } catch {
+        // Leave empty — LINE resolves the name from the mid on the recipient side.
+      }
+    }
+  }
+
+  const result = await service.sendContact(
+    args.chatId,
+    args.contactMid,
+    displayName,
+  )
+  log.info('send_contact.sent', {
+    chatId: args.chatId,
+    contactMid: args.contactMid,
+    messageId: result?.messageId,
+  })
+  let read = false
+  try {
+    const r = await service.markChatRead(args.chatId)
+    read = r.marked
+  } catch (error: any) {
+    log.warn('send_contact.mark_read_failed', {
+      chatId: args.chatId,
+      error: error?.message ?? String(error),
+    })
+  }
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            messageId: result?.messageId ?? null,
+            contactMid: args.contactMid,
+            displayName,
+            sent: true,
+            read,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  }
+}
+
+/**
  * Handle `get_chat_messages`.
  *
  * Without `before`, returns the most recent `count` messages (unchanged

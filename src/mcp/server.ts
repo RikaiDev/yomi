@@ -1,12 +1,12 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes nineteen tools:
+ * On startup resumes any persisted LINE session. Exposes twenty-one tools:
  * login, login_complete, list_conversations, get_chat_messages,
  * get_message_image, get_message_media, get_unread_digest, mark_read,
- * send_message, send_image, find_contact, list_contacts, get_group_members,
- * collect_messages, search_messages, exclude_chats, include_chats,
- * list_excluded_chats, get_scope_policy.
+ * send_message, send_image, send_file, send_contact, find_contact,
+ * list_contacts, get_group_members, collect_messages, search_messages,
+ * exclude_chats, include_chats, list_excluded_chats, get_scope_policy.
  *
  * find_contact/list_contacts/get_group_members expose LINE's raw
  * people/membership data only — no affinity scoring, no interaction-
@@ -47,11 +47,11 @@
  *     receipts — and denylist-gated. It never sends messages and never
  *     marks anything read. The only read-receipt path is the explicit
  *     mark_read tool and the auto-read that follows a successful
- *     send_message/send_image (replying implies reading).
- *   - `send_message`/`send_image` perform exactly one real, E2EE-encrypted
- *     send per call — no auto-send, no retry loop, no background send. Each
- *     also best-effort sends a read receipt for that chat after a
- *     successful send (see the `read` field in the response).
+ *     send_message/send_image/send_file (replying implies reading).
+ *   - `send_message`/`send_image`/`send_file` perform exactly one real,
+ *     E2EE-encrypted send per call — no auto-send, no retry loop, no
+ *     background send. Each also best-effort sends a read receipt for that
+ *     chat after a successful send (see the `read` field in the response).
  *
  * Tool handler bodies live in handlers.ts/search-handlers.ts and the tool
  * schema list lives in tools.ts, to keep this file, the wiring/dispatch
@@ -82,6 +82,8 @@ import {
   handleListContacts,
   handleListConversations,
   handleMarkRead,
+  handleSendContact,
+  handleSendFile,
   handleSendImage,
   handleSendMessage,
   NO_CREDENTIALS_MESSAGE,
@@ -281,6 +283,25 @@ async function main(): Promise<void> {
               chatId: string
               imagePath?: string
               imageBase64?: string
+            },
+          )
+        case 'send_file':
+          return await handleSendFile(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              filePath?: string
+              fileBase64?: string
+              fileName?: string
+            },
+          )
+        case 'send_contact':
+          return await handleSendContact(
+            service,
+            (args ?? {}) as {
+              chatId: string
+              contactMid: string
+              displayName?: string
             },
           )
         case 'find_contact':

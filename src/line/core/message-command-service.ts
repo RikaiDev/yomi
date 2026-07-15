@@ -5,8 +5,105 @@ import { CONTENT_TYPE } from './constants.js'
 import { encryptLineMediaBytes } from './media-encrypt.js'
 import { i32Field } from './thrift/fields/builders.js'
 
-/** LINE OBS service namespace for image media. */
+/** LINE OBS service namespace per media kind (image vs. file attachment). */
 const OBS_SID_IMAGE = 'emi'
+const OBS_SID_FILE = 'emf'
+
+/** Per-kind knobs for the one shared E2EE media send pipeline. */
+interface E2EEMediaSpec {
+  /** OBS service namespace: OBS_SID_IMAGE | OBS_SID_FILE. */
+  sid: string
+  /** LINE content type: CONTENT_TYPE.IMAGE | CONTENT_TYPE.FILE. */
+  contentType: number
+  /** `name` param for the OBS upload. */
+  uploadName: string
+  /** Fields sealed INSIDE the E2EE payload alongside keyMaterial (e.g. a file's name — it is E2EE, not plaintext). */
+  sealed?: Record<string, unknown>
+  /**
+   * Per-kind PLAINTEXT contentMetadata, given the encrypted byte length.
+   * These fields differ by kind and are NOT shared: an image carries
+   * MEDIA_CONTENT_INFO (with the encrypted size), a file carries FILE_SIZE
+   * (the plaintext size) and no MEDIA_CONTENT_INFO — matching what LINE's own
+   * clients emit. OID/SID/e2eeVersion are added by the pipeline for both.
+   */
+  metadata: (encryptedLength: number) => Record<string, string>
+}
+
+/**
+ * The one E2EE media send pipeline, shared by every media kind. Encrypts the
+ * bytes with a fresh random key, uploads the ciphertext (original + the
+ * protocol-required preview object) to OBS, then sends an E2EE data message
+ * that seals the key material (plus any per-kind `sealed` fields) and points
+ * at the uploaded object via OID/SID. Image vs. file differ ONLY in `spec`
+ * (namespace, content type, what is sealed vs. exposed) — sendImage/sendFile
+ * are thin callers so there is exactly one implementation, never a second copy
+ * that can drift.
+ *
+ * @param client - Connected LINE client.
+ * @param mid - Sender's own MID (the OBS object is addressed by the sender).
+ * @param e2eeManager - LINE E2EE manager (dispatches pairwise vs. group by recipient MID).
+ * @param to - Recipient MID (1:1 `u...`, group `c...`, or room `r...`).
+ * @param bytes - Raw (plaintext) media bytes.
+ * @param spec - Per-kind knobs.
+ * @returns The sent message id and uploaded object id.
+ */
+async function sendE2EEMedia(
+  client: any,
+  mid: string,
+  e2eeManager: any,
+  to: string,
+  bytes: Buffer,
+  spec: E2EEMediaSpec,
+): Promise<{ messageId: string | null; oid: string; sent: true }> {
+  const accessToken = await acquireUploadAccessToken(client)
+  const keyMaterial = crypto.randomBytes(32).toString('base64')
+  const encryptedFile = await encryptLineMediaBytes(bytes, keyMaterial)
+
+  const { oid } = await uploadLineObsMediaObject({
+    accessToken,
+    data: encryptedFile,
+    mid,
+    objectPath: `reqid-${crypto.randomUUID()}`,
+    params: { name: spec.uploadName, type: 'file' },
+    sid: spec.sid,
+  })
+
+  // The preview object is required by the LINE protocol even when there is no
+  // separate thumbnail to offer — upload the same ciphertext under the preview
+  // path.
+  await uploadLineObsMediaObject({
+    accessToken,
+    data: encryptedFile,
+    mid,
+    objectPath: `${oid}__ud-preview`,
+    params: {},
+    sid: spec.sid,
+  })
+
+  const encrypted = await e2eeManager.encryptE2EEMessage(
+    to,
+    { keyMaterial, ...(spec.sealed ?? {}) },
+    spec.contentType,
+  )
+  const contentMetadata = {
+    ...encrypted.contentMetadata,
+    e2eeVersion: '2',
+    OID: oid,
+    SID: spec.sid,
+    ...spec.metadata(encryptedFile.length),
+  }
+
+  const sent = await client.sendMessage({
+    chunks: encrypted.chunks,
+    contentMetadata,
+    contentType: spec.contentType,
+    relatedMessageId: null,
+    text: null,
+    to,
+  })
+
+  return { messageId: sent?.id ?? null, oid, sent: true }
+}
 
 /**
  * Acquire the encrypted access token the OBS upload gateway requires (the
@@ -130,59 +227,87 @@ export function createMessageCommandService(getClient, e2eeManager) {
         )
       }
       const extension = resolveImageExtension(fileName)
-      const accessToken = await acquireUploadAccessToken(client)
-      const keyMaterial = crypto.randomBytes(32).toString('base64')
-      const encryptedFile = await encryptLineMediaBytes(imageBytes, keyMaterial)
-
-      const { oid } = await uploadLineObsMediaObject({
-        accessToken,
-        data: encryptedFile,
-        mid,
-        objectPath: `reqid-${crypto.randomUUID()}`,
-        params: { name: fileName ?? `image.${extension}`, type: 'file' },
+      return sendE2EEMedia(client, mid, e2eeManager, to, imageBytes, {
         sid: OBS_SID_IMAGE,
-      })
-
-      // The preview object is required by the LINE protocol even though
-      // Yomi has no separate thumbnail to offer — upload the same
-      // ciphertext under the preview path.
-      await uploadLineObsMediaObject({
-        accessToken,
-        data: encryptedFile,
-        mid,
-        objectPath: `${oid}__ud-preview`,
-        params: {},
-        sid: OBS_SID_IMAGE,
-      })
-
-      const encrypted = await e2eeManager.encryptE2EEMessage(
-        to,
-        { keyMaterial },
-        CONTENT_TYPE.IMAGE,
-      )
-      const contentMetadata = {
-        ...encrypted.contentMetadata,
-        e2eeVersion: '2',
-        MEDIA_CONTENT_INFO: JSON.stringify({
-          animated: false,
-          category: 'original',
-          extension,
-          fileSize: encryptedFile.length,
-        }),
-        OID: oid,
-        SID: OBS_SID_IMAGE,
-      }
-
-      const sent = await client.sendMessage({
-        chunks: encrypted.chunks,
-        contentMetadata,
         contentType: CONTENT_TYPE.IMAGE,
-        relatedMessageId: null,
-        text: null,
-        to,
+        uploadName: fileName ?? `image.${extension}`,
+        metadata: (encryptedLength) => ({
+          MEDIA_CONTENT_INFO: JSON.stringify({
+            animated: false,
+            category: 'original',
+            extension,
+            fileSize: encryptedLength,
+          }),
+        }),
       })
+    },
 
-      return { messageId: sent?.id ?? null, oid, sent: true }
+    /**
+     * Send one E2EE file attachment (any type) through the same upload-then-
+     * send pipeline as {@link sendImage}. The only differences: the file OBS
+     * namespace, contentType FILE, and the original filename sealed inside the
+     * E2EE payload (LINE keeps a file's name end-to-end encrypted, not in
+     * plaintext metadata) so the recipient recovers it on decrypt.
+     *
+     * Exactly one send per call — no retry. Throws (sending nothing) if the
+     * profile MID is missing, the filename is empty, E2EE key material cannot
+     * be resolved, or the OBS upload is rejected.
+     *
+     * @param to - Recipient MID (1:1 `u...`, group `c...`, or room `r...`).
+     * @param fileBytes - Raw (plaintext) file bytes to send.
+     * @param fileName - Original filename (required; sealed E2EE for the recipient).
+     * @returns The sent message id and the uploaded object id.
+     */
+    async sendFile(to, fileBytes: Buffer, fileName: string) {
+      const client = requireLineClient(getClient)
+      const mid = e2eeManager.getProfileMid?.()
+      if (!mid) {
+        throw new Error(
+          'Cannot send file without an authenticated LINE profile MID',
+        )
+      }
+      if (!fileName) {
+        throw new Error('Cannot send file without a fileName')
+      }
+      return sendE2EEMedia(client, mid, e2eeManager, to, fileBytes, {
+        sid: OBS_SID_FILE,
+        contentType: CONTENT_TYPE.FILE,
+        uploadName: fileName,
+        sealed: { fileName },
+        // Files carry FILE_SIZE (plaintext size) and NO MEDIA_CONTENT_INFO —
+        // this matches what LINE's own clients emit for a file attachment.
+        metadata: () => ({ FILE_SIZE: String(fileBytes.length) }),
+      })
+    },
+
+    /**
+     * Share a LINE contact card. Unlike image/file, this is NOT media: no OBS
+     * upload and no media E2EE — it is a plain message with contentType CONTACT
+     * whose `contentMetadata` names the shared person by mid. The shape mirrors
+     * what LINE clients emit: `{ mid, displayName, app_extension_type: 'null' }`
+     * (LINE's server adds `seq`). Exactly one send per call.
+     *
+     * @param to - Recipient MID (1:1 `u...`, group `c...`, or room `r...`).
+     * @param contactMid - MID of the person whose card is being shared.
+     * @param displayName - Display name to show on the card (may be empty; LINE resolves from mid).
+     * @returns The sent message id.
+     */
+    async sendContact(to, contactMid: string, displayName: string) {
+      if (!contactMid) {
+        throw new Error('Cannot send contact without a contactMid')
+      }
+      const sent = await requireLineClient(getClient).sendMessage({
+        to,
+        text: null,
+        contentType: CONTENT_TYPE.CONTACT,
+        contentMetadata: {
+          mid: contactMid,
+          displayName: displayName ?? '',
+          app_extension_type: 'null',
+        },
+        relatedMessageId: null,
+      })
+      return { messageId: sent?.id ?? null, sent: true }
     },
   }
 }

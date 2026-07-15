@@ -74,6 +74,44 @@ export function createChatRuntimeService(service: any) {
     },
 
     /**
+     * Send one E2EE file attachment through the shared media-send pipeline.
+     *
+     * @param to - Recipient chat MID.
+     * @param fileBytes - Raw (plaintext) file bytes to send.
+     * @param fileName - Original filename (sealed E2EE for the recipient).
+     * @returns `{ sent, messageId, oid }` describing the delivered file.
+     */
+    async sendFile(
+      to: string,
+      fileBytes: Buffer,
+      fileName: string,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendFile(to, fileBytes, fileName)
+    },
+
+    /**
+     * Share a LINE contact card (contentType CONTACT) — not media.
+     *
+     * @param to - Recipient chat MID.
+     * @param contactMid - MID of the person whose card is shared.
+     * @param displayName - Display name shown on the card.
+     * @returns `{ sent, messageId }` describing the delivered card.
+     */
+    async sendContact(
+      to: string,
+      contactMid: string,
+      displayName: string,
+    ): Promise<any> {
+      return createMessageCommandService(
+        () => service.client,
+        service.e2eeManager,
+      ).sendContact(to, contactMid, displayName)
+    },
+
+    /**
      * Fetch recent LINE messages through the explicit message-query boundary.
      *
      * @param chatId - LINE chat MID.
