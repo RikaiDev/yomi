@@ -71,6 +71,7 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
+import { isLineAuthInvalidatedError } from '../line/client/index.js'
 import type { Mention } from '../line/core/mention.js'
 import { LineProtocolService } from '../line/core/service.js'
 import { startCapture } from '../search/capture.js'
@@ -120,6 +121,7 @@ import {
   handleUnsendMessage,
   NO_CREDENTIALS_MESSAGE,
   sessionRequiredError,
+  sessionRevokedError,
   toolError,
 } from './handlers/index.js'
 import { getPrivacyPolicyText } from './policy.js'
@@ -165,6 +167,11 @@ async function main(): Promise<void> {
   // policy prose, which lives ONLY in PRIVACY.md (see ./policy.ts) so the
   // disclosure is single-sourced and never drifts from get_scope_policy.
   const instructions =
+    'SESSION ERRORS — if a tool fails with a login-required or signed-out ' +
+    'error, the MCP server and its connection are healthy: LINE revoked this ' +
+    "device's session (usually because the same account logged in somewhere " +
+    'else). Tell the user that plainly and offer the `login` tool. Never ' +
+    'describe it as an MCP or connection failure.\n\n' +
     'PRIVACY DISCLOSURE (say ONCE per session) — the first time this session ' +
     'does a bulk read (collect_messages/search_messages), tell the user once, in ' +
     'plain language, that Yomi captures all conversations by default, keeps the data ' +
@@ -232,8 +239,16 @@ async function main(): Promise<void> {
       name === 'include_chats' ||
       name === 'list_excluded_chats' ||
       name === 'get_scope_policy'
-    if (!noSessionExempt && !service.client) {
-      return sessionRequiredError()
+    if (!noSessionExempt) {
+      // Two distinct "no session" stories: a revoked session (LINE logged
+      // this device out — client exists but is unusable) gets the re-login
+      // message; no client at all means we never logged in.
+      if (service.loginRequired) {
+        return sessionRevokedError()
+      }
+      if (!service.client) {
+        return sessionRequiredError()
+      }
     }
 
     try {
@@ -491,11 +506,18 @@ async function main(): Promise<void> {
           return toolError(`Unknown tool: ${name}`)
       }
     } catch (error: any) {
-      log.error('tool.failed', {
-        error: error?.message ?? String(error),
-        tool: name,
-      })
-      return toolError(error?.message ?? String(error))
+      const message = error?.message ?? String(error)
+      // A mid-session LINE token invalidation (e.g. V3_TOKEN_CLIENT_LOGGED_OUT
+      // after a competing login) is not a tool bug — flag the service so
+      // subsequent calls short-circuit at the gate above, and translate the
+      // raw protocol error into an actionable re-login message.
+      if (isLineAuthInvalidatedError(error)) {
+        service.loginRequired = true
+        log.warn('tool.session_revoked', { error: message, tool: name })
+        return sessionRevokedError(message)
+      }
+      log.error('tool.failed', { error: message, tool: name })
+      return toolError(message)
     }
   })
 

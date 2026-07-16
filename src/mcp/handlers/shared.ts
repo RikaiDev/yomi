@@ -10,6 +10,16 @@
 export const NO_CREDENTIALS_MESSAGE =
   'No persisted LINE session. Call the `login` tool, or run `npx @rikaidev/yomi login` in a terminal.'
 
+// Shown when LINE invalidated a previously working session — distinct from
+// "never logged in" so the model tells the user the right story: the MCP
+// connection is healthy, LINE revoked this device's token (usually because
+// the same account logged in somewhere else).
+export const SESSION_REVOKED_MESSAGE =
+  'LINE signed this device out — usually because the same account logged in ' +
+  'somewhere else (another device, or a terminal `login` run). The MCP ' +
+  'connection itself is fine. Call the `login` tool to reconnect; cached ' +
+  'credentials usually complete without a new PIN.'
+
 /**
  * Build the always-fresh session-required error payload.
  *
@@ -18,6 +28,22 @@ export const NO_CREDENTIALS_MESSAGE =
 export function sessionRequiredError() {
   return {
     content: [{ type: 'text' as const, text: NO_CREDENTIALS_MESSAGE }],
+    isError: true,
+  }
+}
+
+/**
+ * Build the session-revoked error payload (LINE logged this device out).
+ *
+ * @param detail - Optional raw LINE error message, appended as diagnostics.
+ * @returns MCP tool error content.
+ */
+export function sessionRevokedError(detail?: string) {
+  const text = detail
+    ? `${SESSION_REVOKED_MESSAGE}\n\n(diagnostic: ${detail})`
+    : SESSION_REVOKED_MESSAGE
+  return {
+    content: [{ type: 'text' as const, text }],
     isError: true,
   }
 }
