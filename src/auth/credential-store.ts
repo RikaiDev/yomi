@@ -190,14 +190,24 @@ class VolatileCacheStore {
         try {
           const dir = this.filePath.substring(0, this.filePath.lastIndexOf('/'))
           if (dir) {
-            await fs.mkdir(dir, { recursive: true })
+            await fs.mkdir(dir, { recursive: true, mode: 0o700 })
           }
           const tmp = `${this.filePath}.tmp`
+          // Group shared keys live here — they decrypt group messages. The
+          // default 0644 made them readable by every other account on the
+          // machine. `mode` only applies when the file is created, and rename
+          // preserves the source's mode, so the temp file must be created
+          // restricted rather than tightened afterwards.
           await fs.writeFile(
             tmp,
             JSON.stringify(Object.fromEntries(this.cache)),
+            {
+              mode: 0o600,
+            },
           )
           await fs.rename(tmp, this.filePath)
+          // Repair installs whose cache predates the mode above.
+          await fs.chmod(this.filePath, 0o600).catch(() => {})
         } catch {
           // Best-effort cache persistence; in-memory copy still serves reads.
         }
@@ -311,8 +321,10 @@ export class CredentialStore {
     try {
       const fs = await import('node:fs/promises')
       const dir = this.filePath.substring(0, this.filePath.lastIndexOf('/'))
-      await fs.mkdir(dir, { recursive: true })
-      await fs.writeFile(this.filePath, blob)
+      await fs.mkdir(dir, { recursive: true, mode: 0o700 })
+      await fs.writeFile(this.filePath, blob, { mode: 0o600 })
+      // `mode` is ignored when the file already exists, so repair older installs.
+      await fs.chmod(this.filePath, 0o600).catch(() => {})
       this.lastPersistedBlob = blob
     } catch (error) {
       console.error('[Yomi] Failed to save credentials:', error)

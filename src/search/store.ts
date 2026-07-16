@@ -20,12 +20,33 @@
  * imports a concrete embedder implementation.
  */
 
-import { existsSync, mkdirSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { toSearchText } from './bigram.js'
 import type { Embedder } from './embedder.js'
 import { type Database, openDatabase } from './sqlite.js'
+
+/**
+ * Narrow files to owner-only (0600), skipping any that do not exist.
+ *
+ * Best-effort: a chmod failure must never take the index down, since the data
+ * is still usable and the process may not own the file (e.g. a shared path an
+ * operator deliberately set up).
+ *
+ * @param paths - Files to restrict.
+ */
+function restrictToOwner(...paths: string[]): void {
+  for (const path of paths) {
+    try {
+      if (existsSync(path)) {
+        chmodSync(path, 0o600)
+      }
+    } catch {
+      // Not ours to tighten, or a platform without POSIX modes.
+    }
+  }
+}
 
 // Resolve the index path relative to the repo (src/search/ -> <repo>/data),
 // NOT process.cwd(): an MCP client may spawn the server with any working
@@ -85,10 +106,18 @@ export function getDb(): Database {
   }
   const dir = dirname(DB_PATH)
   if (dir && dir !== '.' && !existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
   }
   const handle = openDatabase(DB_PATH)
   handle.exec('PRAGMA journal_mode = WAL;')
+  // This file is every captured message in plaintext — the single most
+  // sensitive artifact Yomi produces. It was being created with the default
+  // 0644, readable by every other account on the machine. WAL mode means the
+  // -wal and -shm siblings hold message data too, so they get the same
+  // treatment. Applied on every open, not just creation, so databases that
+  // already exist with the old permissions are repaired rather than left
+  // exposed for the lifetime of the install.
+  restrictToOwner(DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`)
   handle.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY,
