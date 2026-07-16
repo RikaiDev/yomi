@@ -43,6 +43,15 @@ interface PreparedDecryptPayload {
 interface DecryptResult {
   decrypted: boolean
   text?: string
+  /**
+   * Whether the ciphertext was authenticated, not merely decryptable.
+   *
+   * False for V1 (AES-256-CBC with no tag and no AAD): a flipped ciphertext bit
+   * lands in the plaintext and nothing notices, confirmed against real V1
+   * traffic. Decrypting is not the same as trusting, and callers that show a
+   * message to a user must be able to tell the two apart.
+   */
+  integrityVerified?: boolean
   reason?: string
   envelopeInfo?: Record<string, unknown> | null
   senderKeyId?: string | null
@@ -413,9 +422,20 @@ export function performDecrypt(
   resolvedReceiverKeyId: string | null,
 ): string {
   const { salt, ciphertext, sign, version, senderKeyId, receiverKeyId } = chunks
-  if (version !== '2') {
+  // `version` is envelope metadata (contentMetadata.e2eeVersion), i.e. supplied
+  // by whoever hands us the message. It selects the cipher, so it must be an
+  // exact allow-list: this used to read `version !== '2'`, which sent '3', '',
+  // and any junk value down the V1 path — silently choosing the ONE cipher here
+  // that authenticates nothing. Unknown versions now fail instead of
+  // downgrading.
+  if (version === '1') {
     return extractTextPayload(
       decryptV1(computeSharedSecret(privateKey, publicKey!), salt, ciphertext),
+    )
+  }
+  if (version !== '2') {
+    throw new Error(
+      `Unsupported E2EE version ${JSON.stringify(version)} — refusing to guess a cipher`,
     )
   }
   const effectiveReceiverKeyId = Number(
@@ -552,6 +572,9 @@ export async function tryDecryptInner(
   }
   return {
     decrypted: true,
+    // Only V2 (AES-256-GCM) authenticates. V1 plaintext is decrypted but
+    // unverified — see DecryptResult.integrityVerified.
+    integrityVerified: chunks.version === '2',
     text: performDecrypt(
       decryptMsg,
       chunks,

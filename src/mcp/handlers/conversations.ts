@@ -135,6 +135,12 @@ export async function handleGetChatMessages(
     mentions: message.contentMetadata?.MENTION ?? null,
     text: maskInto(acc, message.text),
     e2eeDecrypted: message.e2eeDecrypted ?? null,
+    // Emitted ONLY when the message decrypted but could not be authenticated
+    // (LINE E2EE v1 — AES-CBC, no tag, no AAD), so its presence is a signal
+    // rather than noise on the ~98% of traffic that is v2 and verified.
+    ...(message.e2eeDecrypted && message.e2eeIntegrityVerified === false
+      ? { e2eeIntegrityVerified: false }
+      : {}),
   }))
   const content: any[] = [
     { type: 'text' as const, text: JSON.stringify(shaped, null, 2) },

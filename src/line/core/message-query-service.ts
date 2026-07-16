@@ -88,6 +88,10 @@ export async function decryptLineMessage(
     return {
       ...taggedMessage,
       e2eeDecrypted: true,
+      // Surfaced so a caller can distinguish "we could read it" from "we can
+      // vouch for it". V1 messages decrypt without any integrity check, so a
+      // tampered one is indistinguishable from a genuine one at this layer.
+      e2eeIntegrityVerified: decrypted.integrityVerified !== false,
       text: decrypted.text,
     }
   }
