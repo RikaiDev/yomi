@@ -53,6 +53,7 @@ export async function performLogout(
   service.profile = null
   service.e2eeWarning = false
   service.loginRequired = false
+  service.loginReason = null
   service.nameCache.clear()
   service.chatCache.clear()
   service.setState(disconnectedState)

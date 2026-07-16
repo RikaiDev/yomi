@@ -83,6 +83,7 @@ export async function performPwlessLogin(
       displayName: service.profile?.displayName ?? null,
     })
     service.loginRequired = false
+    service.loginReason = null
     service.setState(connectedState)
     service.emit('loginComplete', { profile: service.profile })
     return result

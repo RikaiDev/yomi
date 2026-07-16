@@ -120,6 +120,7 @@ import {
   handleUnblockContact,
   handleUnsendMessage,
   NO_CREDENTIALS_MESSAGE,
+  sessionExpiredError,
   sessionRequiredError,
   sessionRevokedError,
   toolError,
@@ -240,11 +241,15 @@ async function main(): Promise<void> {
       name === 'list_excluded_chats' ||
       name === 'get_scope_policy'
     if (!noSessionExempt) {
-      // Two distinct "no session" stories: a revoked session (LINE logged
-      // this device out — client exists but is unusable) gets the re-login
-      // message; no client at all means we never logged in.
+      // Three distinct "no session" stories, and the user gets sent looking in
+      // the wrong place if we conflate them: LINE revoked this device's token
+      // (someone logged in elsewhere), the token merely aged out and the silent
+      // refresh failed (nobody logged in anywhere), or we never logged in at
+      // all. All three recover via `login`; only the explanation differs.
       if (service.loginRequired) {
-        return sessionRevokedError()
+        return service.loginReason === 'expired'
+          ? sessionExpiredError()
+          : sessionRevokedError()
       }
       if (!service.client) {
         return sessionRequiredError()
@@ -513,6 +518,7 @@ async function main(): Promise<void> {
       // raw protocol error into an actionable re-login message.
       if (isLineAuthInvalidatedError(error)) {
         service.loginRequired = true
+        service.loginReason = 'revoked'
         log.warn('tool.session_revoked', { error: message, tool: name })
         return sessionRevokedError(message)
       }

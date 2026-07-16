@@ -16,6 +16,11 @@ import { E2EEKeyManager } from './e2ee/index.js'
 import { LineSessionState } from './session-state/index.js'
 
 /** Valid states for the LINE Protocol Service. */
+/**
+ * Why a re-login is required, or null when the session is usable.
+ */
+export type LoginReason = 'revoked' | 'expired' | null
+
 export const STATE = {
   DISCONNECTED: 'disconnected',
   LOGGING_IN: 'logging_in',
@@ -42,6 +47,12 @@ export class LineProtocolService extends EventEmitter {
   public e2eeManager: any
   public e2eeWarning: boolean
   public loginRequired: boolean
+  // Why loginRequired was set. 'revoked' = LINE invalidated the token (a
+  // competing login elsewhere); 'expired' = the token aged out and the silent
+  // refresh failed. Both recover via `login`, but they are different stories to
+  // tell the user, so the cause has to survive the trip to the MCP gate.
+  // Always cleared back to null wherever loginRequired goes false.
+  public loginReason: LoginReason
   public recentFetchState: Map<
     string,
     {
@@ -185,6 +196,7 @@ export class LineProtocolService extends EventEmitter {
     this.e2eeManager = options.e2eeManager || new E2EEKeyManager()
     this.e2eeWarning = false
     this.loginRequired = false
+    this.loginReason = null
     this.recentFetchState = new Map()
     this.e2eeManager.setRuntime({
       getClient: () => this.client,

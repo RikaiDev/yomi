@@ -74,6 +74,9 @@ export function createAuthSessionService(
       service.profile = null
       service.e2eeWarning = false
       service.loginRequired = true
+      // Only reached when LINE rejects a token it previously accepted, which
+      // is a revocation regardless of the operator-supplied debug reason.
+      service.loginReason = 'revoked'
       service.nameCache.clear()
       service.chatCache.clear()
       service.setState(states.DISCONNECTED)

@@ -105,6 +105,7 @@ async function validateRestoredSession(
       })
     }
     service.loginRequired = false
+    service.loginReason = null
     service.setState(STATE.CONNECTED)
     return true
   } catch (validationErr: any) {
@@ -138,6 +139,7 @@ async function handleSessionValidationError(
       action: 'require_relogin_without_clearing_credentials',
     })
     service.loginRequired = true
+    service.loginReason = 'revoked'
     service.setState(STATE.DISCONNECTED)
     service.emit('line:loginRequired')
     return false
@@ -148,10 +150,15 @@ async function handleSessionValidationError(
     const refreshed = await tryRefreshToken(service)
     if (refreshed) {
       service.loginRequired = false
+      service.loginReason = null
       service.setState(STATE.CONNECTED)
       return true
     }
+    // AUTH_ERROR_REGEX matched (expired/unauthorized/invalid token) and the
+    // silent refresh could not save it. Nothing revoked this device — the
+    // token just aged out, so don't tell the user someone logged in elsewhere.
     service.loginRequired = true
+    service.loginReason = 'expired'
     service.setState(STATE.DISCONNECTED)
     service.emit('line:loginRequired')
     return false
@@ -159,6 +166,7 @@ async function handleSessionValidationError(
 
   lineLog.warn('session.restore.trusted_optimistically')
   service.loginRequired = false
+  service.loginReason = null
   service.setState(STATE.CONNECTED)
   return true
 }
