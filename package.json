@@ -3,7 +3,7 @@
   "engines": {
     "node": ">=22.13.0 <23.0.0 || >=23.4.0"
   },
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Yomi (読み) — reads your LINE (decrypting Letter-Sealing E2EE) and sends on your behalf, via a stdio MCP server, so an agent can catch up on your LINE for you.",
   "type": "module",
   "license": "MIT",
