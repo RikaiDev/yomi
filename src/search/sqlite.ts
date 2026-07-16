@@ -9,9 +9,20 @@
  * same surface, so the rest of the codebase never cares which runtime it's on.
  */
 
+import { createRequire } from 'node:module'
 import type { DatabaseSync as NodeDatabaseSync } from 'node:sqlite'
 
 const isBun = typeof process.versions.bun !== 'undefined'
+
+// The sqlite binding has to be picked at runtime, not import time: `bun:sqlite`
+// does not exist under node and vice versa, so a static import would fail on
+// whichever runtime is not running. That means a require — but this package is
+// `"type": "module"`, and a bare `require` in ESM only works because bun allows
+// it as an extension. Under node it is a ReferenceError, which is why every
+// index-backed tool (search, scope, capture, policy) died with
+// "require is not defined" once the server ran on node rather than bun.
+// createRequire gives ESM a real require that both runtimes honor.
+const runtimeRequire = createRequire(import.meta.url)
 
 export interface Statement<T = Record<string, unknown>> {
   run(...params: unknown[]): unknown
@@ -117,12 +128,10 @@ function wrapNodeDb(raw: NodeDatabaseSync): Database {
  */
 export function openDatabase(path: string): Database {
   if (isBun) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('bun:sqlite')
+    const mod = runtimeRequire('bun:sqlite')
     return wrapBunDb(new mod.Database(path))
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('node:sqlite')
+    const mod = runtimeRequire('node:sqlite')
     return wrapNodeDb(new mod.DatabaseSync(path))
   }
 }
