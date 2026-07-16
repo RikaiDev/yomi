@@ -18,6 +18,7 @@
  * as a fallback and migrated forward, never written to or deleted.
  */
 
+import { dirname, join } from 'node:path'
 import { getKeychainService } from './keychain.js'
 
 /**
@@ -249,12 +250,12 @@ export class CredentialStore {
     this.lastPersistedBlob = null
     this.persistQueue = Promise.resolve()
     // Volatile E2EE cache lives beside the fallback credential file, never in
-    // the keychain. Same directory as fallbackFilePath so it follows whatever
-    // data location the host configured.
-    const slash = fallbackFilePath.lastIndexOf('/')
-    const dir = slash >= 0 ? fallbackFilePath.slice(0, slash) : ''
+    // the keychain. Derived with `path` rather than by slicing on '/': the old
+    // string-slice found no separator in a Windows path and fell back to a bare
+    // filename, i.e. cwd-relative — the exact failure this path was moved to an
+    // absolute per-user directory to escape.
     this.volatile = new VolatileCacheStore(
-      dir ? `${dir}/line-e2ee-cache.json` : 'line-e2ee-cache.json',
+      join(dirname(fallbackFilePath), 'line-e2ee-cache.json'),
     )
   }
 

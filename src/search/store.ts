@@ -21,8 +21,8 @@
  */
 
 import { chmodSync, existsSync, mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname } from 'node:path'
+import { yomiDataPath } from '../util/data-dir.js'
 import { toSearchText } from './bigram.js'
 import type { Embedder } from './embedder.js'
 import { type Database, openDatabase } from './sqlite.js'
@@ -48,13 +48,13 @@ function restrictToOwner(...paths: string[]): void {
   }
 }
 
-// Resolve the index path relative to the repo (src/search/ -> <repo>/data),
-// NOT process.cwd(): an MCP client may spawn the server with any working
-// directory (or none), so a cwd-relative path would write to an unexpected
-// place or fail. Env var still overrides for advanced/custom setups.
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+// A per-user data directory (see ../util/data-dir.ts), NOT process.cwd() and
+// NOT the install directory. This used to resolve relative to the module, which
+// put the index inside the installed package — and `npx @rikaidev/yomi` unpacks
+// under ~/.npm/_npx/<hash>/, which npm deletes on any cache refresh. The index
+// went with it. YOMI_INDEX_DB_PATH still overrides for tests/custom setups.
 const DB_PATH =
-  process.env.YOMI_INDEX_DB_PATH ?? join(REPO_ROOT, 'data', 'search-index.db')
+  process.env.YOMI_INDEX_DB_PATH ?? yomiDataPath('search-index.db')
 
 /** One message as stored in (or retrieved from) the search index. */
 export interface MessageRecord {

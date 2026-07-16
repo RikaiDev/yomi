@@ -8,6 +8,7 @@
 
 import { EventEmitter } from 'node:events'
 import { CredentialStore } from '../../auth/credential-store.js'
+import { yomiDataPath } from '../../util/data-dir.js'
 import { createCliLogger } from '../../util/log.js'
 import { createAuthSessionService } from './auth-session-service.js'
 import { createChatRuntimeService } from './chat-runtime-service.js'
@@ -188,7 +189,11 @@ export class LineProtocolService extends EventEmitter {
       options.credentialStore ||
       new CredentialStore(
         'line',
-        this.options.credentialPath ?? 'data/line-credentials.json',
+        // Absolute, per-user (see ../../util/data-dir.ts). This was the
+        // relative string 'data/line-credentials.json', which CredentialStore
+        // also derives the E2EE cache path from — so under Claude Desktop, whose
+        // cwd is `/`, the cache aimed at /data/ and silently never persisted.
+        this.options.credentialPath ?? yomiDataPath('line-credentials.json'),
       )
     this.sessionState = new LineSessionState(this.credentialStore)
     this.nameCache = new Map()
