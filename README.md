@@ -162,19 +162,26 @@ described below.
    > `No such built-in module: node:sqlite`. Yomi prints the runtime it actually
    > got in that error — read it rather than assuming.
    >
-   > The fix is to name the runtime instead of leaving it to `PATH` order — put
-   > `node` in `command` and let it run `npx`:
+   > The fix is to give the server a `PATH` whose first entry holds a supported
+   > `node`:
    >
    > ```json
    > "yomi": {
-   >   "command": "<absolute path to a supported node>",
-   >   "args": ["<absolute path to npx>", "-y", "@rikaidev/yomi"]
+   >   "command": "<the npx path from step 1>",
+   >   "args": ["-y", "@rikaidev/yomi"],
+   >   "env": { "PATH": "<dir holding a supported node><sep><a base PATH>" }
    > }
    > ```
    >
-   > This never consults `PATH`, so nothing on the client's can override it.
-   > Prefer it to setting `env.PATH`: that still goes through the shebang, and it
-   > replaces the `PATH` that `npx` itself needs.
+   > Separator: `:` on macOS/Linux, `;` on Windows. Keep a usable base after it
+   > (`/usr/local/bin:/usr/bin:/bin` or your platform's equivalent) — this
+   > replaces the server's `PATH` rather than prepending to it, and `npx` needs
+   > the ordinary tools.
+   >
+   > Naming an absolute `node` in `command` does **not** work, however plausible
+   > it looks: `npx` spawns the package's own bin as a child process and resolves
+   > `node` from `PATH` again for it, so `command` only picks who runs `npx`, not
+   > who runs Yomi. Setting `PATH` is what actually reaches the server.
 
 **Configuring this with an AI agent?** MCP configs are mostly written by agents
 now rather than by hand, so the steps above are stated for a human reading their
@@ -194,15 +201,21 @@ does **not** pin the runtime. Procedure:
    installs (`which -a node`, `nvm ls`, `fnm list`, …) until one passes; only
    then continue.
 
-2. Take the absolute paths of that `node` and of `npx`, and write the Node into
-   `command` — per the JSON above. Do not write `env.PATH`, and do not copy an
-   example path out of this README; resolve both on the target machine.
+2. Write that Node's **directory** into `env.PATH`, per the JSON above, and keep
+   a base `PATH` after it. Resolve the directory on the target machine
+   (`dirname` of the path from step 1); do not copy an example out of this
+   README — they are Apple Silicon Homebrew paths and wrong nearly everywhere.
 
-   `command -v` may hand back a wrapper script rather than a real binary — heap
-   shims, local-first `npx` wrappers, and version-manager stubs are all common,
-   and some of them behave differently depending on the working directory the
-   client happens to launch with. Do not try to reason your way to the "real"
-   one. Step 3 settles it.
+   Do not instead put an absolute `node` in `command`. It reads like the
+   stronger fix and is not one: `npx` spawns the package's bin as a child and
+   re-resolves `node` from `PATH` for it, so `command` only decides who runs
+   `npx`. This was measured, not assumed — with a Node 20 first on `PATH`,
+   `command`-pinning still gave the server Node 20.
+
+   `command -v` may also hand back a wrapper rather than a real binary — heap
+   shims, local-first `npx` wrappers and version-manager stubs are all common,
+   and some behave differently depending on the client's working directory. Do
+   not try to reason your way to the "real" one. Step 3 settles it.
 
 3. Verify with a tool that touches the index. **`yomi version` is not a
    verification** — it prints a string without opening SQLite, so it succeeds on
@@ -236,7 +249,7 @@ throws, or you would rather not depend on `PATH` at all, name the Node
 explicitly:
 
 ```bash
-claude mcp add yomi -- "$(command -v node)" "$(command -v npx)" -y @rikaidev/yomi
+claude mcp add yomi -e PATH="$(dirname "$(command -v node)"):$PATH" -- npx -y @rikaidev/yomi
 ```
 
 Either way, verify with `get_scope_policy` rather than `yomi version`: the
