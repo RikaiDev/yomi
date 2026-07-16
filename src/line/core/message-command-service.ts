@@ -411,6 +411,25 @@ export function createMessageCommandService(getClient, e2eeManager) {
         // empty ciphertext). `__ud-preview`: the poster, encrypted under the
         // SAME key material via the whole-file media path (like an image), with
         // its dimensions surfaced as MEDIA_THUMB_INFO.
+        //
+        // KNOWN WEAKNESS (upstream, do not "fix" locally): reusing keyMaterial
+        // for the poster reuses the AES-CTR keystream. deriveLineMediaKeyMaterial
+        // is deterministic, so body and poster get byte-identical encKey AND
+        // nonce, and encrypting two different plaintexts under one keystream is
+        // a two-time pad: C_body XOR C_poster = P_body XOR P_poster over the
+        // shorter length. Both objects sit at derivable OBS paths (`oid` and
+        // `oid__ud-preview`), and MP4/JPEG headers are predictable enough to
+        // bootstrap each other, so roughly a poster's worth of video plaintext
+        // is recoverable by anyone holding both — starting with LINE's servers,
+        // which is exactly who E2EE is meant to exclude.
+        //
+        // It cannot be fixed here. Receivers (this one included, see
+        // mcp/media.ts) decrypt `__ud-preview` with the message's keyMaterial,
+        // so deriving a separate nonce would make real LINE clients unable to
+        // open posters Yomi sends. The fix belongs upstream — domain-separate
+        // the HKDF info per object, or seal a second keyMaterial. The only local
+        // mitigation is sending no poster at all: `extractVideoThumbnail`
+        // returning null already takes that path and the video still sends.
         auxObjects: async (mainBody, keyMaterial) => {
           const objects: Array<{ suffix: string; data: Buffer }> = []
           const hashes = buildLineVideoChunkHashes(
