@@ -1,6 +1,6 @@
 {
   "name": "@rikaidev/yomi",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Yomi (読み) — reads your LINE (decrypting Letter-Sealing E2EE) and sends on your behalf, via a stdio MCP server, so an agent can catch up on your LINE for you.",
   "type": "module",
   "license": "MIT",
