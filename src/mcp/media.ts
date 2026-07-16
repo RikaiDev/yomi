@@ -260,9 +260,14 @@ export async function fetchLineMessageMedia(
     }
   }
 
+  // Which MAC construction applies is decided by the OBS object, not by
+  // contentType alone: a video's main body is MACed over its per-128KB chunk
+  // hashes, but that same video's `__ud-preview` poster is a whole-file image
+  // and is MACed like one. Confirmed against real media of each shape.
   const mediaBytes = await decryptLineMediaBytes(
     encryptedBytes,
     descriptor.keyMaterial,
+    { chunkHashMac: contentType === CONTENT_TYPE.VIDEO && !preview },
   )
   if (mediaBytes.length === 0) {
     throw new Error('LINE media decrypt returned empty bytes')

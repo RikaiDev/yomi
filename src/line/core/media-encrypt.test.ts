@@ -46,6 +46,58 @@ test('encryptLineMediaBytes round-trips an empty payload', async () => {
   expect(decrypted).toEqual(raw)
 })
 
+test('decryptLineMediaBytes rejects a flipped ciphertext bit', async () => {
+  // AES-CTR is malleable, so this bit flip lands verbatim in the plaintext.
+  // The MAC is the only thing standing between a tampered download and the user.
+  const keyMaterial = randomKeyMaterial()
+  const encrypted = await encryptLineMediaBytes(
+    crypto.randomBytes(4096),
+    keyMaterial,
+  )
+  const tampered = Buffer.from(encrypted)
+  tampered[100] ^= 0x01
+  expect(decryptLineMediaBytes(tampered, keyMaterial)).rejects.toThrow(
+    /MAC mismatch/,
+  )
+})
+
+test('decryptLineMediaBytes rejects a tampered MAC and a truncated object', async () => {
+  const keyMaterial = randomKeyMaterial()
+  const encrypted = await encryptLineMediaBytes(
+    crypto.randomBytes(1024),
+    keyMaterial,
+  )
+  const badMac = Buffer.from(encrypted)
+  badMac[badMac.length - 1] ^= 0xff
+  expect(decryptLineMediaBytes(badMac, keyMaterial)).rejects.toThrow(
+    /MAC mismatch/,
+  )
+  expect(
+    decryptLineMediaBytes(encrypted.subarray(0, 20), keyMaterial),
+  ).rejects.toThrow(/too short/)
+})
+
+test('video body round-trips only under the chunked MAC construction', async () => {
+  // Confirmed against real LINE media: a video's main body MACs over its
+  // per-chunk hashes, so verifying it whole-file must fail, and vice versa.
+  const keyMaterial = randomKeyMaterial()
+  const raw = crypto.randomBytes(300_000)
+  const video = await encryptLineVideoBytes(raw, keyMaterial)
+  expect(
+    await decryptLineMediaBytes(video, keyMaterial, { chunkHashMac: true }),
+  ).toEqual(raw)
+  expect(decryptLineMediaBytes(video, keyMaterial)).rejects.toThrow(
+    /MAC mismatch/,
+  )
+
+  // A video's __ud-preview poster is a whole-file image, MACed like one.
+  const poster = await encryptLineMediaBytes(raw, keyMaterial)
+  expect(await decryptLineMediaBytes(poster, keyMaterial)).toEqual(raw)
+  expect(
+    decryptLineMediaBytes(poster, keyMaterial, { chunkHashMac: true }),
+  ).rejects.toThrow(/MAC mismatch/)
+})
+
 test('encryptLineVideoBytes shares the whole-file CTR ciphertext with encryptLineMediaBytes', async () => {
   // The video ciphertext body (everything before the trailing 32-byte MAC) is
   // byte-for-byte identical to the image/file/audio path — only the MAC differs.
