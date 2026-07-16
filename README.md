@@ -162,20 +162,53 @@ described below.
    > `No such built-in module: node:sqlite`. Yomi prints the runtime it actually
    > got in that error — read it rather than assuming.
    >
-   > The fix is to stop leaving it to `PATH` order. Give the server its own
-   > `PATH` with a supported `node` first:
+   > The fix is to name the runtime instead of leaving it to `PATH` order — put
+   > `node` in `command` and let it run `npx`:
    >
    > ```json
    > "yomi": {
-   >   "command": "<the npx path from step 1>",
-   >   "args": ["@rikaidev/yomi"],
-   >   "env": { "PATH": "<directory holding a supported node><separator><the rest of your PATH>" }
+   >   "command": "<absolute path to a supported node>",
+   >   "args": ["<absolute path to npx>", "-y", "@rikaidev/yomi"]
    > }
    > ```
    >
-   > Fill both placeholders from your own machine: `dirname $(which node)` after
-   > selecting a supported version gives the first part, and the separator is
-   > `:` on macOS/Linux, `;` on Windows.
+   > This never consults `PATH`, so nothing on the client's can override it.
+   > Prefer it to setting `env.PATH`: that still goes through the shebang, and it
+   > replaces the `PATH` that `npx` itself needs.
+
+**Configuring this with an AI agent?** MCP configs are mostly written by agents
+now rather than by hand, so the steps above are stated for a human reading their
+own machine. An agent should resolve the values instead of emitting placeholders,
+and this setup has one trap worth stating outright: naming `npx` in `command`
+does **not** pin the runtime. Procedure:
+
+1. Find a Node that actually has the module Yomi's index needs — do not infer it
+   from a version number:
+
+   ```bash
+   node -e 'require("node:sqlite")' && command -v node    # POSIX
+   node -e "require('node:sqlite')" && where node         # Windows
+   ```
+
+   If it throws, that Node is unusable for search/scope/capture. Try the other
+   installs (`which -a node`, `nvm ls`, `fnm list`, …) until one passes; only
+   then continue.
+
+2. Take the absolute paths of that `node` and of `npx`, and write the Node into
+   `command` — per the JSON above. Do not write `env.PATH`, and do not copy an
+   example path out of this README; resolve both on the target machine.
+
+   `command -v` may hand back a wrapper script rather than a real binary — heap
+   shims, local-first `npx` wrappers, and version-manager stubs are all common,
+   and some of them behave differently depending on the working directory the
+   client happens to launch with. Do not try to reason your way to the "real"
+   one. Step 3 settles it.
+
+3. Verify with a tool that touches the index. **`yomi version` is not a
+   verification** — it prints a string without opening SQLite, so it succeeds on
+   a Node that cannot run search. Call `get_scope_policy`: it needs SQLite and no
+   LINE login. If it returns the policy text, the runtime is right. If it fails,
+   the error names the Node that actually ran and what it needed.
 
 4. Fully quit and reopen Claude Desktop. Confirm Yomi is loaded under **Settings →
    Developer** before anything else: if Yomi is not listed there, Claude never read
@@ -195,6 +228,28 @@ claude mcp add yomi -- npx @rikaidev/yomi
 
 Start a new `claude` session. The Yomi tools should appear automatically. This
 command configures Claude Code only; it does not configure Claude Desktop.
+
+This form leaves the runtime to `PATH`, which is fine as long as the `node` your
+`claude` session resolves is a supported one — it is the same `PATH` you can see,
+unlike Claude Desktop's. Check with `node -e 'require("node:sqlite")'`. If it
+throws, or you would rather not depend on `PATH` at all, name the Node
+explicitly:
+
+```bash
+claude mcp add yomi -- "$(command -v node)" "$(command -v npx)" -y @rikaidev/yomi
+```
+
+Either way, verify with `get_scope_policy` rather than `yomi version`: the
+version command prints a string without opening SQLite, so it passes on a Node
+that cannot run search.
+
+> **Running Claude Code inside a clone of this repo?** Spell the spec
+> `@rikaidev/yomi@latest`. Without a tag, `npx` looks for a local bin first, and
+> in this repo `package.json` declares `"bin": {"yomi": ...}` while nothing links
+> it into `node_modules/.bin` — so `npx` skips the install and dies with
+> `sh: yomi: command not found`. An explicit tag makes it fetch the published
+> package. Only affects working copies of Yomi itself; everywhere else the
+> untagged form is fine.
 
 </details>
 
