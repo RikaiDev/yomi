@@ -123,15 +123,48 @@ function wrapNodeDb(raw: NodeDatabaseSync): Database {
   }
 }
 
+/** Lowest Node with an unflagged `node:sqlite` that this project has verified. */
+const MIN_NODE_FOR_SQLITE = '22.15.0'
+
+/** Thrown when the running runtime has no SQLite module at all. */
+export class SqliteUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SqliteUnavailableError'
+  }
+}
+
 /**
  * Open a SQLite database at the given path. Creates the file if it doesn't exist.
+ *
+ * @param path - Database file path.
+ * @returns Runtime-agnostic database handle.
+ * @throws SqliteUnavailableError when the runtime predates `node:sqlite`.
  */
 export function openDatabase(path: string): Database {
   if (isBun) {
     const mod = runtimeRequire('bun:sqlite')
     return wrapBunDb(new mod.Database(path))
-  } else {
-    const mod = runtimeRequire('node:sqlite')
-    return wrapNodeDb(new mod.DatabaseSync(path))
   }
+  let mod: any
+  try {
+    mod = runtimeRequire('node:sqlite')
+  } catch (error: any) {
+    // `node:sqlite` landed unflagged in Node 22.x; older runtimes throw
+    // "No such built-in module: node:sqlite", which tells a user nothing about
+    // what to do. The `engines` field cannot help here — it warns at install
+    // time and npx ignores it — and the node running us is often not the one a
+    // user would guess: Claude Desktop resolves `npx`'s `#!/usr/bin/env node`
+    // against its own PATH, which can pick an old nvm version regardless of
+    // which npx was configured. So say which node is actually running, and what
+    // it needs to be.
+    throw new SqliteUnavailableError(
+      `This Node cannot open Yomi's message index: ${process.version} has no built-in \`node:sqlite\` (needs >= v${MIN_NODE_FOR_SQLITE}). ` +
+        `Live tools still work; search, scope and capture do not. ` +
+        `The runtime is ${process.execPath} — note that an MCP client resolves \`node\` from its own PATH, so this may not be the node you expect. ` +
+        `Point the client at a newer node (e.g. set the server's PATH so a >= v${MIN_NODE_FOR_SQLITE} node comes first), then restart it. ` +
+        `Original error: ${error?.message ?? String(error)}`,
+    )
+  }
+  return wrapNodeDb(new mod.DatabaseSync(path))
 }

@@ -23,6 +23,7 @@ import type { LineProtocolService } from '../line/core/service.js'
 import { createCliLogger } from '../util/log.js'
 import { collectMessages } from './collector.js'
 import type { Embedder } from './embedder.js'
+import { SqliteUnavailableError } from './sqlite.js'
 import { saveCaptureState } from './store.js'
 
 const log = createCliLogger('Yomi')
@@ -71,6 +72,17 @@ export async function startCapture(
       messagesIndexed: summary.messagesIndexed,
     })
   } catch (error: any) {
+    // A runtime with no SQLite is not a hiccup this loop recovers from — the
+    // index will stay empty for the life of the process and every later flush
+    // fails the same way. Log it once, at error, and stop: a WARN here let a
+    // Node 20 install poll silently for hours while capturing nothing.
+    if (error instanceof SqliteUnavailableError) {
+      log.error('capture.unavailable', {
+        action: 'capture_disabled_for_this_process',
+        error: error.message,
+      })
+      return
+    }
     log.warn('capture.catchup_failed', {
       error: error?.message ?? String(error),
     })
