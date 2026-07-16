@@ -53,3 +53,22 @@ test('engines.node excludes the Node 23 releases that lack unflagged node:sqlite
     expect(Bun.semver.satisfies(supported, engines)).toBe(true)
   }
 })
+
+test('README quotes the same Node floor as engines.node', () => {
+  // The README said "v24+" while engines said >=22.13 — a claim no tool checks,
+  // so it drifted the moment engines changed. It is the first thing a user
+  // reads, and getting it wrong sends them to install the wrong runtime.
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8')
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  const engines: string = pkg.engines.node
+
+  // Compare the two claims directly. An earlier version of this test instead
+  // asserted "the floor satisfies engines, and one minor below does not" —
+  // which is vacuous for any X.0 floor, since `24.-1.0` is not valid semver and
+  // satisfies() simply returns false. It passed while the README lied.
+  const stated = readme.match(/\*\*v(\d+\.\d+) or newer/)
+  expect(stated).not.toBeNull()
+  const enginesFloor = engines.match(/>=\s*(\d+\.\d+)\.\d+/)
+  expect(enginesFloor).not.toBeNull()
+  expect(stated![1]).toBe(enginesFloor![1])
+})

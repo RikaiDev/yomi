@@ -38,11 +38,17 @@ on your own account.
 
 ## Getting started
 
-You need [Node.js](https://nodejs.org) v24+ and a LINE account. Yomi runs locally
+You need [Node.js](https://nodejs.org) and a LINE account. Yomi runs locally
 through `npx`; you do not need to clone this repository, install Bun, or build
-anything. Run `node --version` first: if the command is missing or reports a version
-below 24, install the current Node.js release and reopen your terminal before
-continuing.
+anything. Run `node --version` first, and install the current LTS if the command
+is missing or the version is unsupported.
+
+Yomi's local search index uses Node's built-in `node:sqlite`, so it needs
+**v22.13 or newer — except v23.0–v23.3**, which are newer than v22.13 yet still
+lack that module ([it was unflagged in both 22.13.0 and
+23.4.0](https://github.com/nodejs/node/pull/55890)). Any current LTS is fine.
+This is `engines.node` in `package.json`; the rest of Yomi runs on older Node,
+but search, scope and capture do not.
 
 > **⚠️ Yomi needs a client that runs it on your own machine.**
 > Cloud-only tools (ChatGPT, Claude.ai web) cannot run Yomi. Configure Yomi in
@@ -141,6 +147,35 @@ described below.
    For example, a Windows path may look like
    `"C:\\Program Files\\nodejs\\npx.cmd"`. Use the path reported on your own
    machine rather than copying either example blindly.
+
+   > **⚠️ The `npx` you name here does not decide which Node runs Yomi.**
+   > On macOS and Linux `npx` is a script beginning with `#!/usr/bin/env node`,
+   > so it runs whichever `node` comes first on **Claude Desktop's** `PATH` —
+   > not the Node installed beside the `npx` you just pointed at. Desktop
+   > inherits its `PATH` from the desktop session, which is often not your
+   > terminal's, and version managers (nvm, fnm, asdf, volta, …) put their own
+   > `node` ahead of everything else. So `which npx` can report a perfectly
+   > modern install while Yomi still starts on an old Node.
+   >
+   > The symptom is specific: logging in, reading and sending all work, but
+   > search, scope and capture fail, and the log says
+   > `No such built-in module: node:sqlite`. Yomi prints the runtime it actually
+   > got in that error — read it rather than assuming.
+   >
+   > The fix is to stop leaving it to `PATH` order. Give the server its own
+   > `PATH` with a supported `node` first:
+   >
+   > ```json
+   > "yomi": {
+   >   "command": "<the npx path from step 1>",
+   >   "args": ["@rikaidev/yomi"],
+   >   "env": { "PATH": "<directory holding a supported node><separator><the rest of your PATH>" }
+   > }
+   > ```
+   >
+   > Fill both placeholders from your own machine: `dirname $(which node)` after
+   > selecting a supported version gives the first part, and the separator is
+   > `:` on macOS/Linux, `;` on Windows.
 
 4. Fully quit and reopen Claude Desktop. Confirm Yomi is loaded under **Settings →
    Developer** before anything else: if Yomi is not listed there, Claude never read
@@ -473,7 +508,10 @@ error — never a fake card or placeholder. Silence is honest; a fabricated resu
 
 ## Development
 
-For contributors working on the Yomi source code (requires [bun](https://bun.sh) or Node.js 24+):
+For contributors working on the Yomi source code (requires [bun](https://bun.sh)
+or Node.js 24+ — `.nvmrc` pins the same 24 that CI installs, so `nvm use` in this
+directory picks it up; note nvm does not read `engines`, which is why the two are
+stated separately and guarded by a test):
 
 ```bash
 bun install                 # install dependencies (or npm install)
