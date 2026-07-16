@@ -1,7 +1,7 @@
 {
   "name": "@rikaidev/yomi",
   "engines": {
-    "node": ">=22.15.0"
+    "node": ">=22.13.0 <23.0.0 || >=23.4.0"
   },
   "version": "0.2.4",
   "description": "Yomi (読み) — reads your LINE (decrypting Letter-Sealing E2EE) and sends on your behalf, via a stdio MCP server, so an agent can catch up on your LINE for you.",

@@ -123,8 +123,15 @@ function wrapNodeDb(raw: NodeDatabaseSync): Database {
   }
 }
 
-/** Lowest Node with an unflagged `node:sqlite` that this project has verified. */
-const MIN_NODE_FOR_SQLITE = '22.15.0'
+/**
+ * Node versions carrying an unflagged `node:sqlite`.
+ *
+ * It was unflagged in 22.13.0 and 23.4.0 (nodejs/node#55890), so the 23 line
+ * splits: 23.0–23.3 are NEWER than 22.13 yet still lack it, which a plain
+ * `>=22.13.0` floor would wrongly admit. Keep this in step with
+ * package.json's `engines.node`.
+ */
+const NODE_SQLITE_REQUIREMENT = '22.13+ (or 23.4+ on the 23.x line)'
 
 /** Thrown when the running runtime has no SQLite module at all. */
 export class SqliteUnavailableError extends Error {
@@ -150,19 +157,20 @@ export function openDatabase(path: string): Database {
   try {
     mod = runtimeRequire('node:sqlite')
   } catch (error: any) {
-    // `node:sqlite` landed unflagged in Node 22.x; older runtimes throw
-    // "No such built-in module: node:sqlite", which tells a user nothing about
-    // what to do. The `engines` field cannot help here — it warns at install
-    // time and npx ignores it — and the node running us is often not the one a
-    // user would guess: Claude Desktop resolves `npx`'s `#!/usr/bin/env node`
-    // against its own PATH, which can pick an old nvm version regardless of
-    // which npx was configured. So say which node is actually running, and what
-    // it needs to be.
+    // Runtimes without it throw "No such built-in module: node:sqlite", which
+    // tells a user nothing about what to change. `engines` does not help: npm
+    // only warns at install time, and npx ignores it entirely.
+    //
+    // The trap worth naming is that the node running this is often not the one
+    // the user configured. An MCP client launches the server through `npx`,
+    // whose `#!/usr/bin/env node` resolves against the CLIENT's PATH — so the
+    // runtime can be any node on that PATH regardless of which npx was named.
+    // Report the actual execPath rather than assume the user can guess it.
     throw new SqliteUnavailableError(
-      `This Node cannot open Yomi's message index: ${process.version} has no built-in \`node:sqlite\` (needs >= v${MIN_NODE_FOR_SQLITE}). ` +
+      `This Node cannot open Yomi's message index: ${process.version} has no built-in \`node:sqlite\` (needs ${NODE_SQLITE_REQUIREMENT}). ` +
         `Live tools still work; search, scope and capture do not. ` +
-        `The runtime is ${process.execPath} — note that an MCP client resolves \`node\` from its own PATH, so this may not be the node you expect. ` +
-        `Point the client at a newer node (e.g. set the server's PATH so a >= v${MIN_NODE_FOR_SQLITE} node comes first), then restart it. ` +
+        `The runtime is ${process.execPath} — an MCP client resolves \`node\` from its own PATH, so this may not be the node you expect. ` +
+        `Point the client at a supported node and restart it. ` +
         `Original error: ${error?.message ?? String(error)}`,
     )
   }
