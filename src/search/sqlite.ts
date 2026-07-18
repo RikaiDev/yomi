@@ -24,7 +24,7 @@ const isBun = typeof process.versions.bun !== 'undefined'
 // createRequire gives ESM a real require that both runtimes honor.
 const runtimeRequire = createRequire(import.meta.url)
 
-export interface Statement<T = Record<string, unknown>> {
+interface Statement<T = Record<string, unknown>> {
   run(...params: unknown[]): unknown
   get(...params: unknown[]): T | undefined
   all(...params: unknown[]): T[]

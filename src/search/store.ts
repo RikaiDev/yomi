@@ -498,33 +498,71 @@ export async function semanticSearch(
   return scored.slice(0, limit)
 }
 
-/** Persisted LINE sync cursor for the continuous capture loop (see ../search/capture.ts). */
-export interface CaptureState {
-  revision: number
-  globalRevision: number
-  individualRevision: number
-  updatedAt: number
+/**
+ * One indexed message together with its stored embedding, decoded back into a
+ * Float32Array. This is the raw material the insight layer (../insight) needs:
+ * it clusters messages by cosine over these vectors plus their send times, so
+ * unlike searchMessages/semanticSearch it hands back the vector itself rather
+ * than a pre-ranked hit list.
+ */
+export interface MessageVectorRow {
+  messageId: string
+  chatId: string
+  chatName: string | null
+  fromMid: string | null
+  fromName: string | null
+  text: string
+  createdTime: number
+  vector: Float32Array
 }
 
 /**
- * Read the persisted capture cursor, if any has been saved yet.
+ * Load every indexed message that has an embedding for `model`, newest-window
+ * first bounded by `sinceMs`, with its vector decoded. Empty-text and
+ * timestamp-less rows are excluded — clustering needs both a vector to compare
+ * and a time to gate on, and a row missing either can only add noise.
  *
- * @returns The persisted capture state, or null before capture has ever flushed.
+ * This is a full scan of the embedded corpus (personal-scale: thousands of
+ * rows), left to the caller to cluster; the store deliberately holds no
+ * opinion on thresholds or windowing beyond the `sinceMs` cutoff.
+ *
+ * @param model - Embedder.modelLabel whose vectors to load.
+ * @param sinceMs - Optional lower bound on createdTime (epoch ms); omit for all.
+ * @returns Messages with decoded vectors, oldest first.
  */
-export function getCaptureState(): CaptureState | null {
-  const row = getDb()
-    .prepare(
-      'SELECT revision, globalRevision, individualRevision, updatedAt FROM capture_state WHERE id = 1',
-    )
-    .get() as any
-  return row
-    ? {
-        revision: row.revision ?? 0,
-        globalRevision: row.globalRevision ?? 0,
-        individualRevision: row.individualRevision ?? 0,
-        updatedAt: row.updatedAt ?? 0,
-      }
-    : null
+export function getMessagesWithVectors(
+  model: string,
+  sinceMs?: number,
+): MessageVectorRow[] {
+  const handle = getDb()
+  const rows = handle
+    .prepare<{
+      messageId: string
+      chatId: string
+      chatName: string | null
+      fromMid: string | null
+      fromName: string | null
+      text: string
+      createdTime: number
+      vector: Uint8Array
+    }>(`
+    SELECT m.messageId as messageId, m.chatId as chatId, m.chatName as chatName,
+           m.fromMid as fromMid, m.fromName as fromName, m.text as text,
+           m.createdTime as createdTime, e.vector as vector
+    FROM embeddings e
+    JOIN messages m ON m.messageId = e.messageId
+    WHERE e.model = $model
+      AND m.createdTime IS NOT NULL
+      AND ($since IS NULL OR m.createdTime >= $since)
+      AND length(m.text) > 0
+    ORDER BY m.createdTime ASC;
+  `)
+    .all({ $model: model, $since: sinceMs ?? null })
+
+  return rows.map((row) => {
+    const { vector, ...rest } = row
+    return { ...rest, vector: decodeVector(vector) }
+  })
 }
 
 /**

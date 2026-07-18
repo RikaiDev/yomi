@@ -14,7 +14,7 @@ const persistLog = createCliLogger('SESSION-PERSIST')
  * @param value - Raw credential value.
  * @returns Persistable string value.
  */
-export function toPersistedKeyValue(value: unknown): string | null {
+function toPersistedKeyValue(value: unknown): string | null {
   if (!value) {
     return null
   }

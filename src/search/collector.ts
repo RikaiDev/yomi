@@ -171,9 +171,7 @@ export async function collectMessages(
  * @param embedder - Injected embedder to embed missing rows with.
  * @returns Number of messages newly embedded and stored.
  */
-export async function backfillMissingEmbeddings(
-  embedder: Embedder,
-): Promise<number> {
+async function backfillMissingEmbeddings(embedder: Embedder): Promise<number> {
   const missing = getMessagesMissingEmbedding(embedder.modelLabel)
   if (missing.length === 0) {
     return 0

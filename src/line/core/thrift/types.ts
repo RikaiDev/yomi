@@ -19,21 +19,7 @@ export const THRIFT_TYPE = {
   LIST: 15,
 } as const
 
-export const MSG_TYPE = {
-  CALL: 1,
-  REPLY: 2,
-  EXCEPTION: 3,
-  ONEWAY: 4,
-} as const
-
 export type ThriftType = (typeof THRIFT_TYPE)[keyof typeof THRIFT_TYPE]
-export type MsgType = (typeof MSG_TYPE)[keyof typeof MSG_TYPE]
-
-export interface ThriftField {
-  id: number
-  type: ThriftType
-  value: ThriftFieldValue
-}
 
 export type ThriftScalarValue =
   | boolean
@@ -61,10 +47,3 @@ export type ThriftFieldTuple = [
   fieldId: number,
   value: ThriftFieldValue,
 ]
-
-export interface ThriftMessage {
-  name: string
-  type: MsgType
-  seqId: number
-  fields: ThriftField[]
-}

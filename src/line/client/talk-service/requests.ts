@@ -52,7 +52,7 @@ export function normalizeSendMessageOptions(to, text) {
  * @param options - Normalized send-message options.
  * @returns Thrift struct fields.
  */
-export function buildSendMessagePayload(options) {
+function buildSendMessagePayload(options) {
   const fields = [stringField(2, options.to), i32Field(15, options.contentType)]
 
   if (options.text != null) {

@@ -40,7 +40,7 @@ export function zigzag(value: number): Buffer {
  * @param value - Bigint to encode.
  * @returns Encoded varint buffer.
  */
-export function varintBig(value: bigint): Buffer {
+function varintBig(value: bigint): Buffer {
   const bytes: number[] = []
   let remaining = value
   if (remaining < 0n) {

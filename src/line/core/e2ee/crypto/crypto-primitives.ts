@@ -11,7 +11,7 @@ import { sharedKey as curve25519SharedKey } from 'curve25519-js'
  * @param args - Data to hash (strings or Uint8Array)
  * @returns Hash digest as Buffer
  */
-export function sha256(...args: (string | Uint8Array)[]): Buffer {
+function sha256(...args: (string | Uint8Array)[]): Buffer {
   const h = crypto.createHash('sha256')
   for (const a of args) {
     const buf = Buffer.from(a)
@@ -25,7 +25,7 @@ export function sha256(...args: (string | Uint8Array)[]): Buffer {
  * @param buf - Buffer to XOR
  * @returns Resulting buffer with half the length
  */
-export function xorHalves(buf: Buffer): Buffer {
+function xorHalves(buf: Buffer): Buffer {
   const half = Math.floor(buf.length / 2)
   const out = Buffer.alloc(half)
   for (let i = 0; i < half; i++) {
@@ -44,23 +44,6 @@ export function xorHalves(buf: Buffer): Buffer {
 export function aesDecrypt(data: Buffer, key: Buffer, iv: Buffer): Buffer {
   const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv)
   return Buffer.concat([decipher.update(data), decipher.final()])
-}
-
-/**
- * Generate X25519 key pair for E2EE
- * @returns Key pair object
- */
-export function generateKeyPair(): {
-  publicKey: Uint8Array
-  privateKey: Uint8Array
-} {
-  const { publicKey, privateKey } = crypto.generateKeyPairSync('x25519')
-  const pub = publicKey.export({ type: 'spki', format: 'der' }).slice(-32)
-  const priv = privateKey.export({ type: 'pkcs8', format: 'der' }).slice(-32)
-  return {
-    publicKey: pub as unknown as Uint8Array,
-    privateKey: priv as unknown as Uint8Array,
-  }
 }
 
 /**

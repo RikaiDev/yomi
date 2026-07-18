@@ -76,7 +76,7 @@ export async function getPeerPublicKey(
  * @param keyId - Public key id
  * @param data - 32-byte public key
  */
-export async function persistPeerPublicKey(
+async function persistPeerPublicKey(
   ctx: KeyManagerContext,
   mid: string,
   keyId: string,

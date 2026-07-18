@@ -13,7 +13,7 @@
  *     how long yomi's client keeps polling (~16 min / ~13 min) — always
  *     longer, so a slow phone is never the failure mode.
  */
-export interface LoginStructuredContentPin {
+interface LoginStructuredContentPin {
   /** `pin` — LINE issued a PIN the human must enter. */
   stage: 'pin'
   /** The PIN to enter. */
@@ -26,7 +26,7 @@ export interface LoginStructuredContentPin {
   clientApprovalPollCeilingSeconds: number
 }
 
-export interface LoginStructuredContentCert {
+interface LoginStructuredContentCert {
   /** `cert` — a stored login certificate skipped the PIN step entirely; only the device-approval step remains. */
   stage: 'cert'
   /** No PIN was issued in this stage. */
@@ -43,7 +43,7 @@ export interface LoginStructuredContentCert {
  * (./login-app-view.ts) is a static HTML/JS string with no import of its
  * own; this is how it avoids retyping the list.
  */
-export interface LoginStructuredContentNeedCredentials {
+interface LoginStructuredContentNeedCredentials {
   stage: 'need_credentials'
   /** No PIN has been issued yet — the flow has not even started. */
   pin: null

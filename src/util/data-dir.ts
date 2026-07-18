@@ -30,7 +30,7 @@ import { join } from 'node:path'
  *
  * @returns Absolute path to the directory Yomi's state lives in.
  */
-export function resolveYomiDataDir(): string {
+function resolveYomiDataDir(): string {
   const override = process.env.YOMI_DATA_DIR
   if (override) {
     return override

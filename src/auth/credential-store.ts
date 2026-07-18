@@ -56,46 +56,6 @@ function parseCredentialBlob(blob: string | null): Record<string, any> {
   }
 }
 
-/** In-memory credential store for testing and non-persistent scenarios. */
-export class InMemoryStore {
-  public store: Map<string, any>
-
-  constructor() {
-    this.store = new Map()
-  }
-
-  /**
-   * Gets a credential value.
-   * @param key - Credential key.
-   * @returns Stored value or null.
-   */
-  async get(key: string) {
-    return this.store.get(key) ?? null
-  }
-
-  /**
-   * Sets a credential value.
-   * @param key - Credential key.
-   * @param value - Value to store.
-   */
-  async set(key: string, value: any) {
-    this.store.set(key, value)
-  }
-
-  /**
-   * Deletes a credential.
-   * @param key - Credential key to delete.
-   */
-  async delete(key: string) {
-    this.store.delete(key)
-  }
-
-  /** Wipes all credentials. */
-  async clearAll() {
-    this.store.clear()
-  }
-}
-
 /**
  * Key prefixes for VOLATILE, recomputable E2EE cache — peer public keys and
  * group shared keys. These are written on nearly every message decrypt, so

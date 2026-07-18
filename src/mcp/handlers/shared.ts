@@ -14,7 +14,7 @@ export const NO_CREDENTIALS_MESSAGE =
 // "never logged in" so the model tells the user the right story: the MCP
 // connection is healthy, LINE revoked this device's token (usually because
 // the same account logged in somewhere else).
-export const SESSION_REVOKED_MESSAGE =
+const SESSION_REVOKED_MESSAGE =
   'LINE signed this device out — usually because the same account logged in ' +
   'somewhere else (another device, or a terminal `login` run). The MCP ' +
   'connection itself is fine. Call the `login` tool to reconnect; cached ' +
@@ -36,7 +36,7 @@ export function sessionRequiredError() {
 // Recovery is the same `login` call as a revocation, but the cause is not — no
 // competing login happened, so claiming one sends the user hunting for a device
 // that never signed in.
-export const SESSION_EXPIRED_MESSAGE =
+const SESSION_EXPIRED_MESSAGE =
   'The saved LINE session expired and the automatic token refresh failed. ' +
   'Nothing signed this device out — the token simply aged out, and the MCP ' +
   'connection itself is fine. Call the `login` tool to reconnect; cached ' +

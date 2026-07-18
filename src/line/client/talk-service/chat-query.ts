@@ -23,7 +23,7 @@ function normalizeNumericValue(value: unknown): number | unknown | null {
  * @param responseRoot - Root response payload.
  * @returns Raw chat array or null.
  */
-export function findChatArray(
+function findChatArray(
   responseRoot: Record<number, unknown> | null | undefined,
 ) {
   if (!responseRoot) {
@@ -60,9 +60,7 @@ export function findChatArray(
  * @param chat - Raw chat thrift struct.
  * @returns Normalized chat or null.
  */
-export function mapChatStruct(
-  chat: Record<number, unknown> | null | undefined,
-) {
+function mapChatStruct(chat: Record<number, unknown> | null | undefined) {
   if (!chat || typeof chat !== 'object') {
     return null
   }
@@ -84,7 +82,7 @@ export function mapChatStruct(
  * @param chats - Raw chat list.
  * @returns Normalized chat list.
  */
-export function mapChatList(chats: unknown): unknown[] {
+function mapChatList(chats: unknown): unknown[] {
   return Array.isArray(chats)
     ? chats
         .map((chat) => mapChatStruct(chat as Record<number, unknown>))

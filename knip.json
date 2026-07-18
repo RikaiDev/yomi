@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/mcp/server.ts",
+    "src/cli/login.ts",
+    "src/version.ts",
+    "scripts/*.mjs",
+    "src/**/*.test.ts"
+  ],
+  "project": ["src/**/*.ts"],
+  "ignoreBinaries": ["security", "defaults", "sw_vers", "ffmpeg"]
+}

@@ -6,16 +6,6 @@ const MISSING_GROUP_SENDER_KEY_PATTERN = /Missing group sender key/i
 const GCM_AUTH_FAILURE_PATTERN =
   /unable to authenticate data|Unsupported state or unable to authenticate/i
 
-export {
-  decryptV1,
-  decryptV2,
-  decryptV2WithCandidates,
-  extractTextPayload,
-  generateAAD,
-  getIntBytes,
-  toChunkKeyId,
-} from './message-crypto.js'
-
 /**
  * Build one structured decrypt-failure log payload from a raw LINE message.
  *

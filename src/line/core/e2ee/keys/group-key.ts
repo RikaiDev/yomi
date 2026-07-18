@@ -354,5 +354,3 @@ export async function getGroupKey(
     ctx.groupKeyFetches.delete(fetchKey)
   }
 }
-
-export { normalizeGroupPublicKeys } from './key-payload.js'

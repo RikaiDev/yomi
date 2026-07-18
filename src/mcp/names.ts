@@ -89,7 +89,7 @@ export async function resolveSenderNames(
  * @param chatIds - Group/room chat MIDs to resolve.
  * @returns Map of chat MID to resolved chat title (unresolved MIDs are omitted).
  */
-export async function resolveGroupNames(
+async function resolveGroupNames(
   service: LineProtocolService,
   chatIds: string[],
 ): Promise<Map<string, string>> {

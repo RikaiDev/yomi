@@ -35,7 +35,7 @@ async function deriveLineMediaKeyMaterial(
 }
 
 /** Thrown when a media object's MAC does not match its ciphertext. */
-export class MediaMacVerificationError extends Error {
+class MediaMacVerificationError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'MediaMacVerificationError'

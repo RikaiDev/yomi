@@ -29,10 +29,6 @@ export interface NegotiatedPublicKey {
   keyData: Buffer
 }
 
-export interface HistoricalPeerKey extends NegotiatedPublicKey {
-  mid: string
-}
-
 export interface PeerPublicKeyCandidate extends NegotiatedPublicKey {
   source?: string
 }

@@ -1,9 +1,10 @@
 /**
  * Yomi MCP server — LINE query + reply surface over stdio.
  *
- * On startup resumes any persisted LINE session. Exposes forty tools:
+ * On startup resumes any persisted LINE session. Exposes forty-one tools:
  * login, login_complete, list_conversations, get_chat_messages,
- * get_message_image, get_message_media, get_unread_digest, mark_read,
+ * get_message_image, get_message_media, get_unread_digest, get_insight,
+ * mark_read,
  * send_message, send_image, send_file, send_audio, send_video,
  * send_location, send_contact, send_sticker, list_stickers, search_stickers,
  * preview_sticker, find_contact, list_contacts, get_group_members,
@@ -89,6 +90,7 @@ import {
   handleFindContact,
   handleGetChatMessages,
   handleGetGroupMembers,
+  handleGetInsight,
   handleGetMessageImage,
   handleGetMessageMedia,
   handleGetScopePolicy,
@@ -181,7 +183,7 @@ async function main(): Promise<void> {
     'it. The field is absent on normal (v2) messages, which are authenticated.' +
     '\n\n' +
     'PRIVACY DISCLOSURE (say ONCE per session) — the first time this session ' +
-    'does a bulk read (collect_messages/search_messages), tell the user once, in ' +
+    'does a bulk read (collect_messages/search_messages/get_insight), tell the user once, in ' +
     'plain language, that Yomi captures all conversations by default, keeps the data ' +
     'on this machine, and that they can exclude conversations. Do not bury it, and do ' +
     'NOT repeat it on every call — once per session is enough. The full policy text ' +
@@ -309,6 +311,14 @@ async function main(): Promise<void> {
           return await handleGetUnreadDigest(
             service,
             (args ?? {}) as { perChat?: number; limit?: number },
+          )
+        case 'get_insight':
+          return await handleGetInsight(
+            service,
+            (args ?? {}) as {
+              chatId?: string
+              sinceHours?: number
+            },
           )
         case 'mark_read':
           return await handleMarkRead(

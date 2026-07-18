@@ -6,7 +6,7 @@ export interface BinaryTypeCodecDefinition {
   writeHandler: string
 }
 
-export const BINARY_TYPE_CODEC_DEFINITIONS: BinaryTypeCodecDefinition[] = [
+const BINARY_TYPE_CODEC_DEFINITIONS: BinaryTypeCodecDefinition[] = [
   {
     type: THRIFT_TYPE.BOOL,
     readHandler: 'readBoolValue',

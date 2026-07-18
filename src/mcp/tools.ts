@@ -163,6 +163,26 @@ export const TOOLS = [
   },
   {
     description:
+      'A compact "what needs my attention" context network over the local index — you make the final call, this assembles the evidence cheaply. Nodes: `connectors` (people across ≥2 of your chats, with structural bridges) and `relationships` (per-conversation engagement, reply rhythm, recency). `open`: conversations whose latest message is NOT yours, ranked by how overdue they are relative to your usual reply rhythm there, each with `fromName` (last speaker), a `preview` of the latest message, `overdueRatio`/`typicality`, and a `lastMessageId` pointer. It carries NO message threads and makes NO judgement about addressee, nicknames, or open-request vs closing-ack — those are language understanding you do by reading each `preview` (a group message may be addressed to someone else, who then owns it), fetching the full thread with get_chat_messages only for the few worth it. Reads across all conversations (denylist-excluded dropped). Empty only when the index is empty.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'Optional focus: restrict `relationships` and `pending` to this chat (as returned by list_conversations). Omit to scan all conversations.',
+        },
+        sinceHours: {
+          type: 'number',
+          description:
+            'Lookback window in hours, measured back from the newest captured message (not wall-clock). Default 504 (21 days).',
+        },
+      },
+    },
+    name: 'get_insight',
+  },
+  {
+    description:
       'Sends a text message to a LINE conversation immediately (not a draft). Always E2EE (pairwise for 1:1, group key for group/room); fails honestly rather than sending plaintext if the key cannot be resolved. One send per call. To @mention someone, put the visible "@name " into `text` AND pass a matching `mentions` entry — without `mentions`, "@name" is plain text and notifies no one. Resolve MIDs via get_group_members or find_contact first.',
     inputSchema: {
       type: 'object' as const,

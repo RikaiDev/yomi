@@ -21,7 +21,7 @@ import type {
  * @param value - Field value.
  * @returns Thrift field tuple.
  */
-export function field(
+function field(
   type: ThriftType,
   fieldId: number,
   value:
@@ -53,17 +53,6 @@ export function boolField(fieldId: number, value: boolean): ThriftFieldTuple {
  */
 export function byteField(fieldId: number, value: number): ThriftFieldTuple {
   return field(3, fieldId, value)
-}
-
-/**
- * Build an I16 field tuple.
- *
- * @param fieldId - Thrift field ID.
- * @param value - I16 value.
- * @returns Thrift field tuple.
- */
-export function i16Field(fieldId: number, value: number): ThriftFieldTuple {
-  return field(6, fieldId, value)
 }
 
 /**

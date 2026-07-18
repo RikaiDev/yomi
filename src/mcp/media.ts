@@ -172,7 +172,7 @@ export abstract class LineMediaAccessError extends Error {
 }
 
 /** Thrown when the message body is missing the OBS/E2EE material required to decrypt its media. */
-export class MissingDecryptMaterialError extends LineMediaAccessError {
+class MissingDecryptMaterialError extends LineMediaAccessError {
   public readonly code = 'missing_decrypt_material'
 
   constructor(reason: string) {
@@ -181,7 +181,7 @@ export class MissingDecryptMaterialError extends LineMediaAccessError {
 }
 
 /** Thrown when the message's content type is not a downloadable media type (e.g. plain text, sticker ref). */
-export class UnsupportedMediaTypeError extends LineMediaAccessError {
+class UnsupportedMediaTypeError extends LineMediaAccessError {
   public readonly code = 'unsupported_media_type'
 
   constructor(contentType: number, messageId: string) {

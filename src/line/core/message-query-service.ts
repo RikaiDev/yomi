@@ -29,7 +29,7 @@ function inferLineToType(chatId: string | null): number | null {
  * @param chatId - Requested LINE chat MID.
  * @returns Message with stable chat context.
  */
-export function normalizeLineMessageContext(
+function normalizeLineMessageContext(
   message: any,
   chatId: string | null = null,
 ): any {
@@ -113,7 +113,7 @@ export async function decryptLineMessage(
  * @param chatId - Optional chat id to attach to each message.
  * @returns Messages with decrypted text flags when available.
  */
-export async function decryptLineMessages(
+async function decryptLineMessages(
   e2eeManager: any,
   messages: any[],
   chatId: string | null = null,

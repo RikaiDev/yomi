@@ -65,9 +65,7 @@ function mapContactCapabilityFields(contact: Record<number, unknown>) {
  * @param contact - Raw contact thrift struct.
  * @returns Normalized contact or null.
  */
-export function mapContactStruct(
-  contact: Record<number, unknown> | null | undefined,
-) {
+function mapContactStruct(contact: Record<number, unknown> | null | undefined) {
   if (!contact || typeof contact !== 'object') {
     return null
   }

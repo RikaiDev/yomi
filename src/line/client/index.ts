@@ -44,7 +44,7 @@ const LINE_AUTH_INVALIDATED_PATTERN =
  * @param message - Human-readable diagnostic message
  * @param data - Structured exception payload
  */
-export class LineRequestError extends Error {
+class LineRequestError extends Error {
   public data: Record<string, unknown>
   public type: string
 

@@ -113,10 +113,7 @@ function hasDecryptMaterial(resolved: DecryptKeys | null): boolean {
  * @param msg - Raw message object
  * @returns Parsed E2EE chunk data, or null if the message is not E2EE
  */
-export function parseE2EEChunks(
-  ctx: KeyManagerContext,
-  msg: any,
-): E2EEChunks | null {
+function parseE2EEChunks(ctx: KeyManagerContext, msg: any): E2EEChunks | null {
   const chunks = msg.chunks
   if (!chunks || !Array.isArray(chunks) || chunks.length < 5) {
     return null

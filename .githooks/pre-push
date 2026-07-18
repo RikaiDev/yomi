@@ -1,0 +1,9 @@
+#!/bin/sh
+# Block pushes that introduce dead code or type/lint regressions.
+# Configured repo-wide via core.hooksPath=.githooks (see CONTRIBUTING/setup).
+set -e
+echo "pre-push ▸ typecheck…"
+npm run --silent typecheck
+echo "pre-push ▸ knip (dead code)…"
+bunx knip
+echo "pre-push ▸ ok"

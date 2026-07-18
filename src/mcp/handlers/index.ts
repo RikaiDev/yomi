@@ -5,6 +5,7 @@
 export * from './contacts.js'
 export * from './conversations.js'
 export * from './groups.js'
+export * from './insight.js'
 export * from './login.js'
 export * from './media.js'
 export * from './message-actions.js'

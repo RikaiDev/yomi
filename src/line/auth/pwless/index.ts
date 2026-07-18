@@ -39,7 +39,7 @@ import {
  * each step is this value multiplied by that step's attempt count — see
  * `PIN_VERIFY_CLIENT_CEILING_MS` / `PAAK_AUTH_CLIENT_CEILING_MS` below.
  */
-export const PWLESS_POLL_TIMEOUT_MS = 65000
+const PWLESS_POLL_TIMEOUT_MS = 65000
 
 /**
  * Real client-side ceiling for the PIN-verification long-poll loop: how long

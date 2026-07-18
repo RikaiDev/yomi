@@ -74,7 +74,7 @@ function readNegotiatedValue(
  * @param keyData - Raw key payload from thrift or object responses.
  * @returns Buffer instance or null when unsupported.
  */
-export function toKeyBuffer(keyData: unknown): Buffer | null {
+function toKeyBuffer(keyData: unknown): Buffer | null {
   if (Buffer.isBuffer(keyData)) {
     return keyData
   }

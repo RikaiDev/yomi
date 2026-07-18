@@ -46,7 +46,7 @@ export interface Mention {
  * @param mentions - Proposed mentions.
  * @throws Error describing the first invalid mention or overlap found.
  */
-export function validateMentions(text: string, mentions: Mention[]): void {
+function validateMentions(text: string, mentions: Mention[]): void {
   const sorted = [...mentions].sort((a, b) => a.start - b.start)
 
   for (const mention of sorted) {
