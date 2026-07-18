@@ -21,7 +21,9 @@ Yomi speaks LINE's TCompact-over-HTTPS protocol directly, decrypts Letter-Sealin
 (E2EE) messages and media, and exposes the result to any AI agent through a small
 stdio [MCP](https://modelcontextprotocol.io) server. Point Claude Desktop (or any
 MCP client) at it and the agent can catch up on your LINE the way you do — read,
-reply, send an image, mention someone, and search your whole history locally.
+reply, send an image, mention someone, and search your whole history locally — and,
+with `get_insight`, read the *situation*: which conversations are waiting on your
+reply, who ties your world together, and what has gone overdue.
 
 No official API, no bot account, no webhook. Yomi logs in as a secondary device
 on your own account.
@@ -403,9 +405,11 @@ Approve the device on your phone (see [Logging in](#logging-in)), and:
 
 ## What you can do
 
-Yomi exposes **19 tools** over MCP. All return JSON. "Honest error" below means an
-explicit failure naming the problem (e.g. `missing_decrypt_material`) — Yomi never
-fabricates a fallback, a placeholder, or a fake success.
+Yomi exposes **20 tools** over MCP (the ones worth naming; see the tables). All
+return JSON — except `get_insight`, which returns [TOON](https://github.com/toon-format/toon).
+"Honest error" below means an explicit failure naming the problem (e.g.
+`missing_decrypt_material`) — Yomi never fabricates a fallback, a placeholder, or a
+fake success.
 
 ### Reading
 
@@ -417,6 +421,12 @@ fabricates a fallback, a placeholder, or a fake success.
 | `get_message_media` / `get_message_image` | Any decrypted attachment (image/video/audio/file). Honest error on non-media. |
 | `find_contact` / `list_contacts` | Friend-list lookup by name substring, or the full list. Raw LINE data — no fuzzy scoring, no affinity ranking. |
 | `get_group_members` | Members of a persistent group. Ad-hoc rooms without a group record fail honestly rather than returning a fake empty list. |
+
+### Insight (read the situation, not just the messages)
+
+| Tool | Does |
+| --- | --- |
+| `get_insight` | A compact *context network* over your local index — structure the agent reasons over, not a message dump. Returns `connectors` (people who appear across ≥2 of your chats, with the structural **bridges** whose removal would split your contact graph), `relationships` (per-conversation engagement and your typical reply **rhythm** there), and `open` (conversations whose latest message isn't yours, ranked by how **overdue** they are *relative to that rhythm*, each with a preview). It computes only structure and statistics: it deliberately does **not** decide who a message is addressed to, whether it's an open request or a closing acknowledgement, or a nickname's real identity — that is language the agent reads from each preview, dereferencing `get_chat_messages` only when a thread is worth judging. Encoded as [TOON](https://github.com/toon-format/toon), ≈¼ the tokens of the equivalent JSON. |
 
 ### Writing (these really send — not drafts)
 
