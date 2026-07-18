@@ -1,0 +1,42 @@
+# The landing page and llms.txt live in a different repo (RikaiDev.github.io)
+# and do not update on their own when yomi releases. The download links there
+# already point at releases/latest so they never go stale — but the visible
+# version, the tool count, and any new feature copy still need a human. This
+# opens a checklist issue on every release so that never slips again.
+name: site-reminder
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open landing-page refresh reminder
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          {
+            echo "$TAG is published. Refresh the landing page and llms.txt in"
+            echo "RikaiDev.github.io/yomi — they do not update automatically."
+            echo "Download links already use releases/latest, so only the"
+            echo "human-visible bits need a check:"
+            echo
+            echo "- [ ] Visible version string(s) -> $TAG"
+            echo "- [ ] Tool count, if it changed"
+            echo "- [ ] A feature card / marquee entry for anything new this release"
+            echo "- [ ] llms.txt product facts"
+            echo "- [ ] meta description / JSON-LD softwareVersion"
+            echo
+            echo "Site source: https://github.com/RikaiDev/RikaiDev.github.io/tree/main/yomi"
+            echo "Close this once the site reflects $TAG."
+          } > body.md
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Refresh landing page for $TAG" \
+            --body-file body.md
