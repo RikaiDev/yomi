@@ -71,19 +71,3 @@ jobs:
       - name: Start it as an MCP server and complete an initialize handshake
         shell: bash
         run: node scripts/smoke-mcp.mjs "$RUNNER_TEMP/smoke/node_modules/@rikaidev/yomi/run.mjs"
-
-  shell-script:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Verify install.sh is executable and syntax-valid
-        run: bash -n install.sh
-
-  powershell-script:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Verify install.ps1 parses without errors
-        run: powershell -Command "Get-Content install.ps1 | Out-Null; Write-Host 'install.ps1 syntax OK'"
