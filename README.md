@@ -448,7 +448,7 @@ fake success.
 
 | Tool | Does |
 | --- | --- |
-| `search_messages` | Hybrid search across all indexed conversations. Auto-collects on first use. Returns `mode` (`hybrid`/`semantic`/`keyword`) so nothing is hidden. |
+| `search_messages` | Hybrid search across all indexed conversations. Auto-collects on first use, diversifies results across chats, and returns a small context window around each hit. Returns `mode` (`hybrid`/`semantic`/`keyword`) so nothing is hidden. |
 | `collect_messages` | Explicit bulk-index into the local DB + embed for semantic search. The only tool allowed to bulk-fetch; runs once per call, never on a timer. |
 
 ### Scope & privacy (all work offline, no LINE session needed)
@@ -547,6 +547,13 @@ when embeddings exist, semantic search, then fuses the two ranked lists by
 live in un-embedded messages; pure keyword misses paraphrases; fusing both surfaces
 an exact term and a meaning-match together. The response's `mode` field always
 reports which methods contributed.
+
+Semantic ranking keeps each message as its own vector. Testing against real indexed
+LINE conversations found that embedding overlapping conversation windows diluted the
+center message and reduced retrieval quality. Context is therefore added only after
+ranking: Yomi limits one chat from flooding the top results and expands each winner
+with two messages on either side so the agent sees the exchange that gave the hit
+meaning without weakening the embedding itself.
 
 Semantic ranking uses **`Xenova/bge-small-zh-v1.5`** (BAAI general embedding, small,
 Chinese-primary but multilingual) via **transformers.js**. Embedding **inference runs

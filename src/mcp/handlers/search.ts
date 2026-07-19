@@ -29,6 +29,7 @@ import { getDefaultEmbedder } from '../../search/default-embedder.js'
 import {
   getEmbeddingCount,
   getIndexedMessageCount,
+  getMessageContext,
   type SearchResult,
   type SemanticSearchResult,
   searchMessages,
@@ -62,7 +63,7 @@ const RRF_K = 60
  * @param limit - Maximum number of fused results to return.
  * @returns Fused results, best-first, each carrying its RRF score.
  */
-function fuseByRrf(
+export function fuseByRrf(
   lists: SearchResult[][],
   limit: number,
 ): (SearchResult & { score: number })[] {
@@ -86,6 +87,30 @@ function fuseByRrf(
       ...(rows.get(messageId) as SearchResult),
       score,
     }))
+}
+
+/**
+ * Keep one active conversation from flooding the top results. Skipped rows are
+ * backfilled only when there are not enough distinct conversations, so a query
+ * scoped by its natural matches still returns the requested number of hits.
+ */
+export function applyConversationDiversity<T extends SearchResult>(
+  rows: T[],
+  limit: number,
+  perChat = 3,
+): T[] {
+  const selected: T[] = []
+  const deferred: T[] = []
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    if ((counts.get(row.chatId) ?? 0) < perChat) {
+      selected.push(row)
+      counts.set(row.chatId, (counts.get(row.chatId) ?? 0) + 1)
+    } else {
+      deferred.push(row)
+    }
+  }
+  return [...selected, ...deferred].slice(0, limit)
 }
 
 /**
@@ -195,20 +220,29 @@ export async function handleSearchMessages(
   let results: unknown[]
   if (semantic.length > 0 && keyword.length > 0) {
     mode = 'hybrid'
-    results = fuseByRrf([keyword, semantic], limit)
+    results = applyConversationDiversity(
+      fuseByRrf([keyword, semantic], pool),
+      limit,
+    )
   } else if (semantic.length > 0) {
     mode = 'semantic'
-    results = semantic.slice(0, limit)
+    results = applyConversationDiversity(semantic, limit)
   } else {
     mode = 'keyword'
-    results = keyword.slice(0, limit)
+    results = applyConversationDiversity(keyword, limit)
   }
 
   const acc = createPhiAccumulator()
-  const maskedResults = (results as { text?: string }[]).map((row) => ({
-    ...row,
-    text: maskInto(acc, row.text),
-  }))
+  const maskedResults = (results as (SearchResult & { score?: number })[]).map(
+    (row) => ({
+      ...row,
+      text: maskInto(acc, row.text),
+      context: getMessageContext(row.messageId).map((message) => ({
+        ...message,
+        text: maskInto(acc, message.text),
+      })),
+    }),
+  )
   const content: any[] = [
     {
       type: 'text' as const,

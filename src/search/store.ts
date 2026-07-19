@@ -82,6 +82,11 @@ export interface SemanticSearchResult extends SearchResult {
   score: number
 }
 
+/** One message in the context window returned around a search hit. */
+export interface SearchContextMessage extends SearchResult {
+  isMatch: boolean
+}
+
 let db: Database | null = null
 
 /**
@@ -316,6 +321,37 @@ export function searchMessages(query: string, limit = 20): SearchResult[] {
   `)
     .all({ $query: matchQuery, $limit: limit })
   return rows
+}
+
+/**
+ * Return a small chronological window around one search hit. Ranking stays at
+ * message level; context is attached only after winners are known, so nearby
+ * filler can explain a result without polluting retrieval scores.
+ */
+export function getMessageContext(
+  messageId: string,
+  radius = 2,
+): SearchContextMessage[] {
+  const handle = getDb()
+  const target = handle
+    .prepare<{ chatId: string }>(
+      'SELECT chatId FROM messages WHERE messageId = $messageId;',
+    )
+    .get({ $messageId: messageId })
+  if (!target) return []
+  const rows = handle
+    .prepare<SearchResult>(`
+      SELECT chatId, chatName, messageId, fromName, text, createdTime
+      FROM messages
+      WHERE chatId = $chatId
+      ORDER BY CASE WHEN createdTime IS NULL THEN 1 ELSE 0 END, createdTime, id;
+    `)
+    .all({ $chatId: target.chatId })
+  const index = rows.findIndex((row) => row.messageId === messageId)
+  if (index < 0) return []
+  return rows
+    .slice(Math.max(0, index - radius), index + radius + 1)
+    .map((row) => ({ ...row, isMatch: row.messageId === messageId }))
 }
 
 /**
