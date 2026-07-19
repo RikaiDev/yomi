@@ -3,7 +3,7 @@
   "engines": {
     "node": ">=22.13.0 <23.0.0 || >=23.4.0"
   },
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Open-source personal LINE MCP server for AI agents. Read, reply, send images, and search LINE conversations locally with Letter-Sealing E2EE.",
   "type": "module",
   "license": "MIT",
