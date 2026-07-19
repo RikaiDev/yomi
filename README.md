@@ -413,8 +413,10 @@ Approve the device on your phone (see [Logging in](#logging-in)), and:
 
 ## What you can do
 
-Yomi exposes **20 tools** over MCP (the ones worth naming; see the tables). All
-return JSON — except `get_insight`, which returns [TOON](https://github.com/toon-format/toon).
+Yomi exposes **20 tools** over MCP (the ones worth naming; see the tables). Large
+read results use token-efficient [TOON](https://github.com/toon-format/toon);
+small status and write results use compact JSON. Errors remain plain text and media
+uses native MCP image/audio/resource content.
 "Honest error" below means an explicit failure naming the problem (e.g.
 `missing_decrypt_material`) — Yomi never fabricates a fallback, a placeholder, or a
 fake success.

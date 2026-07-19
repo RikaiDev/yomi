@@ -37,7 +37,7 @@ import {
 } from '../../search/store.js'
 import { createCliLogger } from '../../util/log.js'
 import { createPhiAccumulator, maskInto, phiNote } from '../phi-guard.js'
-import { toolError } from './shared.js'
+import { jsonText, toolError, toonText } from './shared.js'
 
 const log = createCliLogger('Yomi')
 
@@ -135,9 +135,7 @@ export async function handleCollectMessages(
     embedder: getDefaultEmbedder(),
   })
   return {
-    content: [
-      { type: 'text' as const, text: JSON.stringify(summary, null, 2) },
-    ],
+    content: [{ type: 'text' as const, text: jsonText(summary) }],
   }
 }
 
@@ -246,7 +244,7 @@ export async function handleSearchMessages(
   const content: any[] = [
     {
       type: 'text' as const,
-      text: JSON.stringify({ mode, results: maskedResults }, null, 2),
+      text: toonText({ mode, results: maskedResults }),
     },
   ]
   const note = phiNote(acc)

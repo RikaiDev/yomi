@@ -36,7 +36,7 @@ import type { LineProtocolService } from '../../line/core/service.js'
 import { createCliLogger } from '../../util/log.js'
 import { supportsMcpApps } from '../ui/capability.js'
 import type { LoginStructuredContent } from '../ui/login-structured-content.js'
-import { toolError } from './shared.js'
+import { jsonText, toolError } from './shared.js'
 
 const log = createCliLogger('Yomi')
 
@@ -208,7 +208,7 @@ async function handleLoginElicitation(
       content: [
         {
           type: 'text' as const,
-          text: JSON.stringify({ loggedIn: true, mid, displayName }, null, 2),
+          text: jsonText({ loggedIn: true, mid, displayName }),
         },
       ],
     }
@@ -561,7 +561,7 @@ export async function handleLoginComplete() {
       content: [
         {
           type: 'text' as const,
-          text: JSON.stringify({ loggedIn: true, mid, displayName }, null, 2),
+          text: jsonText({ loggedIn: true, mid, displayName }),
         },
       ],
     }

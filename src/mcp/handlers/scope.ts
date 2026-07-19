@@ -19,7 +19,7 @@ import {
 } from '../../search/scope.js'
 import { resolveConversationNames } from '../names.js'
 import { getPrivacyPolicyText } from '../policy.js'
-import { toolError } from './shared.js'
+import { jsonResult, jsonText, toolError } from './shared.js'
 
 /** One excluded conversation with its best-effort resolved display name. */
 interface ExcludedChat {
@@ -71,7 +71,7 @@ export async function handleExcludeChats(args: { chatIds?: string[] }) {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify({ excluded, purgedMessages }, null, 2),
+        text: jsonText({ excluded, purgedMessages }),
       },
     ],
   }
@@ -92,9 +92,7 @@ export async function handleIncludeChats(args: { chatIds?: string[] }) {
   }
   const included = removeExcludedChatIds(args.chatIds)
   return {
-    content: [
-      { type: 'text' as const, text: JSON.stringify({ included }, null, 2) },
-    ],
+    content: [{ type: 'text' as const, text: jsonText({ included }) }],
   }
 }
 
@@ -110,9 +108,7 @@ export async function handleIncludeChats(args: { chatIds?: string[] }) {
  */
 export async function handleListExcludedChats(service: LineProtocolService) {
   const result = await listExcludedChatsWithNames(service)
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  }
+  return jsonResult(result)
 }
 
 /**
@@ -134,7 +130,5 @@ export async function handleGetScopePolicy(service: LineProtocolService) {
     policy: getPrivacyPolicyText(),
     excludedChats,
   }
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  }
+  return jsonResult(result)
 }

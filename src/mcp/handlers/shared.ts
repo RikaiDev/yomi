@@ -1,7 +1,9 @@
+import { encode } from '@toon-format/toon'
+
 /**
  * Shared helpers for the Yomi MCP handler modules — the always-fresh
- * session-required error, a plain-text tool error builder, and a JSON
- * result wrapper. Split out of the former handlers.ts so every domain file
+ * session-required error, a plain-text tool error builder, and compact JSON /
+ * TOON result wrappers. Split out of the former handlers.ts so every domain file
  * under src/mcp/handlers/ can import these without a circular dependency.
  */
 
@@ -87,9 +89,26 @@ export function toolError(message: string) {
   }
 }
 
-/** Wrap a plain result object as a JSON MCP tool result. */
+/** Encode a small machine-friendly payload without pretty-print whitespace. */
+export function jsonText(value: unknown): string {
+  return JSON.stringify(value)
+}
+
+/** Encode a large, repetitive read payload for token-efficient model consumption. */
+export function toonText(value: unknown): string {
+  return encode(value)
+}
+
+/** Wrap a small plain result object as a compact JSON MCP tool result. */
 export function jsonResult(value: unknown) {
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }],
+    content: [{ type: 'text' as const, text: jsonText(value) }],
+  }
+}
+
+/** Wrap a large read result as a token-efficient TOON MCP tool result. */
+export function toonResult(value: unknown) {
+  return {
+    content: [{ type: 'text' as const, text: toonText(value) }],
   }
 }

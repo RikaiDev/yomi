@@ -1,7 +1,7 @@
 import type { LineProtocolService } from '../../line/core/service.js'
 import { createCliLogger } from '../../util/log.js'
 import { resolveUserNames } from '../names.js'
-import { jsonResult, toolError } from './shared.js'
+import { jsonResult, toolError, toonResult } from './shared.js'
 
 const log = createCliLogger('Yomi')
 
@@ -55,11 +55,7 @@ async function fetchAllContacts(
  */
 export async function handleListContacts(service: LineProtocolService) {
   const contacts = await fetchAllContacts(service)
-  return {
-    content: [
-      { type: 'text' as const, text: JSON.stringify(contacts, null, 2) },
-    ],
-  }
+  return toonResult(contacts)
 }
 
 /**
@@ -84,11 +80,7 @@ export async function handleFindContact(
   const matches = contacts.filter((contact) =>
     contact.displayName?.toLowerCase().includes(needle),
   )
-  return {
-    content: [
-      { type: 'text' as const, text: JSON.stringify(matches, null, 2) },
-    ],
-  }
+  return toonResult(matches)
 }
 
 /**
@@ -134,11 +126,7 @@ export async function handleGetGroupMembers(
       invited: true,
     })),
   ]
-  return {
-    content: [
-      { type: 'text' as const, text: JSON.stringify(summaries, null, 2) },
-    ],
-  }
+  return toonResult(summaries)
 }
 
 /**

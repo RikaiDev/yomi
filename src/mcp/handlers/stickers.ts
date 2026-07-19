@@ -3,7 +3,7 @@ import {
   fetchStickerPackageMeta,
 } from '../../line/client/sticker-meta.js'
 import type { LineProtocolService } from '../../line/core/service.js'
-import { toolError } from './shared.js'
+import { toolError, toonResult } from './shared.js'
 
 /**
  * Handle `preview_sticker` — render sticker images so the caller can SEE them
@@ -72,14 +72,7 @@ export async function handleListStickers(
   args: { language?: string },
 ) {
   const packages = await service.listStickerPackages(args?.language)
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify({ total: packages.length, packages }, null, 2),
-      },
-    ],
-  }
+  return toonResult({ total: packages.length, packages })
 }
 
 /**
@@ -103,7 +96,5 @@ export async function handleSearchStickers(
     args.language,
     args.limit,
   )
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  }
+  return toonResult(result)
 }

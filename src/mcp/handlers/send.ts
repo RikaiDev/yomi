@@ -3,7 +3,7 @@ import path from 'node:path'
 import { buildMentionMetadata, type Mention } from '../../line/core/mention.js'
 import type { LineProtocolService } from '../../line/core/service.js'
 import { createCliLogger } from '../../util/log.js'
-import { toolError } from './shared.js'
+import { jsonText, toolError } from './shared.js'
 
 const log = createCliLogger('Yomi')
 
@@ -83,7 +83,7 @@ export async function handleSendMessage(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify({ sent: true, messageId, read }, null, 2),
+        text: jsonText({ sent: true, messageId, read }),
       },
     ],
   }
@@ -156,16 +156,12 @@ export async function handleSendImage(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            messageId: result?.messageId ?? null,
-            oid: result?.oid ?? null,
-            sent: true,
-            read,
-          },
-          null,
-          2,
-        ),
+        text: jsonText({
+          messageId: result?.messageId ?? null,
+          oid: result?.oid ?? null,
+          sent: true,
+          read,
+        }),
       },
     ],
   }
@@ -244,17 +240,13 @@ export async function handleSendFile(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            messageId: result?.messageId ?? null,
-            oid: result?.oid ?? null,
-            fileName,
-            sent: true,
-            read,
-          },
-          null,
-          2,
-        ),
+        text: jsonText({
+          messageId: result?.messageId ?? null,
+          oid: result?.oid ?? null,
+          fileName,
+          sent: true,
+          read,
+        }),
       },
     ],
   }
@@ -322,17 +314,13 @@ export async function handleSendContact(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            messageId: result?.messageId ?? null,
-            contactMid: args.contactMid,
-            displayName,
-            sent: true,
-            read,
-          },
-          null,
-          2,
-        ),
+        text: jsonText({
+          messageId: result?.messageId ?? null,
+          contactMid: args.contactMid,
+          displayName,
+          sent: true,
+          read,
+        }),
       },
     ],
   }
@@ -388,17 +376,13 @@ export async function handleSendSticker(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            messageId: result?.messageId ?? null,
-            stickerId: args.stickerId,
-            packageId: args.packageId,
-            sent: true,
-            read,
-          },
-          null,
-          2,
-        ),
+        text: jsonText({
+          messageId: result?.messageId ?? null,
+          stickerId: args.stickerId,
+          packageId: args.packageId,
+          sent: true,
+          read,
+        }),
       },
     ],
   }
@@ -460,17 +444,13 @@ export async function handleSendLocation(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            messageId: result?.messageId ?? null,
-            latitude: args.latitude,
-            longitude: args.longitude,
-            sent: true,
-            read,
-          },
-          null,
-          2,
-        ),
+        text: jsonText({
+          messageId: result?.messageId ?? null,
+          latitude: args.latitude,
+          longitude: args.longitude,
+          sent: true,
+          read,
+        }),
       },
     ],
   }
@@ -549,16 +529,12 @@ export async function handleSendAudio(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            messageId: result?.messageId ?? null,
-            oid: result?.oid ?? null,
-            sent: true,
-            read,
-          },
-          null,
-          2,
-        ),
+        text: jsonText({
+          messageId: result?.messageId ?? null,
+          oid: result?.oid ?? null,
+          sent: true,
+          read,
+        }),
       },
     ],
   }
@@ -639,16 +615,12 @@ export async function handleSendVideo(
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(
-          {
-            messageId: result?.messageId ?? null,
-            oid: result?.oid ?? null,
-            sent: true,
-            read,
-          },
-          null,
-          2,
-        ),
+        text: jsonText({
+          messageId: result?.messageId ?? null,
+          oid: result?.oid ?? null,
+          sent: true,
+          read,
+        }),
       },
     ],
   }

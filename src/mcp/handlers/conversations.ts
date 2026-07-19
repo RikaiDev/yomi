@@ -5,7 +5,7 @@ import { createCliLogger } from '../../util/log.js'
 import { resolveLineMediaDescriptor, resolveLineMediaType } from '../media.js'
 import { resolveConversationNames, resolveSenderNames } from '../names.js'
 import { createPhiAccumulator, maskInto, phiNote } from '../phi-guard.js'
-import { toolError } from './shared.js'
+import { jsonResult, toolError, toonText } from './shared.js'
 
 const log = createCliLogger('Yomi')
 
@@ -54,7 +54,7 @@ export async function handleListConversations(
     }),
   )
   const content: any[] = [
-    { type: 'text' as const, text: JSON.stringify(conversations, null, 2) },
+    { type: 'text' as const, text: toonText(conversations) },
   ]
   const note = phiNote(acc)
   if (note) content.push(note)
@@ -142,9 +142,7 @@ export async function handleGetChatMessages(
       ? { e2eeIntegrityVerified: false }
       : {}),
   }))
-  const content: any[] = [
-    { type: 'text' as const, text: JSON.stringify(shaped, null, 2) },
-  ]
+  const content: any[] = [{ type: 'text' as const, text: toonText(shaped) }]
   const note = phiNote(acc)
   if (note) content.push(note)
   return { content }
@@ -169,9 +167,7 @@ export async function handleMarkRead(
   }
   const result = await service.markChatRead(args.chatId, args.messageId)
   log.info('mark_read.done', { chatId: args.chatId, marked: result.marked })
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  }
+  return jsonResult(result)
 }
 
 /**
@@ -230,9 +226,7 @@ export async function handleGetUnreadDigest(
       }
     }),
   )
-  const content: any[] = [
-    { type: 'text' as const, text: JSON.stringify(digest, null, 2) },
-  ]
+  const content: any[] = [{ type: 'text' as const, text: toonText(digest) }]
   const note = phiNote(acc)
   if (note) content.push(note)
   return { content }
