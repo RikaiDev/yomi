@@ -14,10 +14,12 @@ without a browser, bot account, or LINE's own client.**
 
 *The name reads more than one way. **読み** (yomi) — a reading: not just parsing
 your messages, but reading the situation, the way you do. **詠み** (yomi) — to
-recite: it doesn't read in silence, it reads things back to you. And **黄泉** (yomi)
-— the realm of what's buried and out of reach; the very yomi in **黄泉帰り**
-(yomigaeri), "the return from it," the root of the Japanese word for revival. Yomi
-reaches into what is sealed or forgotten and brings it back to light.*
+recite: it doesn't read in silence, it reads things back to you. And **黄泉**
+(yomi) — the unreachable realm; the very yomi in **黄泉帰り** (*yomigaeri*),
+"returning from Yomi." Like a messenger moving between two realms, Yomi passes
+through sealing and silence to bring messages still readable deep inside your
+conversations back into the light. It does not summon history already lost; it
+helps what has not disappeared be seen again.*
 
 Unlike LINE's official Bot MCP server, which connects AI agents to a LINE
 Official Account through the Messaging API, Yomi connects to your existing
