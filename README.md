@@ -6,9 +6,11 @@
   </picture>
 </p>
 
-# Yomi (読み)
+# Yomi (読み) — the personal LINE MCP server
 
-**Read your LINE from an AI agent — and reply, send images, and search across every conversation — without a browser and without LINE's own client.**
+**Yomi is an open-source LINE MCP server for your personal account. Read, reply,
+send images, and search every conversation from Claude or any local AI agent —
+without a browser, bot account, or LINE's own client.**
 
 *The name reads more than one way. **読み** (yomi) — a reading: not just parsing
 your messages, but reading the situation, the way you do. **詠み** (yomi) — to
@@ -16,6 +18,10 @@ recite: it doesn't read in silence, it reads things back to you. And **黄泉** 
 — the realm of what's buried and out of reach; the very yomi in **黄泉帰り**
 (yomigaeri), "the return from it," the root of the Japanese word for revival. Yomi
 reaches into what is sealed or forgotten and brings it back to light.*
+
+Unlike LINE's official Bot MCP server, which connects AI agents to a LINE
+Official Account through the Messaging API, Yomi connects to your existing
+personal LINE account and conversations as a secondary device.
 
 Yomi speaks LINE's TCompact-over-HTTPS protocol directly, decrypts Letter-Sealing
 (E2EE) messages and media, and exposes the result to any AI agent through a small

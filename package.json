@@ -4,10 +4,10 @@
     "node": ">=22.13.0 <23.0.0 || >=23.4.0"
   },
   "version": "0.3.0",
-  "description": "Yomi (読み) — reads your LINE (decrypting Letter-Sealing E2EE) and sends on your behalf, via a stdio MCP server, so an agent can catch up on your LINE for you.",
+  "description": "Open-source personal LINE MCP server for AI agents. Read, reply, send images, and search LINE conversations locally with Letter-Sealing E2EE.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/RikaiDev/yomi#readme",
+  "homepage": "https://rikaidev.github.io/yomi/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RikaiDev/yomi.git"
