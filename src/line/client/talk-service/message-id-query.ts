@@ -47,6 +47,12 @@ const writeStruct = (fields: Array<[number, number, any]>): Buffer => {
 }
 
 writeValue = (type: number, value: any): Buffer => {
+  if (type === 2) {
+    return Buffer.from([value ? 1 : 0])
+  }
+  if (type === 8) {
+    return writeI32(Number(value))
+  }
   if (type === 10) {
     return writeI64(value)
   }
@@ -64,10 +70,18 @@ writeValue = (type: number, value: any): Buffer => {
       ...items.map((item: any) => writeValue(elementType, item)),
     ])
   }
+  if (type === 14) {
+    const [elementType, items] = value
+    return Buffer.concat([
+      Buffer.from([elementType]),
+      writeI32(items.length),
+      ...items.map((item: any) => writeValue(elementType, item)),
+    ])
+  }
   throw new Error(`Unsupported TBinary write type: ${type}`)
 }
 
-const encodeBinaryCallMessage = (
+export const encodeBinaryCallMessage = (
   method: string,
   seqId: number,
   fields: Array<[number, number, any]>,
@@ -188,10 +202,20 @@ readValue = (
     }
     return items
   }
+  if (type === 14) {
+    const elementType = buffer[state.position]
+    state.position += 1
+    const length = readI32(buffer, state)
+    const items: any[] = []
+    for (let index = 0; index < length; index += 1) {
+      items.push(readValue(buffer, state, elementType))
+    }
+    return items
+  }
   throw new Error(`Unsupported TBinary read type: ${type}`)
 }
 
-const decodeBinaryResponseMessage = (buffer: Buffer) => {
+export const decodeBinaryResponseMessage = (buffer: Buffer) => {
   const state = { position: 0 }
   readU32(buffer, state)
   const method = readString(buffer, state)
@@ -200,7 +224,7 @@ const decodeBinaryResponseMessage = (buffer: Buffer) => {
   return { fields, method, seqId }
 }
 
-const postBinary = (
+export const postBinary = (
   host: string,
   path: string,
   body: Buffer,

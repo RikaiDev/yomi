@@ -226,6 +226,16 @@ export function buildSendChatCheckedRequest(
   ]
 }
 
+/** Build updateContactSetting for LINE's per-contact notification mute. */
+export function buildUpdateContactNotificationRequest(mid, disabled) {
+  return [
+    i32Field(1, 0),
+    stringField(2, mid),
+    i32Field(3, 1),
+    stringField(4, disabled ? 'true' : 'false'),
+  ]
+}
+
 /**
  * Build the updateChat request fields to rename a group/chat.
  *

@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { type AttentionTier, scoreAttentionBatch } from '../attention/policy.js'
+import { isSquareChatMid } from '../line/client/square-service/client.js'
 import {
   fetchStickerImage,
   fetchStickerPackageMetaCached,
@@ -12,7 +13,11 @@ import {
   chatEventParticipantMids,
   interpretChatEvent,
 } from '../line/core/chat-event.js'
-import { interpretFlexMessage } from '../line/core/flex-message.js'
+import {
+  type FlexMessageDocument,
+  interpretFlexMessage,
+  processFlexMessage,
+} from '../line/core/flex-message.js'
 import { sanitizeMessagePreview } from '../line/core/message-preview.js'
 import { decryptLineMessage } from '../line/core/message-query-service.js'
 import { LineProtocolService } from '../line/core/service.js'
@@ -49,8 +54,8 @@ const attentionCachePath = join(
 )
 const ATTENTION_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const ATTENTION_CACHE_MAX_ENTRIES = 1000
-const ATTENTION_BATCH_SIZE = 8
-const ATTENTION_POLICY_VERSION = 2
+const ATTENTION_BATCH_SIZE = 32
+const ATTENTION_POLICY_VERSION = 5
 
 function attentionSignature(
   item: Pick<
@@ -125,7 +130,7 @@ export async function cliClassifyAttentionJson(
     cache[attentionSignature(item)] = { ...result, updatedAt: Date.now() }
     return {
       id: item.id,
-      attentionScore: result.score + (item.unreadCount > 0 ? 5 : 0),
+      attentionScore: result.score,
       attentionTier: result.tier,
       attentionReason: result.reason,
     }
@@ -147,10 +152,15 @@ export interface CliChatMessageJsonItem {
   mediaType: string | null
   mediaUrl: string | null
   actionUrl?: string | null
+  flexDocument?: FlexMessageDocument | null
   fileName: string | null
   isDecryptFailure: boolean
   isUnsent: boolean
   mentionRanges: Array<{ location: number; length: number }>
+  threadMid?: string | null
+  isThreadRoot?: boolean
+  threadReplies?: CliChatMessageJsonItem[]
+  emojiRanges?: Array<{ location: number; length: number; url: string }>
 }
 
 export interface CliStickerPreviewJson {
@@ -261,12 +271,14 @@ export function richFields(message: any): {
   altText: string
   mediaUrl: string | null
   actionUrl: string | null
+  flexDocument: FlexMessageDocument | null
 } {
   const metadata =
     message?.contentMetadata && typeof message.contentMetadata === 'object'
       ? (message.contentMetadata as Record<string, unknown>)
       : {}
   const interpreted = interpretFlexMessage(message)
+  const flexDocument = processFlexMessage(message)
   const explicitAlt = sanitizeMessagePreview(metadata.ALT_TEXT) || ''
   const altText = interpreted.summary || explicitAlt
   const mediaUrl = safeWebUrl(metadata.DOWNLOAD_URL) || interpreted.imageUrl
@@ -283,6 +295,7 @@ export function richFields(message: any): {
     altText,
     mediaUrl,
     actionUrl: redirect || interpreted.actionUrl || firstWebLink(markup),
+    flexDocument,
   }
 }
 
@@ -294,64 +307,95 @@ export function messagePlaceholder(
 ): string {
   switch (contentType) {
     case 0:
-      return hasOpaquePayload ? '[加密訊息]' : '[訊息]'
+      return hasOpaquePayload ? '[yomi:encrypted]' : '[yomi:message]'
     case 7:
-      return '[貼圖]'
+      return '[yomi:sticker]'
     case 4:
-      return '[網頁內容]'
+      return '[yomi:web]'
     case 5:
-      return '[PDF 文件]'
+      return '[yomi:pdf]'
     case 6:
-      return '[通話紀錄]'
+      return '[yomi:call]'
     case 8:
-      return '[動態狀態]'
+      return '[yomi:status]'
     case 9:
-      return '[禮物]'
+      return '[yomi:gift]'
     case 10:
-      return '[群組記事本]'
+      return '[yomi:note]'
     case 11:
-      return '[應用程式連結]'
+      return '[yomi:app]'
     case 12:
-      return '[分享連結]'
+      return '[yomi:share]'
     case 13:
-      return '[聯絡人]'
+      return '[yomi:contact]'
     case 15:
-      return '[位置資訊]'
+      return '[yomi:location]'
     case 16:
-      return '[貼文通知]'
+      return '[yomi:post]'
     case 17:
-      return '[互動卡片]'
+      return '[yomi:rich]'
     case 18:
-      return '[聊天室活動]'
+      return '[yomi:chat_event]'
     case 19:
-      return '[音樂]'
+      return '[yomi:music]'
     case 20:
-      return '[付款資訊]'
+      return '[yomi:payment]'
     case 21:
-      return '[延伸圖片]'
+      return '[yomi:extended_image]'
     case 22:
-      return '[互動卡片]'
+      return '[yomi:rich]'
     case 1:
-      return '[圖片]'
+      return '[yomi:image]'
     case 2:
-      return '[影片]'
+      return '[yomi:video]'
     case 3:
-      return '[語音訊息]'
+      return '[yomi:audio]'
     case 14:
-      return '[檔案]'
+      return '[yomi:file]'
     default:
-      return hasOpaquePayload ? '[加密訊息]' : `[LINE 內容 ${contentType}]`
+      return hasOpaquePayload
+        ? '[yomi:encrypted]'
+        : `[yomi:line_content:${contentType}]`
   }
 }
 
 export function messageFallback(message: any): string {
-  if (message?.contentMetadata?.UNSENT === 'true') return '訊息已收回'
+  if (message?.contentMetadata?.UNSENT === 'true') return '[yomi:unsent]'
+  const altText = messageAltText(message?.contentMetadata)
+  if (altText) return altText
   return message?.e2eeDecryptFailure
-    ? '[無法解密的訊息]'
+    ? '[yomi:decrypt_failed]'
     : messagePlaceholder(
         Number(message?.contentType || 0),
         Boolean(message?.text),
       )
+}
+
+/** Convert LINE's private CALL transport string into a stable UI token. */
+export function callHistoryPreview(value: unknown, isSelf: boolean): string {
+  if (typeof value !== 'string') return '[yomi:call]'
+  const match =
+    /^Call History\s*:\s*(\d+)\s+millisecs,\s*Result:\s*(\d+)$/i.exec(
+      value.trim(),
+    )
+  if (!match) return '[yomi:call]'
+  const milliseconds = Number(match[1])
+  const result = Number(match[2])
+  if (result === 16 && milliseconds > 0) {
+    return `[yomi:call_duration:${Math.floor(milliseconds / 1000)}]`
+  }
+  if (result === 77) {
+    return isSelf ? '[yomi:call_no_answer]' : '[yomi:call_missed]'
+  }
+  return '[yomi:call]'
+}
+
+function messageAltText(metadata: any): string {
+  for (const key of ['ALT_TEXT', 'altText', 'ALT']) {
+    const value = sanitizeMessagePreview(metadata?.[key])
+    if (value) return value
+  }
+  return ''
 }
 
 function parseMentionRanges(
@@ -370,6 +414,45 @@ function parseMentionRanges(
         end > location
         ? [{ location, length: end - location }]
         : []
+    })
+  } catch {
+    return []
+  }
+}
+
+function parseEmojiRanges(
+  metadata: Record<string, unknown>,
+): Array<{ location: number; length: number; url: string }> {
+  if (typeof metadata.REPLACE !== 'string') return []
+  try {
+    const parsed = JSON.parse(metadata.REPLACE) as {
+      sticon?: {
+        resources?: Array<{
+          S?: number
+          E?: number
+          productId?: string
+          sticonId?: string
+        }>
+      }
+    }
+    return (parsed.sticon?.resources || []).flatMap((resource) => {
+      const location = Number(resource.S)
+      const end = Number(resource.E)
+      if (
+        !Number.isInteger(location) ||
+        !Number.isInteger(end) ||
+        end <= location ||
+        !resource.productId ||
+        !resource.sticonId
+      )
+        return []
+      return [
+        {
+          location,
+          length: end - location,
+          url: `https://stickershop.line-scdn.net/sticonshop/v1/sticon/${resource.productId}/android/${resource.sticonId}.png`,
+        },
+      ]
     })
   } catch {
     return []
@@ -425,13 +508,34 @@ function latestMessage(messages: any[] | undefined): any | null {
   )
 }
 
+function squareMessageContent(message: any): {
+  contentType: number
+  metadata: any
+  text: string | null
+} {
+  const contentType = Number(message?.contentType ?? message?.[15] ?? 0)
+  const metadata = message?.contentMetadata ?? message?.[18]
+  const text =
+    messageAltText(metadata) ||
+    sanitizeMessagePreview(message?.text ?? message?.[10]) ||
+    null
+  return { contentType, metadata, text }
+}
+
+export function isRenderableSquareMessage(message: any): boolean {
+  const content = squareMessageContent(message)
+  return content.contentType !== 0 || content.text !== null
+}
+
+/** Normalize provider-specific message windows to the newest chronological page. */
+export function newestMessageWindow(messages: any[], count: number): any[] {
+  return [...messages]
+    .sort((a, b) => messageTimestamp(a) - messageTimestamp(b))
+    .slice(-Math.max(0, count))
+}
+
 export async function cliListConversationsJson(
-  args: {
-    limit?: number
-    attentionOnly?: boolean
-    firstPage?: boolean
-    semantic?: boolean
-  } = {},
+  args: { limit?: number; attentionOnly?: boolean; semantic?: boolean } = {},
 ): Promise<CliConversationJsonItem[]> {
   const service = new LineProtocolService()
   const ok = await service.resumeSession()
@@ -452,17 +556,11 @@ export async function cliListConversationsJson(
         )
       }
     } catch {}
-    const result = args.firstPage
-      ? await service.client.getMessageBoxes({
-          lastMessagesPerMessageBoxCount: 1,
-          messageBoxCountLimit: args.limit ?? 100,
-          withUnreadCount: true,
-        })
-      : await service.client.getAllMessageBoxes({
-          lastMessagesPerMessageBoxCount: 1,
-          ...(args.limit ? { messageBoxCountLimit: args.limit } : {}),
-          withUnreadCount: true,
-        })
+    const result = await service.client.getAllMessageBoxes({
+      lastMessagesPerMessageBoxCount: 1,
+      ...(args.limit ? { messageBoxCountLimit: args.limit } : {}),
+      withUnreadCount: true,
+    })
     const boxes = result.messageBoxes || []
     const chatIds = boxes.map((box: any) => box.id).filter(Boolean)
     const names = await resolveConversationNames(service, chatIds)
@@ -479,7 +577,7 @@ export async function cliListConversationsJson(
       } catch {}
     }
 
-    const conversations = await Promise.all(
+    const conversations: CliConversationJsonItem[] = await Promise.all(
       boxes.map(async (box: any) => {
         let lastMsg = latestMessage(box.lastMessages)
         const boxDeliveredTime = Number(
@@ -503,7 +601,7 @@ export async function cliListConversationsJson(
             }
           } catch {}
         }
-        let preview = '(無訊息)'
+        let preview = '[yomi:no_message]'
         let timestamp = 0
 
         if (lastMsg) {
@@ -512,7 +610,14 @@ export async function cliListConversationsJson(
             ? richFields(lastMsg)
             : null
           const rawPreview =
-            rich?.altText || sanitizeMessagePreview(lastMsg.text)
+            Number(lastMsg.contentType) === 6
+              ? callHistoryPreview(
+                  lastMsg.text,
+                  lastMsg.from === service.profile?.mid,
+                )
+              : rich?.altText ||
+                messageAltText(lastMsg.contentMetadata) ||
+                sanitizeMessagePreview(lastMsg.text)
           if (rawPreview) {
             preview = rawPreview
           } else {
@@ -565,36 +670,102 @@ export async function cliListConversationsJson(
           pictureUrl,
           isOfficial: Boolean(contact?.isOfficial),
           attentionScore: 0,
-          attentionTier: 'filtered' as AttentionTier,
-          attentionReason: '正在整理新訊息…',
+          attentionTier: 'pending' as AttentionTier,
+          attentionReason: 'pending',
         }
       }),
     )
+
+    // OpenChat (SquareService) is a separate inbox. Its `m...`/legacy `t...`
+    // chats never
+    // appear in TalkService message boxes, so merge the two authoritative
+    // lists before attention scoring and sorting. SquareChatStatus supplies
+    // the authoritative latest message cheaply enough for background polls.
+    try {
+      const squareChats = await service.client.getJoinedSquareChats(
+        args.limit ?? 100,
+      )
+      const hydratedSquareChats = await Promise.all(
+        squareChats.map(async (chat: any) => {
+          if (chat.lastMessage) return chat
+          let hydrated = chat
+          try {
+            const status = await service.client.getSquareChatStatus(chat.id)
+            hydrated = {
+              ...chat,
+              lastMessage: status?.[3]?.[1] || null,
+              lastSenderName: status?.[4] || null,
+              unreadCount: Number(status?.[5]?.[2] || chat.unreadCount),
+            }
+          } catch {}
+          if (isRenderableSquareMessage(hydrated.lastMessage)) return hydrated
+          try {
+            const messages = await service.client.getSquareChatMessages(
+              chat.id,
+              100,
+            )
+            return {
+              ...hydrated,
+              lastMessage:
+                [...messages].reverse().find(isRenderableSquareMessage) ?? null,
+            }
+          } catch {
+            return hydrated
+          }
+        }),
+      )
+      for (const chat of hydratedSquareChats) {
+        if (conversations.some((item) => item.id === chat.id)) continue
+        const last = chat.lastMessage
+        const timestamp = Number(
+          last?.createdTime || last?.[6] || last?.[5] || 0,
+        )
+        const { contentType, text } = squareMessageContent(last)
+        conversations.push({
+          id: chat.id,
+          title: chat.name,
+          lastMessage:
+            text ||
+            (contentType
+              ? messagePlaceholder(contentType)
+              : '[yomi:no_message]'),
+          timeString: formatTimestamp(timestamp),
+          timestamp,
+          unreadCount: chat.unreadCount,
+          isMuted: chat.isMuted,
+          isGroup: true,
+          hasMention: false,
+          pictureUrl: chat.pictureHash
+            ? `https://obs.line-scdn.net/${chat.pictureHash}`
+            : null,
+          isOfficial: false,
+          attentionScore: 0,
+          attentionTier: 'pending',
+          attentionReason: 'pending',
+        })
+      }
+    } catch {
+      // Older/regional accounts may not expose SquareService. Ordinary LINE
+      // conversations must remain usable when OpenChat discovery is absent.
+    }
 
     const cache = await loadAttentionCache()
     const pending: number[] = []
     conversations.forEach((conversation, index) => {
       const cached = cache[attentionSignature(conversation)]
       if (cached) {
-        conversation.attentionScore =
-          cached.score + (conversation.unreadCount > 0 ? 5 : 0)
+        conversation.attentionScore = cached.score
         conversation.attentionTier = cached.tier
         conversation.attentionReason = cached.reason
       } else if (conversation.isMuted || conversation.unreadCount === 0) {
         conversation.attentionScore = conversation.isMuted ? -100 : 0
         conversation.attentionTier = 'filtered'
-        conversation.attentionReason = conversation.isMuted
-          ? '已靜音'
-          : '已讀，等待需要時分析'
+        conversation.attentionReason = conversation.isMuted ? 'muted' : 'read'
       } else {
         pending.push(index)
-        // Fast first paint: uncached unread messages stay visible until the
-        // background semantic pass refines them. No model loads on this path.
-        conversation.attentionScore = conversation.isOfficial ? 0 : 20
-        conversation.attentionTier = conversation.isOfficial
-          ? 'filtered'
-          : 'know'
-        conversation.attentionReason = '正在整理新訊息…'
+        conversation.attentionScore = 0
+        conversation.attentionTier = 'pending'
+        conversation.attentionReason = 'pending'
       }
     })
 
@@ -620,15 +791,14 @@ export async function cliListConversationsJson(
             ...result,
             updatedAt: Date.now(),
           }
-          conversation.attentionScore =
-            result.score + (conversation.unreadCount > 0 ? 5 : 0)
+          conversation.attentionScore = result.score
           conversation.attentionTier = result.tier
           conversation.attentionReason = result.reason
         })
         await saveAttentionCache(cache)
       } catch {
         pending.forEach((index) => {
-          conversations[index].attentionReason = '暫時無法判斷重要性，稍後再試'
+          conversations[index].attentionReason = 'ai_unavailable'
         })
       }
     }
@@ -637,7 +807,9 @@ export async function cliListConversationsJson(
     conversations.sort((a, b) => b.timestamp - a.timestamp)
 
     if (args.attentionOnly) {
-      return conversations.filter((c) => c.attentionTier !== 'filtered')
+      return conversations.filter((c) =>
+        ['now', 'today', 'know'].includes(c.attentionTier),
+      )
     }
 
     return conversations
@@ -655,6 +827,89 @@ export async function cliGetChatMessagesJson(
   if (!ok) return []
 
   try {
+    if (isSquareChatMid(chatId)) {
+      // Square's small-limit response can be the oldest edge of its server
+      // window rather than the newest page. Fetch the protocol's full recent
+      // window, normalize by timestamp, then expose the requested tail.
+      const squareWindow = await service.client.getSquareChatMessages(
+        chatId,
+        Math.max(100, count),
+      )
+      let latestStatusMessage: any = null
+      try {
+        latestStatusMessage =
+          await service.client.getSquareChatLatestMessage(chatId)
+      } catch {}
+      const combinedWindow = latestStatusMessage
+        ? [...squareWindow, latestStatusMessage]
+        : squareWindow
+      const meaningfulWindow = combinedWindow.filter(
+        (message: any) =>
+          Number(message.contentType ?? 0) !== 0 ||
+          Boolean(sanitizeMessagePreview(message.text)) ||
+          Boolean(messageAltText(message.contentMetadata)),
+      )
+      const messages = newestMessageWindow(meaningfulWindow, count)
+      const shapeSquareMessage = (message: any): CliChatMessageJsonItem => ({
+        id: message.id,
+        fromMid: message.fromMid,
+        fromName: message.isSelf ? '我' : message.fromName,
+        fromPictureUrl: message.fromPictureUrl,
+        isSelf: message.isSelf,
+        text:
+          (message.contentType === 0
+            ? sanitizeMessagePreview(message.text) ||
+              messageAltText(message.contentMetadata)
+            : '') ||
+          (message.contentType ? messagePlaceholder(message.contentType) : ''),
+        timeString: formatTimestamp(message.createdTime),
+        timestamp: message.createdTime,
+        contentType: message.contentType,
+        mediaType:
+          (
+            {
+              1: 'image',
+              2: 'video',
+              3: 'audio',
+              7: 'sticker',
+              14: 'file',
+              17: 'rich',
+              22: 'rich',
+            } as Record<number, string>
+          )[message.contentType] || null,
+        mediaUrl:
+          message.contentType === 7 && message.contentMetadata?.STKID
+            ? `https://stickershop.line-scdn.net/stickershop/v1/sticker/${message.contentMetadata.STKID}/android/sticker.png`
+            : null,
+        actionUrl: null,
+        fileName: message.contentMetadata?.FILE_NAME || null,
+        isDecryptFailure: false,
+        isUnsent: false,
+        mentionRanges: [],
+        threadMid: message.threadMid,
+        isThreadRoot: message.isThreadRoot,
+        emojiRanges: parseEmojiRanges(message.contentMetadata || {}),
+      })
+      return Promise.all(
+        messages.map(async (message: any) => {
+          const shaped = shapeSquareMessage(message)
+          if (!message.isThreadRoot || !message.threadMid) return shaped
+          try {
+            const threadMessages = await service.client.getSquareChatMessages(
+              chatId,
+              50,
+              message.threadMid,
+            )
+            shaped.threadReplies = threadMessages
+              .filter((reply: any) => reply.id !== message.id)
+              .map(shapeSquareMessage)
+          } catch {
+            shaped.threadReplies = []
+          }
+          return shaped
+        }),
+      )
+    }
     // Always use the service-owned query boundary here. It opportunistically
     // decrypts E2EE envelopes; reading service.client directly leaves media
     // messages with contentType=0 and opaque text, which makes image/file
@@ -709,6 +964,7 @@ export async function cliGetChatMessagesJson(
       const stickerId = metadata.STKID || metadata.stickerId
       const rich = isRichContentType(contentType) ? richFields(m) : null
       let text = sanitizeMessagePreview(m.text)
+      if (contentType === 6) text = callHistoryPreview(m.text, isSelf)
       if (contentType === 18) text = interpretChatEvent(m, names)
       if (rich?.altText) text = rich.altText
       if (!text) {
@@ -733,6 +989,7 @@ export async function cliGetChatMessagesJson(
               1: 'image',
               2: 'video',
               3: 'audio',
+              6: 'call',
               7: 'sticker',
               14: 'file',
               17: 'rich',
@@ -745,6 +1002,7 @@ export async function cliGetChatMessagesJson(
             ? `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/android/sticker.png`
             : null),
         actionUrl: rich?.actionUrl || null,
+        flexDocument: rich?.flexDocument || null,
         fileName:
           (typeof mediaText.fileName === 'string'
             ? mediaText.fileName
@@ -759,6 +1017,7 @@ export async function cliGetChatMessagesJson(
         isDecryptFailure: Boolean(m.e2eeDecryptFailure),
         isUnsent: metadata.UNSENT === 'true',
         mentionRanges: parseMentionRanges(metadata),
+        emojiRanges: parseEmojiRanges(metadata),
       }
     })
 

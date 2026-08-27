@@ -1,3 +1,4 @@
+import { isSquareChatMid } from '../../line/client/square-service/client.js'
 import { sanitizeMessagePreview } from '../../line/core/message-preview.js'
 import { decryptLineMessage } from '../../line/core/message-query-service.js'
 import type { LineProtocolService } from '../../line/core/service.js'
@@ -98,6 +99,42 @@ export async function handleListConversations(
       }
     }),
   )
+  try {
+    const squareChats = await service.client.getJoinedSquareChats(
+      args.limit ?? 20,
+    )
+    for (const chat of squareChats) {
+      let last = chat.lastMessage
+      let senderName = chat.lastSenderName
+      if (!last) {
+        const recent = await service.client.getSquareChatMessages(chat.id, 1)
+        const normalized = recent.at(-1)
+        if (normalized) {
+          last = {
+            4: normalized.id,
+            5: normalized.createdTime,
+            10: normalized.text,
+            15: normalized.contentType,
+          }
+          senderName = normalized.fromName
+        }
+      }
+      const preview = sanitizeMessagePreview(last?.[10])
+      conversations.push({
+        id: chat.id,
+        lastMessagePreview: maskInto(
+          acc,
+          preview || (last ? '[社群訊息]' : null),
+        ),
+        name: maskInto(acc, chat.name),
+        unreadCount: chat.unreadCount,
+        ...(senderName ? { lastSenderName: maskInto(acc, senderName) } : {}),
+      })
+    }
+  } catch {
+    // OpenChat availability differs by LINE account/region. TalkService
+    // conversations remain authoritative when SquareService is unavailable.
+  }
   const content: any[] = [
     { type: 'text' as const, text: toonText(conversations) },
   ]
@@ -140,6 +177,29 @@ export async function handleGetChatMessages(
 ) {
   if (!args.chatId) {
     return toolError('chatId is required.')
+  }
+  if (isSquareChatMid(args.chatId)) {
+    const squareMessages = await service.client.getSquareChatMessages(
+      args.chatId,
+      args.count ?? 50,
+    )
+    const acc = createPhiAccumulator()
+    const shaped = squareMessages.map((message: any) => ({
+      createdTime: message.createdTime,
+      deliveredTime: message.createdTime,
+      from: message.fromMid,
+      fromName: maskInto(acc, message.fromName),
+      id: message.id,
+      mediaType: resolveLineMediaType(Number(message.contentType)),
+      mentions: message.contentMetadata?.MENTION ?? null,
+      text: maskInto(acc, sanitizeMessagePreview(message.text) || '[社群訊息]'),
+      e2eeDecrypted: null,
+      service: 'SQUARE',
+    }))
+    const content: any[] = [{ type: 'text' as const, text: toonText(shaped) }]
+    const note = phiNote(acc)
+    if (note) content.push(note)
+    return { content }
   }
   const fetched = args.before
     ? await service.getPreviousMessages(

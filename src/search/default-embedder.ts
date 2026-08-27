@@ -23,6 +23,8 @@
  * recommended instruction for retrieval tasks.
  */
 
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { Embedder } from './embedder.js'
 
 const MODEL_ID = 'Xenova/bge-small-zh-v1.5'
@@ -46,12 +48,16 @@ let pipelinePromise: Promise<FeatureExtractionPipeline> | null = null
 function getPipeline(): Promise<FeatureExtractionPipeline> {
   if (!pipelinePromise) {
     pipelinePromise = import('@huggingface/transformers')
-      .then(
-        ({ pipeline }) =>
-          pipeline('feature-extraction', MODEL_ID, {
-            device: 'cpu',
-          }) as unknown as Promise<FeatureExtractionPipeline>,
-      )
+      .then(({ pipeline, env }) => {
+        env.cacheDir =
+          process.env.YOMI_MODEL_CACHE_DIR ||
+          (process.platform === 'darwin'
+            ? join(homedir(), 'Library', 'Caches', 'Yomi', 'models')
+            : join(process.env.LOCALAPPDATA || homedir(), 'Yomi', 'models'))
+        return pipeline('feature-extraction', MODEL_ID, {
+          device: 'cpu',
+        }) as unknown as Promise<FeatureExtractionPipeline>
+      })
       .catch((error) => {
         // Reset the memo on failure so a later call can retry (e.g. the
         // first attempt failed offline, network comes back later) instead

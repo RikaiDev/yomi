@@ -11,6 +11,7 @@
  * yomi/README.md for the full extraction rationale.
  */
 
+import { isSquareChatMid } from '../client/square-service/client.js'
 import { createMessageCommandService } from './message-command-service.js'
 import { createMessageQueryService } from './message-query-service.js'
 
@@ -49,6 +50,9 @@ export function createChatRuntimeService(service: any) {
         relatedMessageServiceCode?: number
       },
     ): Promise<any> {
+      if (isSquareChatMid(to)) {
+        return service.client.sendSquareMessage(to, text, contentMetadata)
+      }
       return createMessageCommandService(
         () => service.client,
         service.e2eeManager,
@@ -264,13 +268,22 @@ export function createChatRuntimeService(service: any) {
     }> {
       let lastMessageId = messageId ?? null
       if (!lastMessageId) {
-        const recent = await service.getRecentMessages(chatId, 1)
-        lastMessageId = recent?.[0]?.id ? String(recent[0].id) : null
+        if (isSquareChatMid(chatId)) {
+          const recent = await service.client.getSquareChatMessages(chatId, 100)
+          lastMessageId = recent.at(-1)?.id ? String(recent.at(-1).id) : null
+        } else {
+          const recent = await service.getRecentMessages(chatId, 1)
+          lastMessageId = recent?.[0]?.id ? String(recent[0].id) : null
+        }
       }
       if (!lastMessageId) {
         return { marked: false, reason: 'no message to mark read' }
       }
-      await service.client.sendChatChecked(chatId, lastMessageId, 0)
+      if (isSquareChatMid(chatId)) {
+        await service.client.markSquareChatRead(chatId, lastMessageId)
+      } else {
+        await service.client.sendChatChecked(chatId, lastMessageId, 0)
+      }
       return { marked: true, chatId, lastMessageId }
     },
 

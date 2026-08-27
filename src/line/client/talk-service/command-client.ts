@@ -20,6 +20,7 @@ import {
   buildSendMessageRequest,
   buildUnsendMessageRequest,
   buildUpdateChatNameRequest,
+  buildUpdateContactNotificationRequest,
   normalizeSendMessageOptions,
 } from './requests.js'
 
@@ -83,6 +84,18 @@ export function createTalkCommandClient(runtime) {
       )
       if (result.error) {
         throw new Error(`sendChatChecked failed: ${result.error}`)
+      }
+      return true
+    },
+
+    /** Mute or unmute notifications for a 1:1/official-account contact. */
+    async updateContactNotificationDisabled(mid, disabled) {
+      const result = await runtime.sendTalk(
+        'updateContactSetting',
+        buildUpdateContactNotificationRequest(mid, disabled),
+      )
+      if (result.error) {
+        throw new Error(`updateContactSetting failed: ${result.error}`)
       }
       return true
     },

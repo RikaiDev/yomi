@@ -18,6 +18,7 @@ import {
   downloadLineMessageData,
   downloadLineObsMediaObject,
 } from '../line/client/obs-media-client.js'
+import { isSquareChatMid } from '../line/client/square-service/client.js'
 import { CONTENT_TYPE } from '../line/core/constants.js'
 import { decryptLineMediaBytes } from '../line/core/media-decrypt.js'
 
@@ -72,6 +73,61 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   wav: 'audio/wav',
   webp: 'image/webp',
   zip: 'application/zip',
+}
+
+const TRUSTED_PUBLIC_MEDIA_HOST_SUFFIXES = [
+  'line-scdn.net',
+  'line-apps.com',
+  'cdn.hinet.net',
+]
+
+export function resolvePublicMediaUrl(
+  message: any,
+  preview: boolean,
+): URL | null {
+  const metadata = message?.contentMetadata ?? {}
+  if (metadata.PUBLIC !== 'true') return null
+  const raw = preview
+    ? metadata.PREVIEW_URL || metadata.DOWNLOAD_URL
+    : metadata.DOWNLOAD_URL || metadata.PREVIEW_URL
+  if (typeof raw !== 'string' || !raw) return null
+  try {
+    const url = new URL(raw)
+    const hostname = url.hostname.toLowerCase()
+    if (
+      url.protocol !== 'https:' ||
+      !TRUSTED_PUBLIC_MEDIA_HOST_SUFFIXES.some(
+        (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`),
+      )
+    ) {
+      return null
+    }
+    return url
+  } catch {
+    return null
+  }
+}
+
+async function downloadPublicMedia(url: URL): Promise<{
+  bytes: Buffer
+  mimeType: string | null
+}> {
+  const response = await fetch(url, { redirect: 'error' })
+  if (!response.ok) {
+    throw new Error(`Public LINE media download failed (${response.status})`)
+  }
+  const length = Number(response.headers.get('content-length') ?? 0)
+  if (Number.isFinite(length) && length > 25 * 1024 * 1024) {
+    throw new Error('Public LINE media exceeds 25 MB')
+  }
+  const bytes = Buffer.from(await response.arrayBuffer())
+  if (bytes.length === 0 || bytes.length > 25 * 1024 * 1024) {
+    throw new Error('Public LINE media returned invalid bytes')
+  }
+  return {
+    bytes,
+    mimeType: response.headers.get('content-type')?.split(';')[0] || null,
+  }
 }
 
 /**
@@ -159,13 +215,20 @@ export function resolveLineMediaDescriptor(
     contentMetadata.MEDIA_CONTENT_INFO,
     {},
   )
+  const fileName =
+    dataPayload.fileName ||
+    (typeof contentMetadata.FILE_NAME === 'string' &&
+      contentMetadata.FILE_NAME) ||
+    (typeof contentMetadata.FILE_NAME_ORIGINAL === 'string' &&
+      contentMetadata.FILE_NAME_ORIGINAL) ||
+    (typeof contentMetadata.name === 'string' && contentMetadata.name) ||
+    null
+  const extension =
+    mediaInfo.extension || (fileName ? fileName.split('.').pop() : null) || null
   return {
-    fileName: dataPayload.fileName || null,
+    fileName,
     keyMaterial: dataPayload.keyMaterial || null,
-    mimeType: resolveMimeType(
-      mediaInfo.extension || null,
-      Number(message?.contentType || 0),
-    ),
+    mimeType: resolveMimeType(extension, Number(message?.contentType || 0)),
     oid: String(contentMetadata.OID),
     sid: String(contentMetadata.SID),
   }
@@ -229,6 +292,48 @@ export async function fetchLineMessageMedia(
   messageId: string,
   preview: boolean,
 ): Promise<FetchLineMessageMediaResult> {
+  if (isSquareChatMid(chatId)) {
+    const mainMessages = await service.client.getSquareChatMessages(chatId, 100)
+    let message = mainMessages.find(
+      (candidate: any) => candidate.id === messageId,
+    )
+    if (!message) {
+      for (const root of mainMessages.filter(
+        (candidate: any) => candidate.isThreadRoot && candidate.threadMid,
+      )) {
+        const replies = await service.client.getSquareChatMessages(
+          chatId,
+          100,
+          root.threadMid,
+        )
+        message = replies.find((candidate: any) => candidate.id === messageId)
+        if (message) break
+      }
+    }
+    if (!message) {
+      throw new MissingDecryptMaterialError(
+        `Square message ${messageId} not found in ${chatId}`,
+      )
+    }
+    const contentType = Number(message.contentType)
+    if (!DOWNLOADABLE_CONTENT_TYPES.has(contentType)) {
+      throw new UnsupportedMediaTypeError(contentType, messageId)
+    }
+    const downloaded = await downloadLineMessageData(service.client, {
+      messageId,
+      preview,
+      square: true,
+    })
+    return {
+      bytes: downloaded.bytes,
+      contentType,
+      fileName: message.contentMetadata?.FILE_NAME || null,
+      mimeType:
+        downloaded.mimeType ||
+        DEFAULT_MIME_BY_CONTENT_TYPE[contentType] ||
+        'application/octet-stream',
+    }
+  }
   const messages = await service.getRecentMessages(chatId, 100)
   const message = messages.find((candidate: any) => candidate.id === messageId)
   if (!message) {
@@ -239,6 +344,21 @@ export async function fetchLineMessageMedia(
   const contentType = Number(message.contentType)
   if (!DOWNLOADABLE_CONTENT_TYPES.has(contentType)) {
     throw new UnsupportedMediaTypeError(contentType, messageId)
+  }
+
+  const publicMediaUrl = resolvePublicMediaUrl(message, preview)
+  if (publicMediaUrl) {
+    const downloaded = await downloadPublicMedia(publicMediaUrl)
+    const extension = publicMediaUrl.pathname.split('.').pop() ?? null
+    return {
+      bytes: downloaded.bytes,
+      contentType,
+      fileName: null,
+      mimeType:
+        downloaded.mimeType ||
+        resolveMimeType(extension, contentType) ||
+        'application/octet-stream',
+    }
   }
 
   const descriptor = resolveLineMediaDescriptor(message)

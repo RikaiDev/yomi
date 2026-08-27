@@ -118,6 +118,74 @@ async function resolveGroupNames(
   return resolved
 }
 
+function mentionedUserMids(metadata: any): string[] {
+  try {
+    const value =
+      typeof metadata?.MENTION === 'string'
+        ? JSON.parse(metadata.MENTION)
+        : metadata?.MENTION
+    const mentions = value?.MENTIONEES ?? value?.MENTIONS ?? []
+    return mentions
+      .map((item: any) => item?.M ?? item?.mid)
+      .filter(
+        (mid: unknown): mid is string =>
+          typeof mid === 'string' && mid.startsWith('u'),
+      )
+  } catch {
+    return []
+  }
+}
+
+/** Legacy rooms have no chatName; LINE presents their participant names. */
+async function resolveRoomNames(
+  service: LineProtocolService,
+  roomIds: string[],
+): Promise<Map<string, string>> {
+  const resolved = new Map<string, string>()
+  await Promise.all(
+    Array.from(new Set(roomIds.filter(Boolean))).map(async (roomId) => {
+      const cached = service.chatCache.get(roomId)
+      if (cached?.chatName) {
+        resolved.set(roomId, cached.chatName)
+        return
+      }
+      try {
+        const messages = await service.getRecentMessages(roomId, 50)
+        const selfMid = service.profile?.mid
+        const participantMids = Array.from(
+          new Set(
+            messages
+              .flatMap((message: any) => [
+                message.from,
+                ...mentionedUserMids(message.contentMetadata),
+              ])
+              .filter(
+                (mid: unknown): mid is string =>
+                  typeof mid === 'string' &&
+                  mid.startsWith('u') &&
+                  mid !== selfMid,
+              ),
+          ),
+        )
+        const names = await resolveUserNames(service, participantMids)
+        const title = participantMids
+          .map((mid) => names.get(mid))
+          .filter((name): name is string => Boolean(name))
+          .slice(0, 4)
+          .join('、')
+        if (!title) return
+        resolved.set(roomId, title)
+        service.chatCache.set(roomId, {
+          ...(cached ?? {}),
+          chatMid: roomId,
+          chatName: title,
+        })
+      } catch {}
+    }),
+  )
+  return resolved
+}
+
 /**
  * Resolve a human-readable name for each conversation id, dispatching by
  * LINE's MID prefix convention (u = 1:1 user, c = group, r = room).
@@ -131,20 +199,25 @@ export async function resolveConversationNames(
   chatIds: string[],
 ): Promise<Map<string, string | null>> {
   const userIds = chatIds.filter((id) => id?.startsWith('u'))
-  const groupIds = chatIds.filter(
-    (id) => id?.startsWith('c') || id?.startsWith('r'),
-  )
-  const [userNames, groupNames] = await Promise.all([
+  const groupIds = chatIds.filter((id) => id?.startsWith('c'))
+  const roomIds = chatIds.filter((id) => id?.startsWith('r'))
+  const [userNames, groupNames, roomNames] = await Promise.all([
     userIds.length > 0
       ? resolveUserNames(service, userIds)
       : Promise.resolve(new Map<string, string>()),
     groupIds.length > 0
       ? resolveGroupNames(service, groupIds)
       : Promise.resolve(new Map<string, string>()),
+    roomIds.length > 0
+      ? resolveRoomNames(service, roomIds)
+      : Promise.resolve(new Map<string, string>()),
   ])
   const result = new Map<string, string | null>()
   for (const id of chatIds) {
-    result.set(id, userNames.get(id) ?? groupNames.get(id) ?? null)
+    result.set(
+      id,
+      userNames.get(id) ?? groupNames.get(id) ?? roomNames.get(id) ?? null,
+    )
   }
   return result
 }

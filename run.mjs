@@ -46,6 +46,15 @@ const ext = built ? '.js' : '.ts';
 /** Import a module by its path under src/, resolved to dist/ when built. */
 const load = (path) => import(new URL(path + ext, base).href);
 
+const writeStdout = (text) =>
+  new Promise((resolve, reject) => {
+    process.stdout.write(text, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+const writeJson = (value) => writeStdout(`${JSON.stringify(value)}\n`);
+
 const args = process.argv.slice(2);
 const cmd = args[0] ?? 'serve';
 
@@ -80,10 +89,50 @@ switch (cmd) {
     const { cliListConversationsJson } = await load('cli/query');
     const limit = args[1] && args[1] !== 'all' ? parseInt(args[1], 10) : undefined;
     const attentionOnly = args.includes('--attention-only');
-    const firstPage = args.includes('--first-page');
     const semantic = args.includes('--semantic');
-    const json = await cliListConversationsJson({ limit, attentionOnly, firstPage, semantic });
-    console.log(JSON.stringify(json));
+    const json = await cliListConversationsJson({ limit, attentionOnly, semantic });
+    await writeJson(json);
+    process.exit(0);
+  }
+  case 'work-item': {
+    const operation = args[1] || 'create';
+    let input = '';
+    for await (const chunk of process.stdin) input += chunk;
+    let payload;
+    try {
+      payload = JSON.parse(input || '{}');
+    } catch {
+      console.error(JSON.stringify({ error: 'invalid JSON payload' }));
+      process.exit(1);
+    }
+    const { cliCreateWorkItemDraftJson, cliWorkItemOperationJson } = await load('cli/work-item');
+    try {
+      const result = operation === 'create'
+        ? await cliCreateWorkItemDraftJson(
+            payload.messages || payload.message,
+            payload.options || {},
+          )
+        : await cliWorkItemOperationJson(operation, payload.draft);
+      await writeJson(result);
+      process.exit(0);
+    } catch (error) {
+      console.error(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      process.exit(1);
+    }
+  }
+  case 'ambient-observe': {
+    const { scanAmbientObservations } = await load('ambient/ambient-observer');
+    const since = args[1] ? Number(args[1]) : undefined;
+    const report = await scanAmbientObservations(Number.isFinite(since) ? since : undefined);
+    // Work-event promotion intentionally abstains until the factorized model
+    // contract passes its independent acceptance suite. Ambient candidates
+    // remain available as revisable evidence; no flat classifier is allowed
+    // to create authoritative work items.
+    await writeJson({ ...report, workItems: [] });
+    process.exit(0);
+  }
+  case 'work-items': {
+    await writeJson([]);
     process.exit(0);
   }
   case 'messages':
@@ -96,7 +145,20 @@ switch (cmd) {
       process.exit(1);
     }
     const json = await cliGetChatMessagesJson(chatId, count);
-    console.log(JSON.stringify(json));
+    await writeJson(json);
+    process.exit(0);
+  }
+  case 'rich-menu': {
+    const chatId = args[1];
+    if (!chatId) {
+      console.error(JSON.stringify({ error: 'chatId required' }));
+      process.exit(1);
+    }
+    const { LineProtocolService } = await load('line/core/service');
+    const service = new LineProtocolService();
+    if (!(await service.resumeSession())) process.exit(1);
+    const menu = await service.client.getBuddyRichMenu(chatId);
+    await writeJson(menu);
     process.exit(0);
   }
   case 'attention-classify': {
@@ -104,13 +166,13 @@ switch (cmd) {
     let input = '';
     for await (const chunk of process.stdin) input += chunk;
     const items = JSON.parse(input || '[]');
-    console.log(JSON.stringify(await cliClassifyAttentionJson(items)));
+    await writeJson(await cliClassifyAttentionJson(items));
     process.exit(0);
   }
   case 'list-stickers': {
     const { cliListStickersJson } = await load('cli/query');
     const language = args[1] || 'zh_TW';
-    console.log(JSON.stringify(await cliListStickersJson(language)));
+    await writeJson(await cliListStickersJson(language));
     process.exit(0);
   }
   case 'sticker-previews': {
@@ -122,7 +184,7 @@ switch (cmd) {
       console.error(JSON.stringify({ error: 'packageId required' }));
       process.exit(1);
     }
-    console.log(JSON.stringify(await cliStickerPreviewsJson(packageId, limit, language)));
+    await writeJson(await cliStickerPreviewsJson(packageId, limit, language));
     process.exit(0);
   }
   case 'send-sticker': {
@@ -227,11 +289,21 @@ switch (cmd) {
     const service = new LineProtocolService();
     if (!(await service.resumeSession())) process.exit(1);
     const result = await fetchLineMessageMedia(service, chatId, messageId, args[3] !== 'original');
-    console.log(JSON.stringify({
+    if (args.includes('--file-output')) {
+      const { mkdtemp, writeFile } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      const { tmpdir } = await import('node:os');
+      const directory = await mkdtemp(join(tmpdir(), 'yomi-media-'));
+      const filePath = join(directory, 'payload');
+      await writeFile(filePath, result.bytes, { mode: 0o600 });
+      await writeJson({ filePath, mimeType: result.mimeType, fileName: result.fileName ?? null });
+      process.exit(0);
+    }
+    await writeJson({
       data: result.bytes.toString('base64'),
       mimeType: result.mimeType,
       fileName: result.fileName ?? null,
-    }));
+    });
     process.exit(0);
   }
   case 'mark-read': {
@@ -244,6 +316,20 @@ switch (cmd) {
     }
     const res = await cliMarkReadJson(chatId, msgId);
     console.log(JSON.stringify(res));
+    process.exit(0);
+  }
+  case 'set-chat-muted': {
+    const chatId = args[1];
+    const disabled = args[2] === 'true';
+    if (!chatId?.startsWith('u') || !['true', 'false'].includes(args[2])) {
+      console.error(JSON.stringify({ error: '1:1 chatId and true|false required' }));
+      process.exit(1);
+    }
+    const { LineProtocolService } = await load('line/core/service');
+    const service = new LineProtocolService();
+    if (!(await service.resumeSession())) process.exit(1);
+    await service.client.updateContactNotificationDisabled(chatId, disabled);
+    console.log(JSON.stringify({ success: true, chatId, isMuted: disabled }));
     process.exit(0);
   }
   case 'summary':

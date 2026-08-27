@@ -5,6 +5,48 @@ export interface FlexMessageInterpretation {
   actionLabels: string[]
 }
 
+export interface FlexMessageAction {
+  type: 'uri' | 'message' | 'postback' | 'unknown'
+  label: string
+  uri: string | null
+  text: string | null
+  data: string | null
+}
+
+export interface FlexMessageRegion {
+  x: number
+  y: number
+  width: number
+  height: number
+  action: FlexMessageAction
+}
+
+export interface FlexMessageNode {
+  type: string
+  layout: string | null
+  text: string | null
+  url: string | null
+  color: string | null
+  backgroundColor: string | null
+  size: string | null
+  align: string | null
+  gravity: string | null
+  flex: number | null
+  action: FlexMessageAction | null
+  children: FlexMessageNode[]
+}
+
+export interface FlexMessageDocument {
+  version: 1
+  kind: 'imagemap' | 'flex'
+  altText: string
+  width: number | null
+  height: number | null
+  imageUrl: string | null
+  regions: FlexMessageRegion[]
+  root: FlexMessageNode | null
+}
+
 const FLEX_PAYLOAD_KEYS = [
   'FLEX_JSON',
   'FLEX_CONTENTS',
@@ -34,6 +76,136 @@ function webUrl(value: unknown): string | null {
   } catch {
     return null
   }
+}
+
+function flexAction(raw: unknown): FlexMessageAction | null {
+  const parsed = parseObject(raw)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    return null
+  const record = parsed as Record<string, any>
+  const params =
+    record.params && typeof record.params === 'object' ? record.params : record
+  const rawType = String(record.type ?? '').toLowerCase()
+  const uri = webUrl(params.linkUri) || webUrl(record.uri)
+  const text =
+    typeof params.text === 'string'
+      ? params.text
+      : typeof record.text === 'string'
+        ? record.text
+        : null
+  const label = String(
+    record.label ?? record.text ?? params.displayText ?? '',
+  ).trim()
+  const data =
+    typeof record.data === 'string'
+      ? record.data
+      : typeof params.data === 'string'
+        ? params.data
+        : null
+  const type =
+    rawType === 'web' || rawType === 'uri'
+      ? 'uri'
+      : rawType === 'message' || rawType === 'sendmessage'
+        ? 'message'
+        : rawType === 'postback'
+          ? 'postback'
+          : 'unknown'
+  return { type, label, uri, text, data }
+}
+
+function normalizeFlexNode(raw: unknown, depth = 0): FlexMessageNode | null {
+  if (depth > 24) return null
+  const parsed = parseObject(raw)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    return null
+  const node = parsed as Record<string, any>
+  const childValues = Array.isArray(node.contents)
+    ? node.contents
+    : ['header', 'hero', 'body', 'footer']
+        .map((key) => node[key])
+        .filter(Boolean)
+  return {
+    type: String(node.type ?? 'box').toLowerCase(),
+    layout: typeof node.layout === 'string' ? node.layout : null,
+    text: typeof node.text === 'string' ? node.text : null,
+    url: webUrl(node.url) || webUrl(node.previewUrl),
+    color: typeof node.color === 'string' ? node.color : null,
+    backgroundColor:
+      typeof node.backgroundColor === 'string' ? node.backgroundColor : null,
+    size: typeof node.size === 'string' ? node.size : null,
+    align: typeof node.align === 'string' ? node.align : null,
+    gravity: typeof node.gravity === 'string' ? node.gravity : null,
+    flex: Number.isFinite(node.flex) ? Number(node.flex) : null,
+    action: flexAction(node.action),
+    children: childValues
+      .map((child) => normalizeFlexNode(child, depth + 1))
+      .filter((child): child is FlexMessageNode => Boolean(child)),
+  }
+}
+
+export function processFlexMessage(message: any): FlexMessageDocument | null {
+  const metadata =
+    message?.contentMetadata && typeof message.contentMetadata === 'object'
+      ? (message.contentMetadata as Record<string, unknown>)
+      : {}
+  const explicitAlt =
+    typeof metadata.ALT_TEXT === 'string' ? metadata.ALT_TEXT : ''
+  const markup = parseObject(metadata.MARKUP_JSON)
+  if (markup && typeof markup === 'object' && !Array.isArray(markup)) {
+    const record = markup as Record<string, any>
+    const canvas = record.canvas
+    const scene = record.scenes?.[canvas?.initialScene]
+    if (canvas && scene && Array.isArray(scene.listeners)) {
+      const regions = scene.listeners.flatMap((listener: any) => {
+        const [x, y, width, height] = listener?.params ?? []
+        const action = flexAction(record.actions?.[listener?.action])
+        if (![x, y, width, height].every(Number.isFinite) || !action) return []
+        return [{ x, y, width, height, action }]
+      })
+      return {
+        version: 1,
+        kind: 'imagemap',
+        altText: explicitAlt,
+        width: Number(canvas.width) || null,
+        height: Number(canvas.height) || null,
+        imageUrl: webUrl(metadata.DOWNLOAD_URL),
+        regions,
+        root: null,
+      }
+    }
+  }
+  for (const key of FLEX_PAYLOAD_KEYS) {
+    if (key === 'MARKUP_JSON') continue
+    const parsed = parseObject(metadata[key])
+    if (!parsed) continue
+    const root = normalizeFlexNode(parsed)
+    if (root) {
+      return {
+        version: 1,
+        kind: 'flex',
+        altText: explicitAlt,
+        width: null,
+        height: null,
+        imageUrl: null,
+        regions: [],
+        root,
+      }
+    }
+  }
+  const textPayload = parseObject(message?.text)
+  const root = normalizeFlexNode(textPayload)
+  return root
+    ? {
+        version: 1,
+        kind: 'flex',
+        altText: explicitAlt,
+        width: null,
+        height: null,
+        imageUrl: null,
+        regions: [],
+        root,
+      }
+    : null
 }
 
 /** Interpret LINE bubble/carousel content in header→hero→body→footer order. */

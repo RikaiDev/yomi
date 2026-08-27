@@ -1,10 +1,53 @@
 import { expect, test } from 'bun:test'
 import {
+  callHistoryPreview,
+  isRenderableSquareMessage,
   messageFallback,
   messagePlaceholder,
+  newestMessageWindow,
   richFields,
   sanitizeMessagePreview,
 } from './query.js'
+
+test('normalizes provider windows to the newest chronological page', () => {
+  const messages = [
+    { id: 'old', createdTime: 100 },
+    { id: 'latest', createdTime: 400 },
+    { id: 'middle', createdTime: 250 },
+  ]
+  expect(newestMessageWindow(messages, 2).map((message) => message.id)).toEqual(
+    ['middle', 'latest'],
+  )
+})
+
+test('rejects empty Square envelopes but keeps real text and media', () => {
+  expect(
+    isRenderableSquareMessage({
+      id: 'empty',
+      createdTime: 100,
+      contentType: 0,
+      text: '',
+      contentMetadata: {},
+    }),
+  ).toBe(false)
+  expect(
+    isRenderableSquareMessage({ contentType: 0, text: 'actual message' }),
+  ).toBe(true)
+  expect(isRenderableSquareMessage({ contentType: 1, text: '' })).toBe(true)
+})
+
+test('converts private LINE call-history strings into semantic UI tokens', () => {
+  expect(
+    callHistoryPreview('Call History : 158000 millisecs, Result: 16', false),
+  ).toBe('[yomi:call_duration:158]')
+  expect(
+    callHistoryPreview('Call History : 0 millisecs, Result: 77', false),
+  ).toBe('[yomi:call_missed]')
+  expect(
+    callHistoryPreview('Call History : 0 millisecs, Result: 77', true),
+  ).toBe('[yomi:call_no_answer]')
+  expect(callHistoryPreview('unexpected payload', false)).toBe('[yomi:call]')
+})
 
 test('sanitizes E2EE envelope previews without leaking key material', () => {
   const envelope = JSON.stringify({
@@ -83,11 +126,10 @@ test('rich message rejects non-web media and action schemes', () => {
 })
 
 test('names every known non-text LINE content type without generic fallback copy', () => {
-  expect(messagePlaceholder(22)).toBe('[互動卡片]')
-  expect(messagePlaceholder(15)).toBe('[位置資訊]')
-  expect(messagePlaceholder(13)).toBe('[聯絡人]')
-  expect(messagePlaceholder(999)).toBe('[LINE 內容 999]')
-  expect(messagePlaceholder(22)).not.toContain('非文字訊息')
+  expect(messagePlaceholder(22)).toBe('[yomi:rich]')
+  expect(messagePlaceholder(15)).toBe('[yomi:location]')
+  expect(messagePlaceholder(13)).toBe('[yomi:contact]')
+  expect(messagePlaceholder(999)).toBe('[yomi:line_content:999]')
 })
 
 test('labels authenticated-decryption failures honestly', () => {
@@ -97,7 +139,7 @@ test('labels authenticated-decryption failures honestly', () => {
       text: null,
       e2eeDecryptFailure: { reason: 'gcm_auth_failed' },
     }),
-  ).toBe('[無法解密的訊息]')
+  ).toBe('[yomi:decrypt_failed]')
 })
 
 test('richFields interprets Flex JSON instead of returning an attachment placeholder', () => {

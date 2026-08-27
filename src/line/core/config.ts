@@ -58,6 +58,7 @@ export const LINE_APP_CONFIG = {
 
   // Service paths
   talkPath: '/S4',
+  squarePath: '/SQ1',
   syncPath: '/SYNC4',
   authPath: '/AS4',
   revokePath: '/RS4',

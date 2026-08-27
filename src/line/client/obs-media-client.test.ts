@@ -59,3 +59,27 @@ test('legacy Talk media routes original content without preview suffix', async (
     globalThis.fetch = originalFetch
   }
 })
+
+test('Square media uses the g2 OBS namespace', async () => {
+  const originalFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = (async (input) => {
+    calls.push(String(input))
+    return new Response(Uint8Array.from([0xff, 0xd8, 0xff]), {
+      status: 200,
+      headers: { 'content-type': 'image/jpeg' },
+    })
+  }) as typeof fetch
+
+  try {
+    await downloadLineMessageData(
+      { authToken: 'session-token' },
+      { messageId: 'square-message-1', preview: true, square: true },
+    )
+    expect(calls).toEqual([
+      'https://obs.line-apps.com/r/g2/m/square-message-1/preview',
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

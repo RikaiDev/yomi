@@ -46,8 +46,7 @@ test('routes volatile E2EE cache to its own file beside the credentials', async 
 
   await store.set('line_auth_token', 'tok')
   await store.set('line_e2ee_public_u123', 'pubkey')
-  // The volatile store coalesces writes, so let its flush cycle land.
-  await Bun.sleep(50)
+  await store.flush()
 
   const cacheFile = join(dirname(filePath), 'line-e2ee-cache.json')
   expect(JSON.parse(await readFile(cacheFile, 'utf8'))).toEqual({

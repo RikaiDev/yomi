@@ -1,7 +1,7 @@
 import { getDefaultEmbedder } from '../search/default-embedder.js'
 import type { Embedder } from '../search/embedder.js'
 
-export type AttentionTier = 'now' | 'today' | 'know' | 'filtered'
+export type AttentionTier = 'pending' | 'now' | 'today' | 'know' | 'filtered'
 export interface AttentionInput {
   id: string
   text: string
@@ -79,12 +79,19 @@ export async function scoreAttentionBatch(
   const messageVectors = vectors.slice(anchors.length)
 
   return inputs.map((input, inputIndex) => {
-    if (input.isMuted)
-      return { score: -100, tier: 'filtered', reason: '已靜音' }
+    if (input.isMuted) return { score: -100, tier: 'filtered', reason: 'muted' }
     if (input.explicitPriority)
-      return { score: 70, tier: 'now', reason: '使用者標記優先' }
+      return { score: 70, tier: 'now', reason: 'manual_priority' }
     if (input.hasMention)
-      return { score: 65, tier: 'now', reason: '直接提及你' }
+      return { score: 65, tier: 'now', reason: 'direct_mention' }
+    if (
+      input.isOfficial &&
+      /^\[yomi:(?:image|rich|sticker|video|audio|file|extended_image)\]$/.test(
+        input.text.trim(),
+      )
+    ) {
+      return { score: 0, tier: 'filtered', reason: 'ordinary' }
+    }
 
     const similarities = new Map<SemanticIntent, number>()
     anchors.forEach((anchor, anchorIndex) => {
@@ -100,12 +107,14 @@ export async function scoreAttentionBatch(
     const ranked = [...intents].sort(
       (a, b) => (similarities.get(b) ?? 0) - (similarities.get(a) ?? 0),
     )
-    let intent = ranked[0]
-    // Broadcast accounts commonly announce dated events and use rhetorical
-    // questions. Only a transaction/account/service state tied to the user may
-    // elevate them; generic events are not the user's deadline.
-    if (input.isOfficial && intent !== 'transaction') intent = 'promotion'
-
+    const intent = ranked[0]
+    if (input.isOfficial && intent !== 'transaction') {
+      return {
+        score: -40,
+        tier: 'filtered',
+        reason: intent === 'promotion' ? 'promotion' : 'ordinary',
+      }
+    }
     const scoreByIntent: Record<SemanticIntent, number> = {
       reply: 55,
       deadline: 60,
@@ -114,7 +123,7 @@ export async function scoreAttentionBatch(
       ordinary: 0,
       promotion: -40,
     }
-    const score = scoreByIntent[intent] + (input.unreadCount > 0 ? 5 : 0)
+    const score = scoreByIntent[intent]
     const tier: AttentionTier =
       score >= 55
         ? 'now'
@@ -124,12 +133,12 @@ export async function scoreAttentionBatch(
             ? 'know'
             : 'filtered'
     const reasons: Record<SemanticIntent, string> = {
-      reply: '對方可能在等你回覆',
-      deadline: '有期限、行程或緊急事項',
-      transaction: '與你的交易或服務狀態有關',
-      important: '重要資訊，但不需立即回覆',
-      ordinary: '一般資訊，沒有明確下一步',
-      promotion: '官方宣傳或與你較無關',
+      reply: 'reply_expected',
+      deadline: 'deadline',
+      transaction: 'transaction',
+      important: 'important',
+      ordinary: 'ordinary',
+      promotion: 'promotion',
     }
     return { score, tier, reason: reasons[intent] }
   })

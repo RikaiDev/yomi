@@ -22,12 +22,19 @@ import { LINE_APP_CONFIG } from '../core/config.js'
 import { encodeCallMessage } from '../core/thrift/index.js'
 import type { ThriftFieldTuple } from '../core/thrift/types.js'
 import { createAuthClient } from './auth-service/client.js'
+import { createBuddyClient } from './buddy-service/client.js'
 import { createE2EEClient } from './e2ee-service/client.js'
 import { parseOperation } from './parsers.js'
 import type { OwnedStickerPackage } from './shop-service/client.js'
 import { createShopClient } from './shop-service/client.js'
+import { createSquareClient } from './square-service/client.js'
 import { createSyncClient } from './sync-service/client.js'
 import { createTalkCommandClient } from './talk-service/command-client.js'
+import {
+  decodeBinaryResponseMessage,
+  encodeBinaryCallMessage,
+  postBinary,
+} from './talk-service/message-id-query.js'
 import { createTalkQueryClient } from './talk-service/query-client.js'
 import { sendRequest } from './transport.js'
 
@@ -154,7 +161,29 @@ export class LineClient extends EventEmitter {
     language?: string,
     country?: string,
   ) => Promise<OwnedStickerPackage[]>
+  public getJoinedSquareChats!: (limit?: number) => Promise<any[]>
+  public getSquareChatMessages!: (
+    chatId: string,
+    limit?: number,
+    threadMid?: string,
+  ) => Promise<any[]>
+  public getSquareChatStatus!: (chatId: string) => Promise<any>
+  public getSquareChatLatestMessage!: (chatId: string) => Promise<any | null>
+  public markSquareChatRead!: (
+    chatId: string,
+    messageId: string,
+  ) => Promise<void>
+  public sendSquareMessage!: (
+    chatId: string,
+    text: string,
+    contentMetadata?: Record<string, string>,
+  ) => Promise<any>
+  public getBuddyRichMenu!: (buddyMid: string) => Promise<any>
   public updateChatName!: (chatMid: string, name: string) => Promise<boolean>
+  public updateContactNotificationDisabled!: (
+    mid: string,
+    disabled: boolean,
+  ) => Promise<boolean>
   public inviteIntoChat!: (chatMid: string, mids: string[]) => Promise<boolean>
   public deleteOtherFromChat!: (
     chatMid: string,
@@ -194,11 +223,13 @@ export class LineClient extends EventEmitter {
     Object.assign(
       this,
       createAuthClient(this),
+      createBuddyClient(this),
       createTalkQueryClient(this),
       createTalkCommandClient(this),
       createSyncClient(this),
       createE2EEClient(this),
       createShopClient(this),
+      createSquareClient(this),
     )
   }
 
@@ -255,6 +286,25 @@ export class LineClient extends EventEmitter {
    */
   async sendTalk(method: string, args: ThriftFieldTuple[]) {
     return this.sendCompact(LINE_APP_CONFIG.talkPath, method, args)
+  }
+
+  async sendBinary(path: string, method: string, args: ThriftFieldTuple[]) {
+    const body = encodeBinaryCallMessage(method, this.seq++, args as any)
+    const response = await postBinary(this.host, path, body, this.authToken)
+    if (response.nextToken) {
+      this.authToken = response.nextToken
+      this.emit('tokenRotated', response.nextToken)
+    }
+    if (!response.body.length) {
+      throw new Error(`${method}(${path}) returned an empty response`)
+    }
+    const decoded = decodeBinaryResponseMessage(response.body)
+    if (decoded.fields?.[1]) {
+      throw new Error(
+        `${method}(${path}) failed: ${decoded.fields[1]?.[2] || JSON.stringify(decoded.fields[1])}`,
+      )
+    }
+    return decoded
   }
 
   /**

@@ -89,7 +89,7 @@ class VolatileCacheStore {
   private cache = new Map<string, string>()
   private loaded = false
   private dirty = false
-  private writing = false
+  private flushPromise: Promise<void> | null = null
 
   constructor(private readonly filePath: string) {}
 
@@ -148,11 +148,10 @@ class VolatileCacheStore {
   /** Coalesce bursts of writes into a single atomic flush cycle. */
   private scheduleFlush(): void {
     this.dirty = true
-    if (this.writing) {
+    if (this.flushPromise) {
       return
     }
-    this.writing = true
-    void (async () => {
+    this.flushPromise = (async () => {
       const fs = await import('node:fs/promises')
       while (this.dirty) {
         this.dirty = false
@@ -181,8 +180,13 @@ class VolatileCacheStore {
           // Best-effort cache persistence; in-memory copy still serves reads.
         }
       }
-      this.writing = false
-    })()
+    })().finally(() => {
+      this.flushPromise = null
+    })
+  }
+
+  async flush(): Promise<void> {
+    while (this.flushPromise) await this.flushPromise
   }
 }
 
@@ -392,6 +396,12 @@ export class CredentialStore {
       persisted[key] = stringValue
       return persisted
     })
+  }
+
+  /** Await durable and volatile write queues, primarily for orderly shutdown. */
+  async flush(): Promise<void> {
+    await this.persistQueue
+    await this.volatile.flush()
   }
 
   /**

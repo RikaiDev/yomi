@@ -4,17 +4,17 @@ import { localizedStickerTitle } from './sticker-meta.js'
 describe('localizedStickerTitle', () => {
   const titles = {
     en: 'Flower Friends',
-    'zh-Hant': '貓貓蟲咖波-花花小浪漫',
-    ja: '花のなかま',
+    'zh-Hant': '範例貼圖－春日篇',
+    ja: 'サンプルスタンプ',
   }
 
   test('chooses the Traditional Chinese CDN title', () => {
-    expect(localizedStickerTitle(titles, 'zh-TW')).toBe('貓貓蟲咖波-花花小浪漫')
-    expect(localizedStickerTitle(titles, 'zh_TW')).toBe('貓貓蟲咖波-花花小浪漫')
+    expect(localizedStickerTitle(titles, 'zh-TW')).toBe('範例貼圖－春日篇')
+    expect(localizedStickerTitle(titles, 'zh_TW')).toBe('範例貼圖－春日篇')
   })
 
   test('chooses Japanese and English titles', () => {
-    expect(localizedStickerTitle(titles, 'ja')).toBe('花のなかま')
+    expect(localizedStickerTitle(titles, 'ja')).toBe('サンプルスタンプ')
     expect(localizedStickerTitle(titles, 'en')).toBe('Flower Friends')
   })
 

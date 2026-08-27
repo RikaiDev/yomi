@@ -9,7 +9,7 @@ class IntentTestEmbedder implements Embedder {
       if (
         text.includes('行銷廣告') ||
         text.includes('疑問句包裝') ||
-        text.includes('超實用狗狗貼圖')
+        text.includes('品牌優惠活動')
       )
         return [0, 0, 0, 0, 0, 1]
       if (
@@ -42,8 +42,8 @@ test('official rhetorical promotion is filtered semantically', async () => {
   const [result] = await scoreAttentionBatch(
     [
       {
-        id: 'u1',
-        text: '超實用狗狗貼圖來了，你領了嗎？',
+        id: 'synthetic-official-promotion',
+        text: '品牌優惠活動開始了，你參加了嗎？',
         unreadCount: 3,
         isMuted: false,
         isOfficial: true,
@@ -52,16 +52,49 @@ test('official rhetorical promotion is filtered semantically', async () => {
     embedder,
   )
   expect(result.tier).toBe('filtered')
-  expect(result.reason).toContain('官方宣傳')
+  expect(result.reason).toBe('promotion')
 })
 
 test('official dated event is not treated as the user deadline', async () => {
   const [result] = await scoreAttentionBatch(
     [
       {
-        id: 'u-event',
-        text: '法會即將開始',
+        id: 'synthetic-official-scheduled-event',
+        text: '公開展示活動即將開始',
         unreadCount: 1,
+        isMuted: false,
+        isOfficial: true,
+      },
+    ],
+    embedder,
+  )
+  expect(result.tier).toBe('filtered')
+})
+
+test('official media without alt text is not promoted as important', async () => {
+  const [result] = await scoreAttentionBatch(
+    [
+      {
+        id: 'official-image',
+        text: '[yomi:image]',
+        unreadCount: 1,
+        isMuted: false,
+        isOfficial: true,
+      },
+    ],
+    embedder,
+  )
+  expect(result.tier).toBe('filtered')
+  expect(result.reason).toBe('ordinary')
+})
+
+test('official event announcements stay out of attention unless transactional', async () => {
+  const [result] = await scoreAttentionBatch(
+    [
+      {
+        id: 'official-event',
+        text: '下月舉辦公開交流活動，現場提供宣傳贈品',
+        unreadCount: 2,
         isMuted: false,
         isOfficial: true,
       },
@@ -84,7 +117,7 @@ test('semantic deadline outranks ordinary unread traffic', async () => {
     embedder,
   )
   expect(result.tier).toBe('now')
-  expect(result.reason).toContain('期限')
+  expect(result.reason).toBe('deadline')
 })
 
 test('explicit priority and mute remain deterministic controls', async () => {

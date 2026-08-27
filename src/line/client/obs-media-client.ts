@@ -25,14 +25,15 @@ const OBS_UPLOAD_HOST = 'gwz.line.naver.jp'
  */
 export async function downloadLineMessageData(
   client: any,
-  options: { messageId: string; preview?: boolean },
+  options: { messageId: string; preview?: boolean; square?: boolean },
 ): Promise<{ bytes: Buffer; mimeType: string | null }> {
   const messageId = String(options.messageId || '').trim()
   if (!messageId) {
     throw new Error('LINE legacy media download requires a message id')
   }
   const suffix = options.preview ? '/preview' : ''
-  const requestUrl = `https://${OBS_HOST}/r/talk/m/${encodeURIComponent(messageId)}${suffix}`
+  const namespace = options.square ? 'g2' : 'talk'
+  const requestUrl = `https://${OBS_HOST}/r/${namespace}/m/${encodeURIComponent(messageId)}${suffix}`
   const response = await fetch(requestUrl, {
     method: 'GET',
     headers: {
