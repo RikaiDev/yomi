@@ -94,6 +94,47 @@ switch (cmd) {
     await writeJson(json);
     process.exit(0);
   }
+  case 'desktop-inbox': {
+    // Keep one authenticated LINE runtime for the complete desktop startup
+    // pass. Its resume result is the session authority; do not infer logout
+    // from an empty list, a cache miss, or a second probe process.
+    const { LineProtocolService } = await load('line/core/service');
+    const { cliListConversationsJson } = await load('cli/query');
+    const service = new LineProtocolService();
+    const connected = await service.resumeSession();
+    if (!connected) {
+      await writeJson({
+        session: { connected: false, reason: service.loginReason ?? 'unavailable' },
+        chats: [],
+      });
+      process.exit(0);
+    }
+    const chats = await cliListConversationsJson({}, service);
+    await writeJson({ session: { connected: true, reason: null }, chats });
+    process.exit(0);
+  }
+  case 'desktop-startup-messages': {
+    // One shared runtime warms all requested rooms at launch. This is a
+    // startup batch, not a click-triggered series of independent sessions.
+    const { LineProtocolService } = await load('line/core/service');
+    const { cliGetChatMessagesJson } = await load('cli/query');
+    const chatIds = args.slice(1).filter(Boolean);
+    const service = new LineProtocolService();
+    const connected = await service.resumeSession();
+    if (!connected) {
+      await writeJson({
+        session: { connected: false, reason: service.loginReason ?? 'unavailable' },
+        messages: {},
+      });
+      process.exit(0);
+    }
+    const messages = {};
+    for (const chatId of chatIds) {
+      messages[chatId] = await cliGetChatMessagesJson(chatId, 40, service);
+    }
+    await writeJson({ session: { connected: true, reason: null }, messages });
+    process.exit(0);
+  }
   case 'work-item': {
     const operation = args[1] || 'create';
     let input = '';
@@ -270,6 +311,32 @@ switch (cmd) {
       process.exit(1);
     }
     const sent = await service.sendFile(chatId, bytes, basename(filePath));
+    console.log(JSON.stringify({
+      sent: true,
+      messageId: sent?.messageId ?? sent?.id ?? null,
+      oid: sent?.oid ?? null,
+    }));
+    process.exit(0);
+  }
+  case 'send-audio': {
+    const chatId = args[1];
+    const filePath = args[2];
+    const fileName = args[3];
+    if (!chatId || !filePath) {
+      console.error(JSON.stringify({ error: 'chatId and filePath required' }));
+      process.exit(1);
+    }
+    const { LineProtocolService } = await load('line/core/service');
+    const { readFile } = await import('node:fs/promises');
+    const { basename } = await import('node:path');
+    const service = new LineProtocolService();
+    if (!(await service.resumeSession())) process.exit(1);
+    const bytes = await readFile(filePath);
+    if (bytes.length === 0) {
+      console.error(JSON.stringify({ error: 'audio is empty' }));
+      process.exit(1);
+    }
+    const sent = await service.sendAudio(chatId, bytes, fileName || basename(filePath));
     console.log(JSON.stringify({
       sent: true,
       messageId: sent?.messageId ?? sent?.id ?? null,

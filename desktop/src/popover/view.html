@@ -1,466 +1,149 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    user-select: none;
-    -webkit-user-select: none;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
-  }
-  
-  html, body {
-    background: transparent;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  body {
-    padding: 10px;
-  }
-
-  .panel-card {
-    background: rgba(26, 26, 28, 0.96);
-    backdrop-filter: blur(40px) saturate(210%);
-    -webkit-backdrop-filter: blur(40px) saturate(210%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 16px;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.75), 0 2px 6px rgba(0, 0, 0, 0.4);
-    color: #F4F4F5;
-    padding: 14px 14px 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  /* Header Bar */
-  .header-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2px 4px 4px 4px;
-  }
-  .title-group {
-    display: flex;
-    flex-direction: column;
-  }
-  .app-name {
-    font-size: 15px;
-    font-weight: 600;
-    letter-spacing: -0.2px;
-    color: #FFFFFF;
-  }
-  .status-badge {
-    font-size: 12.5px;
-    color: #A1A1AA;
-    margin-top: 1px;
-    font-weight: 400;
-  }
-
-  /* Tailscale iOS Toggle Switch */
-  .toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 25px;
-  }
-  .toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-  .slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: #3F3F46;
-    transition: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 25px;
-  }
-  .slider:before {
-    position: absolute;
-    content: "";
-    height: 21px;
-    width: 21px;
-    left: 2px;
-    bottom: 2px;
-    background-color: #FFFFFF;
-    transition: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 50%;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
-  }
-  input:checked + .slider {
-    background-color: #2563EB;
-  }
-  input:checked + .slider:before {
-    transform: translateX(19px);
-  }
-
-  /* User Profile Row */
-  .profile-row {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 6px 8px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: background 0.12s ease;
-  }
-  .profile-row:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .avatar-circle {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #334155, #1E293B);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    font-size: 13.5px;
-    color: #F8FAFC;
-    flex-shrink: 0;
-    letter-spacing: 0.5px;
-  }
-  .profile-details {
-    flex: 1;
-    min-width: 0;
-  }
-  .profile-title {
-    font-size: 13.5px;
-    font-weight: 600;
-    color: #FAFAFA;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .profile-subtitle {
-    font-size: 12px;
-    color: #A1A1AA;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-top: 1px;
-  }
-  .chevron-icon {
-    color: #71717A;
-    font-size: 13px;
-    font-weight: 600;
-    padding-right: 2px;
-  }
-
-  /* Divider */
-  .divider-line {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
-    margin: 1px 0;
-  }
-
-  /* List Items */
-  .menu-group {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .menu-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 7px 8px;
-    border-radius: 8px;
-    font-size: 13px;
-    color: #E4E4E7;
-    cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-  .menu-row:hover {
-    background: rgba(255, 255, 255, 0.07);
-    color: #FFFFFF;
-  }
-  .menu-row.muted {
-    color: #A1A1AA;
-    cursor: default;
-  }
-  .menu-row.muted:hover {
-    background: transparent;
-    color: #A1A1AA;
-  }
-  .shortcut-tag {
-    font-size: 12px;
-    color: #71717A;
-    font-weight: 500;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  }
-
-  .coding-section {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 4px 8px;
-  }
-  .coding-label {
-    color: #A1A1AA;
-    font-size: 11px;
-    letter-spacing: 0.2px;
-    text-transform: uppercase;
-  }
-  .coding-controls {
-    display: flex;
-    gap: 6px;
-  }
-  .coding-controls select,
-  .coding-controls textarea {
-    color: #F4F4F5;
-    background: #27272A;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    font-size: 11px;
-    padding: 5px;
-    user-select: text;
-    -webkit-user-select: text;
-  }
-  .coding-controls select { width: 100px; }
-  .coding-controls textarea { flex: 1; height: 32px; resize: none; }
-  .coding-run {
-    align-self: flex-end;
-    color: #FFFFFF;
-    background: #2563EB;
-    border: 0;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 11px;
-    padding: 5px 9px;
-  }
-  .coding-status { color: #A1A1AA; font-size: 11px; }
-  .login-panel {
-    display: none;
-    padding: 18px;
-  }
-  body.not-connected .login-panel { display: block; }
-  body.not-connected .authenticated-only { display: none; }
-  .login-title { color: #FAFAFA; font-size: 16px; font-weight: 650; margin-bottom: 5px; }
-  .login-copy { color: #A1A1AA; font-size: 11px; line-height: 1.5; margin-bottom: 14px; }
-  .login-grid { display: grid; grid-template-columns: 92px 1fr; gap: 8px; }
-  .login-field {
-    width: 100%;
-    color: #FAFAFA;
-    background: #18181B;
-    border: 1px solid #3F3F46;
-    border-radius: 6px;
-    box-sizing: border-box;
-    font: inherit;
-    font-size: 12px;
-    min-height: 38px;
-    padding: 8px 10px;
-  }
-  .login-field:focus { border-color: #2563EB; outline: 2px solid rgba(37,99,235,.28); outline-offset: 1px; }
-  .login-button {
-    width: 100%;
-    min-height: 40px;
-    margin-top: 10px;
-    color: #FFFFFF;
-    background: #2563EB;
-    border: 0;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 650;
-  }
-  .login-button:disabled { cursor: wait; opacity: .55; }
-  .login-status { min-height: 34px; margin-top: 12px; color: #A1A1AA; font-size: 11px; line-height: 1.5; }
-  .login-pin { color: #FAFAFA; font-family: Consolas, monospace; font-size: 26px; font-weight: 700; letter-spacing: .18em; }
-  .login-prerequisite { margin-top: 10px; color: #71717A; font-size: 10px; line-height: 1.45; }
-</style>
-</head>
-<body class="not-connected">
-  <div class="panel-card">
-    <!-- Header with Switch -->
-    <div class="header-bar">
-      <div class="title-group">
-        <span class="app-name">Yomi</span>
-        <span id="status-label" class="status-badge">Connected</span>
-      </div>
-      <label class="toggle-switch">
-        <input type="checkbox" id="sync-toggle" checked onchange="handleToggle(this.checked)">
-        <span class="slider"></span>
-      </label>
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' https: data: blob:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: data: blob:"
+    />
+    <style>
+      /* view.css is embedded by the Rust WebView builder. */
+    </style>
+  </head>
+  <body>
+    <div id="app" class="shell">
+      <header class="top">
+        <div class="brand">Yomi <small id="status"></small></div>
+        <div class="top-actions">
+          <button title="sync" data-action="sync" onclick="loadChats(true)">
+            ↻</button
+          ><button title="settings" data-action="settings" onclick="settings()">
+            ⚙</button
+          ><button title="quit" data-action="quit" onclick="send('quit')">
+            ×
+          </button>
+        </div>
+      </header>
+      <aside class="left">
+        <div class="account">
+          <div id="avatar" class="avatar">YM</div>
+          <div><strong id="name"></strong><small id="connection"></small></div>
+        </div>
+        <nav class="nav">
+          <button
+            id="nav-attention"
+            class="active"
+            onclick="setView('attention')"
+          >
+            <span data-i18n="attention"></span
+            ><span id="attention-count" class="badge">0</span></button
+          ><button id="nav-chats" onclick="setView('chats')">
+            <span data-i18n="all_chats"></span></button
+          ><button id="nav-yomi" onclick="showYomi()">
+            <span data-i18n="yomi"></span></button
+          ><button onclick="ambient()"><span data-i18n="ambient"></span></button
+          ><button onclick="settings()">
+            <span data-i18n="settings"></span>
+          </button>
+        </nav>
+        <div class="footer">
+          <span data-i18n="windows_app"></span><br /><span
+            id="sync-label"
+          ></span>
+        </div>
+      </aside>
+      <section class="inbox">
+        <div class="inbox-head">
+          <h2 id="inbox-title"></h2>
+          <input id="search" class="search" oninput="renderChats()" />
+          <div class="filters">
+            <button
+              id="filter-attention"
+              class="filter active"
+              onclick="setView('attention')"
+              data-i18n="priority"
+            ></button
+            ><button
+              id="filter-all"
+              class="filter"
+              onclick="setView('chats')"
+              data-i18n="all"
+            ></button>
+          </div>
+        </div>
+        <div id="chat-list" class="list"></div>
+      </section>
+      <main class="detail">
+        <div id="detail-head" class="detail-head"></div>
+        <div id="messages" class="messages"></div>
+        <section id="briefing" class="briefing hidden"></section>
+        <section id="yomi-panel" class="yomi-panel hidden"></section>
+        <div id="composer" class="composer hidden">
+          <div id="rich" class="rich hidden"></div>
+          <div id="attachments" class="attachments hidden"></div>
+          <div id="stickers" class="stickers hidden"></div>
+          <div class="compose" id="dropzone">
+            <div class="tools">
+              <button title="attachment" onclick="chooseFile(false)">＋</button
+              ><button title="camera" onclick="chooseFile(true)">▣</button
+              ><button title="sticker" onclick="toggleStickers()">☺</button
+              ><button title="voice" onclick="voice()">♩</button>
+            </div>
+            <textarea id="input" onkeydown="key(event)"></textarea
+            ><button
+              class="send"
+              onclick="sendText()"
+              data-i18n="send"
+            ></button>
+          </div>
+          <input
+            id="file"
+            class="hidden"
+            type="file"
+            multiple
+            onchange="stageFiles(event)"
+          /><input
+            id="camera-file"
+            class="hidden"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onchange="stageFiles(event)"
+          />
+        </div>
+      </main>
     </div>
-
-    <!-- Account / Profile Item -->
-    <div class="profile-row" onclick="handleProfileClick()">
-      <div class="avatar-circle" id="user-avatar">YM</div>
-      <div class="profile-details">
-        <div class="profile-title" id="user-name">LINE User</div>
-        <div class="profile-subtitle" id="user-sub">MID: Loading...</div>
-      </div>
-      <span class="chevron-icon" id="account-action">Connect</span>
+    <div id="drawer" class="drawer hidden"></div>
+    <div id="modal" class="modal hidden"></div>
+    <div id="toast" class="toast hidden"></div>
+    <div id="login" class="login hidden">
+      <form class="card" onsubmit="login(event)">
+        <h2 data-i18n="login_title"></h2>
+        <p data-i18n="login_copy"></p>
+        <select id="region">
+          <option value="TW">TW +886</option>
+          <option value="JP">JP +81</option>
+          <option value="TH">TH +66</option>
+          <option value="ID">ID +62</option>
+          <option value="US">US +1</option></select
+        ><input
+          id="phone"
+          type="tel"
+          required
+          placeholder="0912 345 678"
+        /><button
+          class="primary"
+          id="login-button"
+          data-i18n="login_continue"
+        ></button
+        ><button
+          type="button"
+          class="secondary"
+          onclick="cancelLogin()"
+          data-i18n="cancel"
+        ></button>
+        <p id="login-status"></p>
+      </form>
     </div>
-
-    <form id="login-panel" class="login-panel" onsubmit="startLogin(event)">
-      <div class="login-title">Connect LINE</div>
-      <div class="login-copy">Sign in as a secondary device. Your phone number and credentials stay on this computer.</div>
-      <div class="login-grid">
-        <select id="login-region" class="login-field" aria-label="LINE region">
-          <option value="TW">Taiwan</option>
-          <option value="JP">Japan</option>
-          <option value="TH">Thailand</option>
-          <option value="ID">Indonesia</option>
-          <option value="US">Other</option>
-        </select>
-        <input id="login-phone" class="login-field" type="tel" inputmode="tel" autocomplete="tel" placeholder="+886 912 345 678" aria-label="LINE phone number" required>
-      </div>
-      <button id="login-button" class="login-button" type="submit">Continue on this computer</button>
-      <div id="login-status" class="login-status" role="status" aria-live="polite">Enter the phone number linked to your LINE account.</div>
-      <div class="login-prerequisite">Before continuing: LINE on your phone → Settings → Account → Allow login from other devices.</div>
-    </form>
-
-    <div class="divider-line authenticated-only"></div>
-
-    <!-- Middle Info & Actions -->
-    <div class="menu-group authenticated-only">
-      <div class="menu-row muted">
-        <span id="device-label">This Device: Localhost (stdio)</span>
-      </div>
-      <div class="menu-row" onclick="triggerAction('sync')">
-        <span>Sync Messages Now</span>
-        <span class="chevron-icon">›</span>
-      </div>
-      <div class="menu-row" onclick="triggerAction('test_notify')">
-        <span>Send Test Notification</span>
-      </div>
-      <div class="menu-row" onclick="triggerAction('open_workspace')">
-        <span>Open Yomi Workspace</span>
-        <span class="chevron-icon">›</span>
-      </div>
-    </div>
-
-    <div class="divider-line authenticated-only"></div>
-
-    <div class="coding-section authenticated-only">
-      <span class="coding-label">Coding tools · Yomi MCP all tools enabled</span>
-      <div class="coding-controls">
-        <select id="coding-provider" aria-label="Coding tool provider">
-          <option value="auto">Auto-detect</option>
-        </select>
-        <textarea id="coding-prompt" aria-label="Coding task" placeholder="Ask a coding tool..."></textarea>
-      </div>
-      <button class="coding-run" onclick="runCodingTool()">Run coding task</button>
-      <span id="coding-status" class="coding-status">Detecting local providers...</span>
-    </div>
-
-    <div class="divider-line authenticated-only"></div>
-
-    <!-- Bottom Actions & Shortcuts -->
-    <div class="menu-group authenticated-only">
-      <div class="menu-row" onclick="triggerAction('settings')">
-        <span>Settings...</span>
-        <span class="shortcut-tag">&#8984; ,</span>
-      </div>
-      <div class="menu-row" onclick="triggerAction('open_doc')">
-        <span>Documentation & Guide</span>
-      </div>
-      <div class="menu-row" onclick="triggerAction('quit')">
-        <span>Quit</span>
-        <span class="shortcut-tag">&#8984; Q</span>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    function triggerAction(action) {
-      if (window.ipc) {
-        window.ipc.postMessage(action);
-      }
-    }
-
-    function handleToggle(checked) {
-      if (window.ipc) {
-        window.ipc.postMessage(checked ? 'enable_sync' : 'disable_sync');
-      }
-    }
-
-    let accountConnected = false;
-    function handleProfileClick() {
-      if (!accountConnected) document.getElementById('login-phone').focus();
-    }
-
-    function startLogin(event) {
-      event.preventDefault();
-      if (!window.ipc) return;
-      const phone = document.getElementById('login-phone').value.trim();
-      const region = document.getElementById('login-region').value;
-      if (!phone) return;
-      document.getElementById('login-button').disabled = true;
-      document.getElementById('login-status').innerText = 'Starting secure LINE login…';
-      window.ipc.postMessage('login_start:' + JSON.stringify({ phone: phone, region: region }));
-    }
-
-    window.updateState = function(state) {
-      accountConnected = Boolean(state.connected);
-      document.body.classList.toggle('not-connected', !accountConnected);
-      document.getElementById('status-label').innerText = state.connected ? 'Connected' : 'Not Logged In';
-      document.getElementById('sync-toggle').checked = state.connected;
-      document.getElementById('user-name').innerText = state.displayName || 'LINE Account';
-      document.getElementById('user-sub').innerText = state.mid ? ('MID: ' + state.mid) : 'Connect this app to your LINE account';
-      document.getElementById('account-action').innerText = state.connected ? '›' : 'Connect';
-      if (state.avatarText) {
-        document.getElementById('user-avatar').innerText = state.avatarText;
-      }
-      const providerSelect = document.getElementById('coding-provider');
-      const previous = providerSelect.value;
-      providerSelect.innerHTML = '<option value="auto">Auto-detect</option>';
-      (state.codingTools || []).forEach(function(provider) {
-        const option = document.createElement('option');
-        option.value = provider.id;
-        option.innerText = provider.display_name + (provider.detected ? ' · ready' : ' · not found');
-        option.disabled = !provider.detected;
-        providerSelect.appendChild(option);
-      });
-      providerSelect.value = previous || 'auto';
-      const detected = state.codingToolAutoDetected || 'none';
-      document.getElementById('coding-status').innerText = detected === 'none'
-        ? 'No coding tool detected; install one and restart Yomi.'
-        : 'Auto-detected: ' + detected + ' · ' + state.yomiMcpToolCount + ' Yomi tools enabled';
-    };
-
-    window.updateLoginState = function(update) {
-      const button = document.getElementById('login-button');
-      const status = document.getElementById('login-status');
-      if (update.state === 'starting') {
-        button.disabled = true;
-        status.innerText = 'Requesting a verification code from LINE…';
-      } else if (update.state === 'pin') {
-        button.disabled = true;
-        status.innerHTML = '<div>Enter this code on your phone:</div><div class="login-pin"></div>';
-        status.querySelector('.login-pin').innerText = update.pin;
-      } else if (update.state === 'waiting_approval') {
-        button.disabled = true;
-        status.innerText = 'Approve this device in LINE on your phone.';
-      } else if (update.state === 'success') {
-        status.innerText = 'Connected. Loading your LINE inbox…';
-      } else if (update.state === 'error') {
-        button.disabled = false;
-        status.innerText = update.message || 'Login failed. Try again.';
-      } else {
-        button.disabled = false;
-      }
-    };
-
-    function runCodingTool() {
-      const prompt = document.getElementById('coding-prompt').value.trim();
-      if (!prompt || !window.ipc) return;
-      window.ipc.postMessage('coding_tool_run:' + JSON.stringify({
-        provider: document.getElementById('coding-provider').value,
-        prompt: prompt
-      }));
-      document.getElementById('coding-status').innerText = 'Coding task started...';
-    }
-  </script>
-</body>
+  </body>
 </html>
