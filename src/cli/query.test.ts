@@ -5,9 +5,35 @@ import {
   messageFallback,
   messagePlaceholder,
   newestMessageWindow,
+  parseEmojiRanges,
   richFields,
   sanitizeMessagePreview,
 } from './query.js'
+
+test('maps LINE sticon replacement ranges to CDN images', () => {
+  const ranges = parseEmojiRanges({
+    REPLACE: JSON.stringify({
+      sticon: {
+        resources: [
+          { S: 0, E: 9, productId: 'product', sticonId: '028' },
+          { S: 13, E: 22, productId: 'product', sticonId: '048' },
+        ],
+      },
+    }),
+  })
+  expect(ranges).toEqual([
+    {
+      location: 0,
+      length: 9,
+      url: 'https://stickershop.line-scdn.net/sticonshop/v1/sticon/product/android/028.png',
+    },
+    {
+      location: 13,
+      length: 9,
+      url: 'https://stickershop.line-scdn.net/sticonshop/v1/sticon/product/android/048.png',
+    },
+  ])
+})
 
 test('normalizes provider windows to the newest chronological page', () => {
   const messages = [

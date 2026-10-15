@@ -112,8 +112,7 @@ export class LineActivityJournalStore {
     const fileName = `segment-${segmentId}.enc`
     const filePath = this.segmentPath(fileName)
 
-    const serialized =
-      events.map((event) => JSON.stringify(event)).join('\n') + '\n'
+    const serialized = `${events.map((event) => JSON.stringify(event)).join('\n')}\n`
     const encrypted = encryptPayload(Buffer.from(serialized, 'utf8'), key)
 
     const temp = `${filePath}.tmp-${process.pid}-${Date.now()}`

@@ -46,7 +46,7 @@ export interface AmbientObservationReport {
   candidates: AmbientObservation[]
 }
 
-export const MAX_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
+export const MAX_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000
 const EPISODE_GAP_MS = 45 * 60 * 1000
 const MEDIA_ATTACH_GAP_MS = 5 * 60 * 1000
 const STICKER_RESPONSE_GAP_MS = 30 * 60 * 1000
@@ -439,7 +439,7 @@ export function reduceAmbientObservations(
   )
 
   return {
-    engineVersion: 15,
+    engineVersion: 16,
     generatedAt: now,
     windowStart,
     coverageLimited: false,

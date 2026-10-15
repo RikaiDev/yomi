@@ -420,7 +420,7 @@ function parseMentionRanges(
   }
 }
 
-function parseEmojiRanges(
+export function parseEmojiRanges(
   metadata: Record<string, unknown>,
 ): Array<{ location: number; length: number; url: string }> {
   if (typeof metadata.REPLACE !== 'string') return []
@@ -536,10 +536,10 @@ export function newestMessageWindow(messages: any[], count: number): any[] {
 
 export async function cliListConversationsJson(
   args: { limit?: number; attentionOnly?: boolean; semantic?: boolean } = {},
+  activeService?: LineProtocolService,
 ): Promise<CliConversationJsonItem[]> {
-  const service = new LineProtocolService()
-  const ok = await service.resumeSession()
-  if (!ok) return []
+  const service = activeService ?? new LineProtocolService()
+  if (!activeService && !(await service.resumeSession())) return []
 
   try {
     // Advance the Talk revision before reading message boxes. A fresh client
@@ -821,10 +821,10 @@ export async function cliListConversationsJson(
 export async function cliGetChatMessagesJson(
   chatId: string,
   count = 30,
+  activeService?: LineProtocolService,
 ): Promise<CliChatMessageJsonItem[]> {
-  const service = new LineProtocolService()
-  const ok = await service.resumeSession()
-  if (!ok) return []
+  const service = activeService ?? new LineProtocolService()
+  if (!activeService && !(await service.resumeSession())) return []
 
   try {
     if (isSquareChatMid(chatId)) {
