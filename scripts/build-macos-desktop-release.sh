@@ -10,14 +10,16 @@ OUTPUT=${YOMI_DESKTOP_OUTPUT:-"$ROOT/build/desktop-release/macos-$ARCH"}
 CORE="$ROOT/build/desktop-core-macos"
 APP="$OUTPUT/Yomi.app"
 NODE_BINARY=${YOMI_NODE_BINARY:-$(command -v node)}
+NODE_LICENSE=${YOMI_NODE_LICENSE:-$(dirname "$NODE_BINARY")/NODE-LICENSE}
 
 npm run desktop:swift-quality
 npm run desktop:build
 node scripts/package-desktop-core.mjs \
   --platform macos \
   --output "$CORE" \
-  --semantic lite \
-  --node-binary "$NODE_BINARY"
+  --semantic full \
+  --node-binary "$NODE_BINARY" \
+  --node-license "$NODE_LICENSE"
 
 rm -rf "$OUTPUT"
 mkdir -p "$OUTPUT"

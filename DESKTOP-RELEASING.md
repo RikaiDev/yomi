@@ -10,10 +10,10 @@ clone this repository, or configure `YOMI_RUN_MJS`.
 - `Yomi-Desktop-Windows-x64-<version>-Setup.exe`
 - one `.sha256` file beside each installer
 
-The default lite bundle omits Transformers and ONNX Runtime. LINE access,
-keyword search, and coding-tool workflows remain available; semantic search is
-reserved for a later on-demand feature pack. The unpacked core has a 220 MB
-hard limit, and each compressed installer has a 120 MB hard limit.
+Desktop bundles include the local semantic classifier used by the attention
+inbox. Packaging retains only the target platform's ONNX runtime; browser and
+other-platform binaries are removed. The unpacked core has a 220 MB hard limit,
+and each compressed installer has a 120 MB hard limit.
 
 ## Required GitHub Actions secrets
 

@@ -1,0 +1,99 @@
+{
+  "type": "carousel",
+  "contents": [
+    {
+      "type": "bubble",
+      "styles": {
+        "body": { "backgroundColor": "#FFFFFF" },
+        "footer": { "separator": true, "separatorColor": "#DDDDDD" }
+      },
+      "hero": {
+        "type": "image",
+        "url": "https://example.com/gift.png",
+        "size": "full",
+        "aspectRatio": "1.54:1",
+        "aspectMode": "cover"
+      },
+      "body": {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "paddingAll": "lg",
+        "contents": [
+          { "type": "text", "text": "Gift title", "size": "xl", "weight": "bold", "wrap": true },
+          { "type": "text", "text": "Gift description", "size": "sm", "wrap": true },
+          {
+            "type": "box",
+            "layout": "baseline",
+            "spacing": "xs",
+            "width": "50%",
+            "maxWidth": "200px",
+            "contents": [
+              { "type": "text", "text": "20", "size": "xl", "flex": 1 },
+              { "type": "text", "text": "%", "size": "sm", "position": "relative", "offsetTop": "2px" }
+            ]
+          }
+        ]
+      },
+      "footer": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "lg",
+        "contents": [
+          {
+            "type": "button",
+            "style": "primary",
+            "height": "sm",
+            "color": "#06C755",
+            "action": { "type": "uri", "label": "Open gift", "uri": "https://example.com/open" }
+          }
+        ]
+      }
+    },
+    {
+      "type": "bubble",
+      "body": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "lg",
+        "background": {
+          "type": "linearGradient",
+          "angle": "90deg",
+          "startColor": "#FFFFFF",
+          "centerColor": "#CCFFCC",
+          "centerPosition": "50%",
+          "endColor": "#06C755"
+        },
+        "contents": [
+          {
+            "type": "text",
+            "wrap": true,
+            "contents": [
+              { "type": "span", "text": "Second " },
+              { "type": "span", "text": "card", "weight": "bold", "color": "#06C755" }
+            ]
+          },
+          {
+            "type": "icon",
+            "url": "https://example.com/icon.png",
+            "size": "sm",
+            "position": "absolute",
+            "offsetTop": "8px",
+            "offsetEnd": "8px"
+          },
+          {
+            "type": "video",
+            "previewUrl": "https://example.com/video.png",
+            "aspectRatio": "16:9",
+            "altContent": {
+              "type": "image",
+              "url": "https://example.com/video-alt.png",
+              "aspectRatio": "16:9",
+              "aspectMode": "cover"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -33,6 +33,43 @@ jobs:
       - name: Test (bun)
         run: bun run test
 
+  windows-desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: clippy,rustfmt
+
+      - run: bun install
+
+      # This is the authoritative Windows compile gate. macOS can check the
+      # target's Rust code, but it cannot link MSVC/WebView2 or launch the app.
+      - name: Windows desktop harness
+        run: bun run desktop:windows:harness
+
+      - name: Desktop QoS harness
+        run: bun run desktop:qos
+
+      - name: Shared Flex layout parity
+        run: bun run desktop:flex-parity
+
+      - name: Upload unsigned smoke-test executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: yomi-windows-smoke-${{ github.sha }}
+          path: desktop/target/x86_64-pc-windows-msvc/release/yomi-desktop.exe
+          if-no-files-found: error
+          retention-days: 7
+
   # NOTE: there is deliberately no `npx @rikaidev/yomi` job here. That would
   # download the last PUBLISHED version rather than this commit's code, so it
   # can never fail on a regression introduced by a PR. The install path is

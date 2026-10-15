@@ -53,6 +53,8 @@
     "desktop:clean": "node scripts/clean-desktop-artifacts.mjs",
     "desktop:clean:all": "node scripts/clean-desktop-artifacts.mjs --all",
     "desktop:harness": "node scripts/desktop-harness.mjs",
+    "desktop:qos": "node scripts/desktop-qos-harness.mjs",
+    "desktop:flex-parity": "npm run build && node scripts/flex-layout-parity-harness.mjs",
     "desktop:swift-quality": "bash scripts/swift-quality.sh",
     "desktop:i18n-harness": "node scripts/swift-i18n-harness.mjs",
     "desktop:restart": "node scripts/desktop-harness.mjs --restart",

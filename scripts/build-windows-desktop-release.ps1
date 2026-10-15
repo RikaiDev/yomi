@@ -13,7 +13,7 @@ $NodeBinary = if ($env:YOMI_NODE_BINARY) { $env:YOMI_NODE_BINARY } else { (Get-C
 
 npm run desktop:windows:qc
 npm run desktop:windows:harness
-node scripts/package-desktop-core.mjs --platform windows --output $Core --semantic lite --node-binary $NodeBinary
+node scripts/package-desktop-core.mjs --platform windows --output $Core --semantic full --node-binary $NodeBinary
 cargo build --manifest-path desktop/Cargo.toml --release --target x86_64-pc-windows-msvc
 
 Remove-Item $Output -Recurse -Force -ErrorAction SilentlyContinue
@@ -73,7 +73,8 @@ if ($CertificatePath) {
 $Hash = (Get-FileHash $Installer -Algorithm SHA256).Hash.ToLowerInvariant()
 Set-Content "$Installer.sha256" "$Hash  $([IO.Path]::GetFileName($Installer))`n" -NoNewline
 $SizeMb = [math]::Ceiling((Get-Item $Installer).Length / 1MB)
-if ($SizeMb -gt [int]($env:YOMI_WINDOWS_INSTALLER_MAX_MB ?? 120)) {
+$maxMb = if ($env:YOMI_WINDOWS_INSTALLER_MAX_MB) { [int]$env:YOMI_WINDOWS_INSTALLER_MAX_MB } else { 120 }
+if ($SizeMb -gt $maxMb) {
     throw "installer is $SizeMb MB, above size budget"
 }
 Write-Host "[desktop:windows-release] $Installer ($SizeMb MB)"
