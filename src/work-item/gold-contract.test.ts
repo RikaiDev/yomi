@@ -1,9 +1,13 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   type FactorizedGoldRecord,
   validateFactorizedGold,
 } from './gold-contract.js'
+
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 
 const valid: FactorizedGoldRecord = {
   id: 'onboarding-permit',
@@ -42,11 +46,11 @@ test('gold contract rejects impossible completion combinations', () => {
 
 test('every independent factorized acceptance record satisfies the contract', () => {
   for (const file of [
-    'research/work-item-model/factorized-acceptance.jsonl',
-    'research/work-item-model/factorized-acceptance-v2.jsonl',
-    'research/work-item-model/factorized-acceptance-v3.jsonl',
+    'factorized-acceptance.jsonl',
+    'factorized-acceptance-v2.jsonl',
+    'factorized-acceptance-v3.jsonl',
   ]) {
-    const rows = readFileSync(file, 'utf8')
+    const rows = readFileSync(join(fixturesDir, file), 'utf8')
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as FactorizedGoldRecord)
