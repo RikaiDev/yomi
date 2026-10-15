@@ -74,16 +74,23 @@ if (runtimePid > 0 && process.platform !== 'win32') {
 }
 
 const cacheBinary = join(process.env.TMPDIR || '/tmp', `yomi-cache-qos-${process.pid}`)
-const cacheCompile = spawnSync('swiftc', [
-  '-framework', 'Security',
-  join(root, 'desktop/mac-native/Core/DesktopMessageSnapshotStore.swift'),
-  join(root, 'scripts/desktop-cache-qos-main.swift'),
-  '-o', cacheBinary,
-], { cwd: root, encoding: 'utf8' })
-if (cacheCompile.status !== 0) fail(`cache QoS compile failed: ${cacheCompile.stderr || cacheCompile.stdout}`)
-const cacheQoS = spawnSync(cacheBinary, [], { cwd: root, encoding: 'utf8', env: process.env })
-if (cacheQoS.status !== 0) fail(`cache QoS failed: ${cacheQoS.stderr || cacheQoS.stdout}`)
-process.stdout.write(cacheQoS.stdout)
+// The cache store is Swift, so its roundtrip benchmark needs a Swift
+// toolchain. The Windows runner has none, and the Windows app does not use
+// this store, so report the gap rather than failing the job.
+if (spawnSync('swiftc', ['--version'], { stdio: 'ignore' }).status !== 0) {
+  console.log('[desktop:qos] cache QoS skipped: no Swift toolchain on this runner')
+} else {
+  const cacheCompile = spawnSync('swiftc', [
+    '-framework', 'Security',
+    join(root, 'desktop/mac-native/Core/DesktopMessageSnapshotStore.swift'),
+    join(root, 'scripts/desktop-cache-qos-main.swift'),
+    '-o', cacheBinary,
+  ], { cwd: root, encoding: 'utf8' })
+  if (cacheCompile.status !== 0) fail(`cache QoS compile failed: ${cacheCompile.stderr || cacheCompile.stdout}`)
+  const cacheQoS = spawnSync(cacheBinary, [], { cwd: root, encoding: 'utf8', env: process.env })
+  if (cacheQoS.status !== 0) fail(`cache QoS failed: ${cacheQoS.stderr || cacheQoS.stdout}`)
+  process.stdout.write(cacheQoS.stdout)
+}
 
 function benchmark(label, executable, commandArgs, cwd, budgetMs) {
   const durations = []
