@@ -1,6 +1,6 @@
 import type { LineProtocolService } from '../../line/core/service.js'
 import { createCliLogger } from '../../util/log.js'
-import { resolveUserNames } from '../names.js'
+import { contactDisplayName, resolveUserNames } from '../names.js'
 import { jsonResult, toolError, toonResult } from './shared.js'
 
 const log = createCliLogger('Yomi')
@@ -8,7 +8,10 @@ const log = createCliLogger('Yomi')
 /** One resolved LINE contact/member shape shared by the contact/group tools. */
 interface ContactSummary {
   mid: string
+  /** Name as shown in the user's LINE app (user-set name when present). */
   displayName: string | null
+  /** The friend's own profile name; only present when the user renamed them. */
+  profileName?: string | null
 }
 
 /**
@@ -34,12 +37,16 @@ async function fetchAllContacts(
     if (!contact?.mid) {
       continue
     }
-    if (contact.displayName) {
-      service.nameCache.set(contact.mid, contact.displayName)
+    const name = contactDisplayName(contact)
+    if (name) {
+      service.nameCache.set(contact.mid, name)
     }
     summaries.push({
       mid: contact.mid,
-      displayName: contact.displayName ?? null,
+      displayName: name,
+      ...(contact.displayNameOverridden && contact.displayName
+        ? { profileName: contact.displayName }
+        : {}),
     })
   }
   return summaries
@@ -60,7 +67,8 @@ export async function handleListContacts(service: LineProtocolService) {
 
 /**
  * Handle `find_contact` — case-insensitive substring match over the
- * friend list's displayName, so a caller can resolve a person's name to
+ * friend list's displayName (and profileName, when the user renamed the
+ * friend), so a caller can resolve a person's name to
  * the MID `send_message` needs for a 1:1. Pure lookup: no fuzzy scoring,
  * no ranking by interaction history.
  *
@@ -77,8 +85,10 @@ export async function handleFindContact(
   }
   const needle = args.name.toLowerCase()
   const contacts = await fetchAllContacts(service)
-  const matches = contacts.filter((contact) =>
-    contact.displayName?.toLowerCase().includes(needle),
+  const matches = contacts.filter(
+    (contact) =>
+      contact.displayName?.toLowerCase().includes(needle) ||
+      contact.profileName?.toLowerCase().includes(needle),
   )
   return toonResult(matches)
 }

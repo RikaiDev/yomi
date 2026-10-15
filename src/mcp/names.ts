@@ -16,6 +16,26 @@
 import type { LineProtocolService } from '../line/core/service.js'
 
 /**
+ * The name the authenticated user sees for a contact in the LINE app.
+ *
+ * LINE lets users rename friends locally; getContacts returns that name as
+ * `displayNameOverridden` alongside the friend's own `displayName`. The LINE
+ * app shows the override when present, so Yomi should too — otherwise names
+ * an agent reports don't match what the user sees.
+ *
+ * @param contact - Normalized contact from getContacts (may be null).
+ * @returns The user-set name, else the friend's own display name, else null.
+ */
+export function contactDisplayName(
+  contact:
+    | { displayName?: string | null; displayNameOverridden?: string | null }
+    | null
+    | undefined,
+): string | null {
+  return contact?.displayNameOverridden || contact?.displayName || null
+}
+
+/**
  * Resolve display names for LINE user (contact) MIDs.
  *
  * @param service - Resumed LineProtocolService.
@@ -40,9 +60,10 @@ export async function resolveUserNames(
   if (missing.length > 0) {
     const contacts = await service.client.getContacts(missing)
     for (const contact of contacts as any[]) {
-      if (contact?.mid && contact.displayName) {
-        service.nameCache.set(contact.mid, contact.displayName)
-        resolved.set(contact.mid, contact.displayName)
+      const name = contactDisplayName(contact)
+      if (contact?.mid && name) {
+        service.nameCache.set(contact.mid, name)
+        resolved.set(contact.mid, name)
       }
     }
   }
