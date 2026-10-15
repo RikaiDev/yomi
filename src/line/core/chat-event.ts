@@ -30,6 +30,8 @@ export function interpretChatEvent(
         : '有人邀請成員加入群組'
     case 'C_MJ':
       return mids.length >= 1 ? `${name(0)} 加入群組` : '有成員加入群組'
+    case 'C_ML':
+      return mids.length >= 1 ? `${name(0)} 離開群組` : '有成員離開群組'
     default:
       return key ? `[聊天室活動：${key}]` : '[聊天室活動]'
   }

@@ -30,3 +30,15 @@ test('keeps unknown private event keys explicit', () => {
     ),
   ).toBe('[聊天室活動：C_NEW]')
 })
+
+test('decodes a member leaving the group', () => {
+  expect(
+    interpretChatEvent(
+      {
+        contentType: 18,
+        contentMetadata: { LOC_KEY: 'C_ML', LOC_ARGS: member },
+      },
+      names,
+    ),
+  ).toBe('小美 離開群組')
+})

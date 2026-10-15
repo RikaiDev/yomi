@@ -3,7 +3,24 @@ import {
   interpretFlexMessage,
   interpretFlexPayload,
   processFlexMessage,
+  resolveImagemapImageUrl,
 } from './flex-message.js'
+
+test('appends a supported LINE imagemap resolution to its base URL', () => {
+  expect(
+    resolveImagemapImageUrl(
+      'https://vos.line-scdn.net/img-bucket-real/images/example',
+      1040,
+    ),
+  ).toBe('https://vos.line-scdn.net/img-bucket-real/images/example/700')
+  expect(
+    resolveImagemapImageUrl(
+      'https://vos.line-scdn.net/img-bucket-real/images/example/700',
+      700,
+      640,
+    ),
+  ).toBe('https://vos.line-scdn.net/img-bucket-real/images/example/700')
+})
 
 const sample = {
   type: 'carousel',
@@ -46,6 +63,75 @@ test('reads Flex JSON from inbound LINE metadata', () => {
       contentMetadata: { FLEX_JSON: JSON.stringify(sample) },
     }).summary,
   ).toContain('最高回饋 15%')
+})
+
+test('preserves the LINE image drawing-area contract', () => {
+  const document = processFlexMessage({
+    contentMetadata: {
+      FLEX_JSON: JSON.stringify({
+        type: 'bubble',
+        size: 'mega',
+        hero: {
+          type: 'image',
+          url: 'https://example.com/hero.jpg',
+          size: 'full',
+          aspectRatio: '20:13',
+          aspectMode: 'cover',
+        },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'sm',
+          paddingAll: 'lg',
+          contents: [
+            {
+              type: 'text',
+              text: 'Title',
+              size: 'xl',
+              weight: 'bold',
+              wrap: true,
+            },
+          ],
+        },
+        footer: {
+          type: 'box',
+          layout: 'vertical',
+          paddingAll: 'lg',
+          contents: [
+            {
+              type: 'button',
+              style: 'primary',
+              height: 'sm',
+              action: {
+                type: 'uri',
+                label: 'Open',
+                uri: 'https://example.com',
+              },
+            },
+          ],
+        },
+      }),
+    },
+  })
+  const hero = document?.root?.children[0]
+  expect(document?.root?.size).toBe('mega')
+  expect(document?.root?.backgroundColor).toBe('#FFFFFF')
+  expect(hero?.aspectRatio).toBe('20:13')
+  expect(hero?.aspectMode).toBe('cover')
+  expect(hero?.block).toBe('hero')
+  expect(document?.root?.children[1]?.block).toBe('body')
+  expect(document?.root?.children[2]?.block).toBe('footer')
+  expect(document?.root?.children[1]?.paddingAll).toBe('lg')
+  expect(document?.root?.children[1]?.children[0]?.weight).toBe('bold')
+  expect(document?.root?.children[2]?.children[0]?.style).toBe('primary')
+  expect(document?.root?.children[2]?.children[0]?.height).toBe('sm')
+  expect(document?.layoutVersion).toBe(1)
+  expect(document?.layoutFingerprint).toMatch(/^[0-9a-f]{64}$/)
+  expect(hero?.resolved.aspectRatio).toBeCloseTo(20 / 13)
+  expect(document?.root?.children[1]?.resolved.paddingTop).toBe(12)
+  expect(document?.root?.children[2]?.children[0]?.resolved.buttonStyle).toBe(
+    'primary',
+  )
 })
 
 test('processes legacy rich imagemap into a multi-action document', () => {
