@@ -5,10 +5,12 @@
     "src/mcp/integrator.ts",
     "src/cli/login.ts",
     "src/cli/query.ts",
+    "src/cli/work-item.ts",
     "src/version.ts",
     "scripts/*.mjs",
     "src/**/*.test.ts"
   ],
   "project": ["src/**/*.ts"],
-  "ignoreBinaries": ["security", "defaults", "sw_vers", "ffmpeg", "swiftc", "pkill"]
+  "ignoreExportsUsedInFile": true,
+  "ignoreBinaries": ["security", "defaults", "sw_vers", "ffmpeg", "swiftc", "pkill", "ps"]
 }
