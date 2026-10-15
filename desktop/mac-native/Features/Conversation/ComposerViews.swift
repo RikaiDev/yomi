@@ -49,9 +49,11 @@ struct ComposerActionButton: View {
 struct HiddenScrollTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
+    @Binding var measuredHeight: CGFloat
     var onSubmit: () -> Void
     var onHistoryPrevious: () -> String?
     var onHistoryNext: () -> String?
+    var onFileDrop: ([URL]) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -73,6 +75,7 @@ struct HiddenScrollTextEditor: NSViewRepresentable {
         textView.onCommandReturn = context.coordinator.submit
         textView.onHistoryPrevious = context.coordinator.historyPrevious
         textView.onHistoryNext = context.coordinator.historyNext
+        textView.onFileURLsDropped = context.coordinator.fileURLsDropped
         context.coordinator.textView = textView
         textView.delegate = context.coordinator
         textView.isRichText = false
@@ -101,11 +104,20 @@ struct HiddenScrollTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        if textView.string != text { textView.string = text }
+        if textView.string != text {
+            let selection = textView.selectedRange()
+            textView.string = text
+            let textLength = (text as NSString).length
+            textView.setSelectedRange(
+                NSRange(
+                    location: min(selection.location, textLength),
+                    length: min(selection.length, max(0, textLength - min(selection.location, textLength)))))
+        }
         if let composer = textView as? ComposerTextView {
             composer.onCommandReturn = context.coordinator.submit
             composer.onHistoryPrevious = context.coordinator.historyPrevious
             composer.onHistoryNext = context.coordinator.historyNext
+            composer.onFileURLsDropped = context.coordinator.fileURLsDropped
         }
         context.coordinator.parent = self
         context.coordinator.updateInsets(for: textView, in: scrollView)
@@ -114,6 +126,7 @@ struct HiddenScrollTextEditor: NSViewRepresentable {
         scrollView.verticalScroller = nil
         scrollView.horizontalScroller = nil
         scrollView.autohidesScrollers = false
+        context.coordinator.restoreFocusIfNeeded()
     }
 
     @MainActor
@@ -126,18 +139,20 @@ struct HiddenScrollTextEditor: NSViewRepresentable {
 
         func updateInsets(for textView: NSTextView, in scrollView: NSScrollView) {
             let lineHeight = textView.layoutManager?.defaultLineHeight(for: textView.font ?? NSFont.systemFont(ofSize: 15)) ?? 18
-            let hasMultipleLines = textView.string.contains("\n")
-            let availableHeight = max(44, scrollView.bounds.height)
-            let verticalInset: CGFloat
-            if hasMultipleLines {
-                verticalInset = 8
-            } else {
-                // Focus must never alter the perceived field height.
-                verticalInset = max(7, (availableHeight - lineHeight) / 2)
-            }
+            // Insets describe text rhythm, not the current container height.
+            // Deriving them from a previously expanded frame creates a feedback
+            // loop that prevents an emptied composer from shrinking again.
+            let verticalInset: CGFloat = 7
             let inset = NSSize(width: 11, height: verticalInset)
             if textView.textContainerInset != inset {
                 textView.textContainerInset = inset
+            }
+            textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+            let contentHeight = max(
+                lineHeight, textView.layoutManager?.usedRect(for: textView.textContainer!).height ?? lineHeight)
+            let nextHeight = min(104, max(44, ceil(contentHeight + verticalInset * 2)))
+            if abs(parent.measuredHeight - nextHeight) > 0.5 {
+                DispatchQueue.main.async { [weak self] in self?.parent.measuredHeight = nextHeight }
             }
         }
 
@@ -183,8 +198,29 @@ struct HiddenScrollTextEditor: NSViewRepresentable {
             if let scrollView = view.enclosingScrollView { updateInsets(for: view, in: scrollView) }
         }
 
+        /// SwiftUI may update or temporarily detach the representable when a
+        /// background message sync publishes a new conversation snapshot.
+        /// Composer focus belongs to the user's editing session, so restore
+        /// AppKit's first responder after that layout pass while the binding
+        /// still says the user is editing. Explicit clicks elsewhere first
+        /// trigger `textDidEndEditing` and therefore are never overridden.
+        func restoreFocusIfNeeded() {
+            guard parent.isFocused, let textView else { return }
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, self.parent.isFocused, let textView,
+                    let window = textView.window, window.isKeyWindow,
+                    window.firstResponder !== textView
+                else { return }
+                window.makeFirstResponder(textView)
+            }
+        }
+
         func submit() {
             parent.onSubmit()
+        }
+
+        func fileURLsDropped(_ urls: [URL]) {
+            parent.onFileDrop(urls)
         }
 
         func historyPrevious() -> String? { parent.onHistoryPrevious() }
@@ -200,10 +236,45 @@ final class ComposerTextView: NSTextView {
     var onCommandReturn: (() -> Void)?
     var onHistoryPrevious: (() -> String?)?
     var onHistoryNext: (() -> String?)?
+    var onFileURLsDropped: (([URL]) -> Void)?
+
+    convenience init() {
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(textContainer)
+        self.init(frame: .zero, textContainer: textContainer)
+    }
+
+    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
+        super.init(frame: frameRect, textContainer: container)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        fileURLs(from: sender).isEmpty ? super.draggingEntered(sender) : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = fileURLs(from: sender)
+        guard !urls.isEmpty else { return super.performDragOperation(sender) }
+        onFileURLsDropped?(urls)
+        return true
+    }
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if event.keyCode == 36, modifiers.contains(.command) {
+        if event.keyCode == 36 {
+            if modifiers.contains(.shift) {
+                super.keyDown(with: event)
+                return
+            }
             onCommandReturn?()
             return
         }
@@ -224,12 +295,17 @@ final class ComposerTextView: NSTextView {
         setSelectedRange(NSRange(location: (value as NSString).length, length: 0))
         delegate?.textDidChange?(Notification(name: NSText.didChangeNotification, object: self))
     }
+
+    private func fileURLs(from sender: NSDraggingInfo) -> [URL] {
+        sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self], options: [:]) as? [URL] ?? []
+    }
 }
 
 struct StickerPickerView: View {
     @ObservedObject var state: AppState
     let chatId: String
-    @State private var selected: StickerPreviewItem?
+    let onSend: (StickerPreviewItem) -> Void
 
     private let columns = [GridItem(.adaptive(minimum: 64, maximum: 82), spacing: 8)]
 
@@ -242,7 +318,6 @@ struct StickerPickerView: View {
                     HStack(spacing: 6) {
                         ForEach(state.stickerPackages) { package in
                             Button(package.title.isEmpty ? package.packageId : package.title) {
-                                selected = nil
                                 state.loadStickerPreviews(packageId: package.packageId)
                             }
                             .buttonStyle(.bordered)
@@ -269,11 +344,11 @@ struct StickerPickerView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 120)
             } else {
-                ScrollView {
+                MaterialScrollView {
                     LazyVGrid(columns: columns, spacing: 8) {
                         ForEach(state.stickerPreviews) { sticker in
                             Button {
-                                selected = sticker
+                                onSend(sticker)
                             } label: {
                                 if let data = Data(base64Encoded: sticker.data), let image = NSImage(data: data) {
                                     Image(nsImage: image)
@@ -287,26 +362,12 @@ struct StickerPickerView: View {
                             }
                             .buttonStyle(.plain)
                             .padding(4)
-                            .background(selected?.id == sticker.id ? EnterpriseTheme.accent.opacity(0.18) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 7))
                             .accessibilityLabel("貼圖 \(sticker.stickerId)")
                         }
                     }
                 }
                 .frame(minHeight: 130, maxHeight: 220)
-            }
-            if let selected {
-                HStack {
-                    Text("已選擇貼圖 \(selected.stickerId)")
-                        .font(.system(size: 13))
-                    Spacer()
-                    Button("送出") {
-                        state.sendLineSticker(chatId: chatId, sticker: selected)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(state.isSendingReply)
-                    .accessibilityLabel("確認送出貼圖")
-                }
             }
         }
         .padding(14)

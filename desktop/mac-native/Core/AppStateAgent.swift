@@ -7,7 +7,7 @@ extension AppState {
     func syncNow() {
         isSyncing = true
         refreshState()
-        loadRecentChats()
+        refreshInbox(.manual)
         if let sel = selectedChatId {
             loadChatMessages(chatId: sel)
         }
@@ -175,7 +175,7 @@ extension AppState {
     func clearPermanentReadOnlyApprovals() {
         AgentApprovalPolicyStore.removeAll()
         replyFeedbackIsError = false
-        replyFeedback = "已清除 Yomi 永久唯讀授權。"
+        replyFeedback = i18n.t("agent_readonly_approvals_cleared")
         objectWillChange.send()
     }
 

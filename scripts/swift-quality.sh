@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+node scripts/swift-architecture-quality.mjs
+node scripts/swift-i18n-harness.mjs
+
+# One source list, owned by the same enumeration the release build uses
+# (scripts/build-swift-desktop.sh). A hand-maintained copy of this list drifted
+# out of sync and made the typecheck fail on a type it simply could not see.
+sources=()
 while IFS= read -r source; do
+  sources+=("$source")
   lines=$(wc -l < "$source")
   if (( lines > 1000 )); then
     echo "$source exceeds the 1000-line Swift source limit ($lines lines)" >&2
@@ -20,30 +28,10 @@ swiftc \
   -framework Cocoa \
   -framework SwiftUI \
   -framework Security \
+  -framework Compression \
   -framework Speech \
   -framework AVFoundation \
+  -framework AVKit \
   -framework PhotosUI \
-  desktop/mac-native/App/AppDelegate.swift \
-  desktop/mac-native/Components/NativeControls.swift \
-  desktop/mac-native/Components/AppComponents.swift \
-  desktop/mac-native/Features/Login/LoginViews.swift \
-  desktop/mac-native/Features/Integrations/IntegrationViews.swift \
-  desktop/mac-native/Features/Onboarding/GuardianIntroductionView.swift \
-  desktop/mac-native/Features/Agent/ElicitationView.swift \
-  desktop/mac-native/App/MainWindowView.swift \
-  desktop/mac-native/Core/DesktopChatSnapshotStore.swift \
-  desktop/mac-native/Core/I18n.swift \
-  desktop/mac-native/Core/AppModels.swift \
-  desktop/mac-native/Core/AppState.swift \
-  desktop/mac-native/Core/AppStateAgent.swift \
-  desktop/mac-native/Agent/CodexAppServerBackend.swift \
-  desktop/mac-native/Design/YomiGuardiansMark.swift \
-  desktop/mac-native/Features/Settings/SettingsViews.swift \
-  desktop/mac-native/Features/Media/MessageViews.swift \
-  desktop/mac-native/Features/Media/MessageContentViews.swift \
-  desktop/mac-native/Features/Conversation/ConversationSupport.swift \
-  desktop/mac-native/Features/Conversation/ConversationView.swift \
-  desktop/mac-native/Features/Conversation/ComposerViews.swift \
-  desktop/mac-native/Features/Inbox/InboxView.swift \
-  desktop/mac-native/SearchSupport.swift \
-  desktop/mac-native/main.swift
+  -framework Vision \
+  "${sources[@]}"

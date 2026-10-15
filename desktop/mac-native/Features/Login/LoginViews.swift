@@ -16,7 +16,7 @@ struct RegionOption: Identifiable, Hashable {
     let id: String
     let code: String
     let prefix: String
-    let label: String
+    let labelKey: String
     let shortName: String
 }
 
@@ -28,11 +28,11 @@ class LoginViewModel: ObservableObject {
     @Published var errorMessage: String = ""
 
     let regions: [RegionOption] = [
-        RegionOption(id: "TW", code: "TW", prefix: "+886", label: "Taiwan (+886)", shortName: "TW +886"),
-        RegionOption(id: "JP", code: "JP", prefix: "+81", label: "Japan (+81)", shortName: "JP +81"),
-        RegionOption(id: "TH", code: "TH", prefix: "+66", label: "Thailand (+66)", shortName: "TH +66"),
-        RegionOption(id: "ID", code: "ID", prefix: "+62", label: "Indonesia (+62)", shortName: "ID +62"),
-        RegionOption(id: "US", code: "US", prefix: "+1", label: "United States (+1)", shortName: "US +1"),
+        RegionOption(id: "TW", code: "TW", prefix: "+886", labelKey: "login_region_tw", shortName: "TW +886"),
+        RegionOption(id: "JP", code: "JP", prefix: "+81", labelKey: "login_region_jp", shortName: "JP +81"),
+        RegionOption(id: "TH", code: "TH", prefix: "+66", labelKey: "login_region_th", shortName: "TH +66"),
+        RegionOption(id: "ID", code: "ID", prefix: "+62", labelKey: "login_region_id", shortName: "ID +62"),
+        RegionOption(id: "US", code: "US", prefix: "+1", labelKey: "login_region_us", shortName: "US +1"),
     ]
 
     private var loginProcess: Process?
@@ -43,8 +43,8 @@ class LoginViewModel: ObservableObject {
     func startLogin() {
         var rawPhone = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawPhone.isEmpty else {
-            self.errorMessage = "Please enter your phone number"
-            self.step = .failure(error: "Phone number cannot be empty.")
+            self.errorMessage = I18n.shared.t("login_phone_required")
+            self.step = .failure(error: self.errorMessage)
             return
         }
 
@@ -63,12 +63,12 @@ class LoginViewModel: ObservableObject {
 
         let home = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
         guard let nodePath = YomiPathResolver.findNodePath() else {
-            self.step = .failure(error: "Node.js executable not found. Please ensure Node >= 22 is installed.")
+            self.step = .failure(error: I18n.shared.t("login_runtime_missing"))
             return
         }
 
         guard let paths = YomiPathResolver.findRunMjs() else {
-            self.step = .failure(error: "Yomi run.mjs script not found.")
+            self.step = .failure(error: I18n.shared.t("login_runtime_missing"))
             return
         }
 
@@ -82,6 +82,10 @@ class LoginViewModel: ObservableObject {
 
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
+        // Match the native desktop bridge: one 0600 user-owned credential
+        // file, not a `security` subprocess that requests Keychain access for
+        // each fresh login process.
+        env["YOMI_NO_KEYCHAIN"] = "1"
         process.environment = env
 
         let pipe = Pipe()
@@ -100,7 +104,7 @@ class LoginViewModel: ObservableObject {
             try process.run()
         } catch {
             withAnimation {
-                self.step = .failure(error: "Failed to launch login service: \(error.localizedDescription)")
+                self.step = .failure(error: I18n.shared.t("login_start_failed"))
             }
         }
     }
@@ -139,7 +143,7 @@ class LoginViewModel: ObservableObject {
                 stopTimer()
                 let err = trimmed.replacingOccurrences(of: "[Yomi] Login failed:", with: "").trimmingCharacters(in: .whitespaces)
                 withAnimation {
-                    self.step = .failure(error: err.isEmpty ? "Authentication failed" : err)
+                    self.step = .failure(error: err.isEmpty ? I18n.shared.t("login_failed_generic") : err)
                 }
             }
         }
@@ -162,7 +166,7 @@ class LoginViewModel: ObservableObject {
         if remainingPinSeconds <= 0 {
             stopTimer()
             withAnimation {
-                step = .failure(error: "PIN expired. Please request a new one.")
+                step = .failure(error: I18n.shared.t("login_pin_expired"))
             }
         } else if case .enterPin(let pin, _) = step {
             step = .enterPin(pin: pin, countdown: remainingPinSeconds)
@@ -189,37 +193,137 @@ class LoginViewModel: ObservableObject {
 
 // MARK: - Enterprise-Craft Login Window UI
 
-struct LoginSheetView: View {
+struct YomiLoginPageView: View {
     @ObservedObject var viewModel: LoginViewModel
+    @ObservedObject private var i18n = I18n.shared
 
     var body: some View {
-        VStack(spacing: 0) {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    YomiGuardiansMark(mode: .yomi, size: 30)
+                    Text(i18n.t("brand_yomi"))
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(EnterpriseTheme.text)
+                }
+
+                Spacer()
+
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(i18n.t("login_workspace_eyebrow"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(EnterpriseTheme.accent)
+
+                    Text(i18n.t("login_workspace_title"))
+                        .font(.system(size: 27, weight: .bold))
+                        .foregroundColor(EnterpriseTheme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(i18n.t("login_workspace_detail"))
+                        .font(.system(size: 14))
+                        .foregroundColor(EnterpriseTheme.secondaryText)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(EnterpriseTheme.accent)
+                        .padding(.top, 2)
+                    Text(i18n.t("login_workspace_security"))
+                        .font(.system(size: 12))
+                        .foregroundColor(EnterpriseTheme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(28)
+            .frame(width: 318, alignment: .leading)
+            .background(EnterpriseTheme.surface)
+
+            Rectangle().fill(EnterpriseTheme.hairline).frame(width: 1)
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(i18n.t("login_eyebrow"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(EnterpriseTheme.accent)
+                    Spacer()
+                    Menu {
+                        ForEach(AppLanguage.allCases) { language in
+                            Button {
+                                i18n.currentLanguage = language
+                            } label: {
+                                HStack {
+                                    Text(language.displayName)
+                                    if i18n.currentLanguage == language {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(i18n.currentLanguage.displayName)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(EnterpriseTheme.secondaryText)
+                        .padding(.horizontal, 8)
+                        .frame(height: 28)
+                        .background(EnterpriseTheme.raisedSurface)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(EnterpriseTheme.hairline))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+
+                }
+                .padding(.top, 28)
+
+                LoginSheetView(viewModel: viewModel)
+                    .frame(maxWidth: 470, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 48)
+            .background(EnterpriseTheme.canvas)
+        }
+        .background(EnterpriseTheme.canvas)
+        .frame(minWidth: 840, minHeight: 560)
+    }
+}
+
+struct LoginSheetView: View {
+    @ObservedObject var viewModel: LoginViewModel
+    @ObservedObject private var i18n = I18n.shared
+
+    var body: some View {
+        Group {
             switch viewModel.step {
             case .inputPhone:
-                EnterprisePhoneInputView(viewModel: viewModel)
+                EnterprisePhoneInputView(viewModel: viewModel, i18n: i18n)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.98)), removal: .opacity))
             case .requestingPin:
-                EnterpriseRequestingView()
+                EnterpriseRequestingView(i18n: i18n)
                     .transition(.opacity)
             case .enterPin(let pin, let countdown):
-                EnterprisePinDisplayView(pin: pin, countdown: countdown, waitingApproval: false)
+                EnterprisePinDisplayView(pin: pin, countdown: countdown, waitingApproval: false, i18n: i18n)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .trailing)), removal: .opacity))
             case .waitingApproval(let pin):
-                EnterprisePinDisplayView(pin: pin, countdown: 0, waitingApproval: true)
+                EnterprisePinDisplayView(pin: pin, countdown: 0, waitingApproval: true, i18n: i18n)
                     .transition(.opacity)
             case .success(let mid):
-                EnterpriseSuccessView(mid: mid)
+                EnterpriseSuccessView(mid: mid, i18n: i18n)
                     .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .opacity))
             case .failure(let error):
-                EnterpriseFailureView(error: error) {
-                    withAnimation {
-                        viewModel.step = .inputPhone
-                    }
+                EnterpriseFailureView(error: error, i18n: i18n) {
+                    withAnimation { viewModel.step = .inputPhone }
                 }
             }
         }
-        .padding(28)
-        .frame(width: 390, height: 410)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }
 
@@ -228,77 +332,32 @@ struct LoginSheetView: View {
 struct EnterpriseBrandHero: View {
     var body: some View {
         ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        gradient: Gradient(colors: [EnterpriseTheme.accent.opacity(0.35), Color.clear]),
-                        center: .center,
-                        startRadius: 4,
-                        endRadius: 36
-                    )
-                )
-                .frame(width: 72, height: 72)
-
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color(NSColor.controlBackgroundColor).opacity(0.7),
-                            Color(NSColor.controlBackgroundColor).opacity(0.3),
-                        ]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 54, height: 54)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.white.opacity(0.35),
-                                    Color.white.opacity(0.08),
-                                ]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-                .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
-
-            Image(systemName: "shield.checkered")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [EnterpriseTheme.accent, EnterpriseTheme.accent.opacity(0.8)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+            Circle().fill(EnterpriseTheme.accent.opacity(0.10)).frame(width: 68, height: 68)
+            YomiGuardiansMark(mode: .line, size: 48)
         }
     }
 }
 
 struct EnterprisePhoneInputView: View {
     @ObservedObject var viewModel: LoginViewModel
+    let i18n: I18n
     @FocusState private var isPhoneFocused: Bool
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 18) {
             EnterpriseBrandHero()
 
-            VStack(spacing: 5) {
-                Text("Passwordless Authentication")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.primary)
+            VStack(spacing: 7) {
+                Text(i18n.t("login_title"))
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(EnterpriseTheme.text)
 
-                Text("Enter your phone number to receive a verification PIN in your LINE mobile app.")
-                    .font(.system(size: 12.5))
-                    .foregroundColor(.secondary)
+                Text(i18n.t("login_subtitle"))
+                    .font(.system(size: 13))
+                    .foregroundColor(EnterpriseTheme.secondaryText)
                     .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-                    .padding(.horizontal, 4)
+                    .lineSpacing(3)
+                    .frame(maxWidth: 330)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -308,7 +367,7 @@ struct EnterprisePhoneInputView: View {
                             Button(action: {
                                 viewModel.selectedRegion = reg.code
                             }) {
-                                Text(reg.label)
+                                Text(i18n.t(reg.labelKey))
                             }
                         }
                     } label: {
@@ -322,18 +381,18 @@ struct EnterprisePhoneInputView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.04))
+                        .background(EnterpriseTheme.surface.opacity(0.55))
                         .cornerRadius(6)
                     }
                     .buttonStyle(PlainButtonStyle())
                     .padding(.leading, 6)
 
                     Rectangle()
-                        .fill(Color.white.opacity(0.12))
+                        .fill(EnterpriseTheme.hairline)
                         .frame(width: 1, height: 20)
                         .padding(.horizontal, 6)
 
-                    TextField("0912 345 678", text: $viewModel.phoneNumber)
+                    TextField(i18n.t("login_phone_placeholder"), text: $viewModel.phoneNumber)
                         .textFieldStyle(PlainTextFieldStyle())
                         .font(.system(size: 14.5, weight: .medium, design: .monospaced))
                         .focused($isPhoneFocused)
@@ -343,23 +402,23 @@ struct EnterprisePhoneInputView: View {
                             viewModel.startLogin()
                         }
                 }
-                .background(Color(NSColor.controlBackgroundColor).opacity(0.45))
+                .background(EnterpriseTheme.controlFill)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(
-                            isPhoneFocused ? EnterpriseTheme.accent : EnterpriseTheme.hairline,
+                            isPhoneFocused ? EnterpriseTheme.accent : EnterpriseTheme.lineStrong,
                             lineWidth: isPhoneFocused ? 1.5 : 1
                         )
                 )
 
                 HStack(spacing: 5) {
-                    Image(systemName: "lock.shield.fill")
+                    Image(systemName: "lock.fill")
                         .font(.system(size: 10.5))
-                        .foregroundColor(.green.opacity(0.9))
-                    Text("Requires: LINE > Settings > Account > Allow other device login")
+                        .foregroundColor(EnterpriseTheme.accent)
+                    Text(i18n.t("login_security_note"))
                         .font(.system(size: 10.5))
-                        .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                        .foregroundColor(EnterpriseTheme.secondaryText)
                 }
                 .padding(.leading, 2)
             }
@@ -369,26 +428,16 @@ struct EnterprisePhoneInputView: View {
                 viewModel.startLogin()
             }) {
                 HStack(spacing: 7) {
-                    Text("Request Verification PIN")
+                    Text(i18n.t("login_request_pin"))
                         .font(.system(size: 13.5, weight: .semibold))
                     Image(systemName: "arrow.right")
                         .font(.system(size: 12, weight: .bold))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            EnterpriseTheme.accent,
-                            EnterpriseTheme.accent.opacity(0.88),
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .foregroundColor(.white)
+                .background(EnterpriseTheme.selected)
+                .foregroundColor(EnterpriseTheme.selectedText)
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .shadow(color: EnterpriseTheme.accent.opacity(0.35), radius: 8, x: 0, y: 3)
             }
             .buttonStyle(PlainButtonStyle())
             .padding(.top, 2)
@@ -402,6 +451,8 @@ struct EnterprisePhoneInputView: View {
 }
 
 struct EnterpriseRequestingView: View {
+    let i18n: I18n
+
     var body: some View {
         VStack(spacing: 18) {
             ZStack {
@@ -413,10 +464,10 @@ struct EnterpriseRequestingView: View {
             }
 
             VStack(spacing: 5) {
-                Text("Connecting to LINE Security...")
+                Text(i18n.t("login_connecting_title"))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.primary)
-                Text("Negotiating end-to-end encrypted session keys")
+                Text(i18n.t("login_connecting_detail"))
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
             }
@@ -429,15 +480,16 @@ struct EnterprisePinDisplayView: View {
     let pin: String
     let countdown: Int
     let waitingApproval: Bool
+    let i18n: I18n
 
     var body: some View {
         VStack(spacing: 18) {
             VStack(spacing: 4) {
-                Text(waitingApproval ? "Approve Login on Phone" : "Enter Verification PIN")
+                Text(i18n.t(waitingApproval ? "login_approve_title" : "login_pin_title"))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.primary)
 
-                Text(waitingApproval ? "PIN verified. Tap 「用戶確認」 on your phone to finish." : "Open LINE on your primary phone and type:")
+                Text(i18n.t(waitingApproval ? "login_approve_detail" : "login_pin_detail"))
                     .font(.system(size: 12.5))
                     .foregroundColor(.secondary)
             }
@@ -472,9 +524,9 @@ struct EnterprisePinDisplayView: View {
             .padding(.vertical, 2)
 
             VStack(alignment: .leading, spacing: 7) {
-                EnterpriseStepRow(step: "1", text: "Open LINE app on your mobile phone")
-                EnterpriseStepRow(step: "2", text: "Enter the 4 digits shown above")
-                EnterpriseStepRow(step: "3", text: "Tap 「用戶確認」 and approve pairing")
+                EnterpriseStepRow(step: "1", text: i18n.t("login_step_phone"))
+                EnterpriseStepRow(step: "2", text: i18n.t("login_step_pin"))
+                EnterpriseStepRow(step: "3", text: i18n.t("login_step_approve"))
             }
             .padding(.horizontal, 8)
 
@@ -483,14 +535,14 @@ struct EnterprisePinDisplayView: View {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 7, height: 7)
-                    Text("Device approval in progress...")
+                    Text(i18n.t("login_approval_progress"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.green)
                 } else {
                     Image(systemName: "timer")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
-                    Text("Expires in \(countdown)s")
+                    Text(String(format: i18n.t("login_expires"), countdown))
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
@@ -523,6 +575,7 @@ struct EnterpriseStepRow: View {
 
 struct EnterpriseSuccessView: View {
     let mid: String
+    let i18n: I18n
 
     var body: some View {
         VStack(spacing: 16) {
@@ -536,7 +589,7 @@ struct EnterpriseSuccessView: View {
             }
 
             VStack(spacing: 5) {
-                Text("LINE Connected")
+                Text(i18n.t("login_success_title"))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.primary)
 
@@ -545,7 +598,7 @@ struct EnterpriseSuccessView: View {
                     .foregroundColor(.secondary)
             }
 
-            Text("Letter-Sealing E2EE session active and ready for AI copilot.")
+            Text(i18n.t("login_success_detail"))
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -556,6 +609,7 @@ struct EnterpriseSuccessView: View {
 
 struct EnterpriseFailureView: View {
     let error: String
+    let i18n: I18n
     let onRetry: () -> Void
 
     var body: some View {
@@ -570,7 +624,7 @@ struct EnterpriseFailureView: View {
             }
 
             VStack(spacing: 4) {
-                Text("Authentication Failed")
+                Text(i18n.t("login_failure_title"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.primary)
                 Text(error)
@@ -581,7 +635,7 @@ struct EnterpriseFailureView: View {
             }
 
             Button(action: onRetry) {
-                Text("Try Again")
+                Text(i18n.t("login_try_again"))
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 20)
                     .padding(.vertical, 7)

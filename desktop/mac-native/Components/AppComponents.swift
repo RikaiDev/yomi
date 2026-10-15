@@ -1,6 +1,170 @@
 import Cocoa
 import SwiftUI
 
+enum MaterialMotion {
+    static func quick(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .linear(duration: 0.01) : .easeOut(duration: 0.16)
+    }
+
+    static func standard(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.28, dampingFraction: 0.86)
+    }
+
+    static func emphasized(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.36, dampingFraction: 0.88)
+    }
+}
+
+private struct MaterialScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct MaterialScrollContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+struct MaterialScrollView<Content: View>: View {
+    private let content: Content
+    private let pinsToBottom: Bool
+    private let coordinateSpace = UUID()
+    private let bottomID = UUID()
+    @State private var offset: CGFloat = 0
+    @State private var contentHeight: CGFloat = 0
+    @State private var indicatorVisible = false
+    @State private var pinnedToBottom = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(pinsToBottom: Bool = false, @ViewBuilder content: () -> Content) {
+        self.pinsToBottom = pinsToBottom
+        self.content = content()
+    }
+
+    var body: some View {
+        GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        content
+                        Color.clear.frame(height: 1).id(bottomID)
+                    }
+                    .background(
+                        GeometryReader { geometry in
+                            Color.clear
+                                .preference(
+                                    key: MaterialScrollOffsetKey.self,
+                                    value: geometry.frame(in: .named(coordinateSpace)).minY
+                                )
+                                .preference(
+                                    key: MaterialScrollContentHeightKey.self,
+                                    value: geometry.size.height
+                                )
+                        })
+                }
+                .coordinateSpace(name: coordinateSpace)
+                .onPreferenceChange(MaterialScrollOffsetKey.self) { value in
+                    offset = value
+                    if pinsToBottom {
+                        pinnedToBottom = -value + viewport.size.height >= contentHeight - 24
+                    }
+                }
+                .onPreferenceChange(MaterialScrollContentHeightKey.self) { nextHeight in
+                    let shouldPin = pinsToBottom && pinnedToBottom && nextHeight > contentHeight
+                    contentHeight = nextHeight
+                    if shouldPin {
+                        DispatchQueue.main.async { proxy.scrollTo(bottomID, anchor: .bottom) }
+                    }
+                }
+                .onAppear {
+                    if pinsToBottom {
+                        DispatchQueue.main.async { proxy.scrollTo(bottomID, anchor: .bottom) }
+                    }
+                }
+                .background(ScrollWheelActivityMonitor(isScrolling: $indicatorVisible))
+                .overlay(alignment: .topTrailing) {
+                    indicator(viewportHeight: viewport.size.height)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func indicator(viewportHeight: CGFloat) -> some View {
+        if contentHeight > viewportHeight + 1 {
+            let availableHeight = max(1, viewportHeight - 8)
+            let thumbHeight = max(24, availableHeight * min(1, viewportHeight / contentHeight))
+            let travel = max(0, availableHeight - thumbHeight)
+            let scrollable = max(1, contentHeight - viewportHeight)
+            let progress = min(1, max(0, -offset / scrollable))
+            Capsule()
+                .fill(Color.secondary.opacity(0.58))
+                .frame(width: 3, height: thumbHeight)
+                .offset(x: -3, y: 4 + travel * progress)
+                .opacity(indicatorVisible ? 1 : 0)
+                .animation(MaterialMotion.quick(reduceMotion: reduceMotion), value: indicatorVisible)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+}
+
+private struct ScrollWheelActivityMonitor: NSViewRepresentable {
+    @Binding var isScrolling: Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator(isScrolling: $isScrolling) }
+
+    func makeNSView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        context.coordinator.probe = view
+        context.coordinator.start()
+        return view
+    }
+
+    func updateNSView(_ nsView: ProbeView, context: Context) {
+        context.coordinator.isScrolling = $isScrolling
+    }
+
+    final class ProbeView: NSView {}
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var isScrolling: Binding<Bool>
+        weak var probe: ProbeView?
+        private var monitor: Any?
+
+        init(isScrolling: Binding<Bool>) {
+            self.isScrolling = isScrolling
+        }
+
+        func start() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, let probe = self.probe, event.window === probe.window else { return event }
+                let point = probe.convert(event.locationInWindow, from: nil)
+                guard probe.bounds.contains(point) else { return event }
+                self.show()
+                return event
+            }
+        }
+
+        private func show() {
+            NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(hide), object: nil)
+            withAnimation(.easeOut(duration: 0.12)) { isScrolling.wrappedValue = true }
+            perform(#selector(hide), with: nil, afterDelay: 0.7)
+        }
+
+        @objc private func hide() {
+            withAnimation(.easeOut(duration: 0.2)) { isScrolling.wrappedValue = false }
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+    }
+}
+
 // MARK: - User Profile Avatar Component
 
 struct UserAvatarView: View {
@@ -22,6 +186,7 @@ struct UserAvatarView: View {
 
 struct PopoverContentView: View {
     @ObservedObject var state: AppState
+    @ObservedObject private var updater = DesktopUpdateManager.shared
     var onOpenLoginWindow: () -> Void
     var onOpenIntegrationWindow: () -> Void
     var onOpenChatSpotlight: () -> Void
@@ -46,8 +211,11 @@ struct PopoverContentView: View {
                         Text(
                             state.isConnected
                                 ? (state.isSyncing
-                                    ? "Syncing..." : (state.hasUnreadAttention ? "1 Item Needs Attention" : "Letter-Sealing E2EE Active"))
-                                : "Not Connected"
+                                    ? state.i18n.t("syncing_status")
+                                    : (state.hasUnreadAttention
+                                        ? state.i18n.t("popover_attention_title")
+                                        : state.i18n.t("e2ee_protected")))
+                                : state.i18n.t("not_connected")
                         )
                         .font(.system(size: 11.5))
                         .foregroundColor(state.hasUnreadAttention ? EnterpriseTheme.accent : .secondary)
@@ -72,7 +240,7 @@ struct PopoverContentView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .help("Refresh Status")
+                .help(state.i18n.t("refresh"))
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
@@ -138,10 +306,10 @@ struct PopoverContentView: View {
                         }
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Connect LINE Account")
+                            Text(state.i18n.t("connect_line"))
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(EnterpriseTheme.accent)
-                            Text("Click to sign in with phone PIN")
+                            Text(state.i18n.t("click_to_signin"))
                                 .font(.system(size: 11.5))
                                 .foregroundColor(.secondary)
                         }
@@ -171,10 +339,10 @@ struct PopoverContentView: View {
                         .frame(width: 8, height: 8)
 
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("New Attention Item")
+                        Text(state.i18n.t("popover_attention_title"))
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.primary)
-                        Text("Urgent mention waiting for review")
+                        Text(state.i18n.t("popover_attention_desc"))
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
@@ -184,7 +352,7 @@ struct PopoverContentView: View {
                     Button(action: {
                         state.clearAttentionAlert()
                     }) {
-                        Text("Dismiss")
+                        Text(state.i18n.t("popover_dismiss"))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(EnterpriseTheme.accent)
                             .padding(.horizontal, 8)
@@ -206,32 +374,49 @@ struct PopoverContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
 
-            // 3. AI Copilot & Messaging Controls
+            // 3. High-frequency actions only. Configuration and account
+            // management live in the full workspace.
             VStack(spacing: 1) {
-                ActionRow(title: "Ask AI about LINE", icon: "sparkles", shortcut: "⌘ K", tag: "Spotlight", hasChevron: true) {
-                    onOpenChatSpotlight()
+                ActionRow(title: state.i18n.t("popover_open_yomi"), icon: "macwindow", shortcut: "⌘ O", hasChevron: true) {
+                    state.openWorkspace()
                 }
 
-                ActionRow(title: "Claude & Codex Setup", icon: "arrow.triangle.swap", tag: "Primary", hasChevron: true) {
-                    onOpenIntegrationWindow()
-                }
-
-                ActionRow(title: "Sync Mode", icon: "arrow.triangle.2.circlepath", tag: state.syncMode.shortLabel, hasChevron: false) {
-                    switch state.syncMode {
-                    case .realtime: state.syncMode = .interval1m
-                    case .interval1m: state.syncMode = .interval5m
-                    case .interval5m: state.syncMode = .realtime
-                    }
-                    state.sendNotification(title: "Yomi Sync Mode", body: "Mode updated to: \(state.syncMode.rawValue)")
-                }
-
-                ActionRow(title: "Sync Messages Now", icon: "arrow.clockwise", shortcut: "⌘ R", hasChevron: true) {
+                ActionRow(title: state.i18n.t("popover_sync_now"), icon: "arrow.clockwise", shortcut: "⌘ R", hasChevron: false) {
                     state.syncNow()
                 }
 
-                ActionRow(title: "Open AI Workspace", icon: "macwindow", shortcut: "⌘ O", hasChevron: true) {
-                    state.openWorkspace()
+                Menu {
+                    ForEach(AppLanguage.allCases) { language in
+                        Button {
+                            state.i18n.currentLanguage = language
+                        } label: {
+                            if language == state.i18n.currentLanguage {
+                                Label(language.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(language.displayName)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "globe").frame(width: 18)
+                        Text(state.i18n.t("settings_language"))
+                        Spacer()
+                        Text(state.i18n.currentLanguage.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 6)
 
@@ -239,19 +424,20 @@ struct PopoverContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
 
-            // 4. System & Settings
+            // 4. Update and lifecycle
             VStack(spacing: 1) {
-                ActionRow(title: "Setup Guide & Docs", icon: "book", hasChevron: false) {
-                    state.openDocs()
+                ActionRow(
+                    title: updater.availableVersion == nil
+                        ? state.i18n.t("updates_check")
+                        : state.i18n.t("updates_download"),
+                    icon: "arrow.down.circle",
+                    tag: updater.availableVersion,
+                    hasChevron: updater.availableVersion != nil
+                ) {
+                    updater.openAvailableUpdate()
                 }
 
-                if state.isConnected {
-                    ActionRow(title: "Sign Out", icon: "rectangle.portrait.and.arrow.right", hasChevron: false) {
-                        state.signOut()
-                    }
-                }
-
-                ActionRow(title: "Quit Yomi", icon: "power", shortcut: "⌘ Q", hasChevron: false) {
+                ActionRow(title: state.i18n.t("menu_quit"), icon: "power", shortcut: "⌘ Q", hasChevron: false) {
                     NSApp.terminate(nil)
                 }
             }

@@ -178,6 +178,7 @@ private struct YomiSectionHeader: View {
 
 struct YomiEnterpriseMainWindowView: View {
     @ObservedObject var state: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: YomiMainTab = .chats
     @AppStorage("yomi_guardian_introduction_seen_v2") private var hasSeenGuardianIntroduction = false
     @State private var showsGuardianIntroduction = false
@@ -199,6 +200,7 @@ struct YomiEnterpriseMainWindowView: View {
                     onOpenIntegrations: { selectedTab = .integrations },
                     onOpenSettings: { selectedTab = selectedTab == .settings ? .chats : .settings }
                 )
+                .transition(.opacity.combined(with: .offset(x: -8)))
             } else {
                 VStack(spacing: 0) {
                     if selectedTab != .settings {
@@ -214,8 +216,10 @@ struct YomiEnterpriseMainWindowView: View {
                     case .chats: EmptyView()
                     }
                 }
+                .transition(.opacity.combined(with: .offset(x: 8)))
             }
         }
+        .animation(MaterialMotion.emphasized(reduceMotion: reduceMotion), value: selectedTab)
         .frame(minWidth: 840, idealWidth: 1100, maxWidth: .infinity, minHeight: 560, idealHeight: 720, maxHeight: .infinity)
         .background(EnterpriseTheme.canvas)
         .preferredColorScheme(state.appearance.colorScheme)
@@ -381,7 +385,7 @@ struct CopilotDetailView: View {
                 // Keep the AI transcript scrollable while presenting a clean,
                 // web-like surface. The indicator is intentionally hidden;
                 // wheel, trackpad, keyboard and VoiceOver scrolling remain.
-                ScrollView(.vertical, showsIndicators: false) {
+                MaterialScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if state.chatMessages.isEmpty {
                             VStack(spacing: 12) {

@@ -3,6 +3,43 @@ import Foundation
 import Security
 import SwiftUI
 
+enum YomiAttentionLearningStore {
+    private static let biasKey = "yomi_attention_learned_bias_v1"
+
+    private static func values() -> [String: Int] {
+        UserDefaults.standard.dictionary(forKey: biasKey) as? [String: Int] ?? [:]
+    }
+
+    static func bias(for id: String) -> Int { values()[id] ?? 0 }
+    static func recordPassiveReview(_ id: String) { adjust(id, delta: -4) }
+    static func recordReply(_ id: String) { adjust(id, delta: 6) }
+
+    private static func adjust(_ id: String, delta: Int) {
+        var next = values()
+        next[id] = min(18, max(-18, (next[id] ?? 0) + delta))
+        UserDefaults.standard.set(next, forKey: biasKey)
+    }
+}
+
+/// Stable, non-reversible cache key.  Cache filenames must never contain a
+/// media URL, chat id, or other user data.  Four independent FNV lanes keep
+/// collisions negligible without adding a crypto framework to the app target.
+func yomiStableCacheKey(_ value: String) -> String {
+    var lanes: [UInt64] = [
+        14_695_981_039_346_656_037,
+        1_099_511_628_211 ^ 0x9E37_79B1_85EB_CA87,
+        1_099_511_628_211 ^ 0xC2B2_AE3D_27D4_EB4F,
+        1_099_511_628_211 ^ 0x1656_67B1_9E37_79F9,
+    ]
+    for byte in value.utf8 {
+        for index in lanes.indices {
+            lanes[index] ^= UInt64(byte)
+            lanes[index] &*= 1_099_511_628_211 &+ UInt64(index * 2 + 1)
+        }
+    }
+    return lanes.map { String(format: "%016llx", $0) }.joined()
+}
+
 // MARK: - Credentials Model
 
 struct LineCredentialsPayload: Codable {

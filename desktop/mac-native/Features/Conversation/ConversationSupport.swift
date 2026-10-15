@@ -5,6 +5,57 @@ import Speech
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension Notification.Name {
+    static let yomiWillSwitchChat = Notification.Name("dev.rikai.yomi.willSwitchChat")
+}
+
+struct ConversationLoadingSkeleton: View {
+    let i18n: I18n
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(i18n.t("loading_messages"))
+                    .font(.system(size: EnterpriseTheme.Typography.status, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            skeleton(width: 250, height: 46, lineWidth: 148, opacity: 0.75)
+            skeleton(width: 190, height: 42, lineWidth: 112, opacity: 0.55)
+            Spacer()
+        }
+        .padding(EnterpriseTheme.contentPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(EnterpriseTheme.canvas)
+    }
+
+    private func skeleton(width: CGFloat, height: CGFloat, lineWidth: CGFloat, opacity: Double) -> some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(EnterpriseTheme.raisedSurface.opacity(opacity))
+            .frame(width: width, height: height)
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.secondary.opacity(0.12))
+                    .frame(width: lineWidth, height: 10)
+                    .padding(.horizontal, 16)
+            }
+    }
+}
+
+enum ComposerAttachmentStore {
+    static func stageJPEG(_ data: Data) throws -> URL {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("yomi-image-\(UUID().uuidString).jpg")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    static func removeIfTemporary(_ url: URL) {
+        guard url.path.hasPrefix(NSTemporaryDirectory()) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
 // MARK: - Voice dictation
 
 final class CameraCaptureController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
@@ -327,7 +378,7 @@ struct YomiConversationView: View {
             .background(EnterpriseTheme.accent.opacity(0.07))
 
             ScrollViewReader { proxy in
-                ScrollView {
+                MaterialScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if state.chatMessages.isEmpty {
                             VStack(alignment: .leading, spacing: 7) {

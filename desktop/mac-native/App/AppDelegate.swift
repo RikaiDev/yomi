@@ -170,7 +170,7 @@ private final class YomiToolbarDelegate: NSObject, NSToolbarDelegate {
     }
 
     @objc private func sync(_ sender: Any?) {
-        state.loadRecentChats()
+        state.refreshInbox(.manual)
     }
 }
 
@@ -181,7 +181,7 @@ class YomiMainWindow: NSWindow {
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -269,6 +269,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self?.statusItem.button?.image = createStatusIcon(hasUnread: hasUnread)
             }
         }
+        state.onSessionEnded = { [weak self] in
+            self?.showLoginPage()
+        }
 
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             if let panel = self?.panel, panel.isVisible {
@@ -277,13 +280,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         loginViewModel.onLoginSuccess = { [weak self] in
-            self?.state.refreshState()
-            self?.closeLoginWindow()
-            self?.openMainWindow()
+            guard let self else { return }
+            self.state.refreshState()
+            self.closeLoginWindow()
+            self.showInboxPage()
+            self.state.refreshInbox(.startup)
         }
 
-        // Open Enterprise Main Window by default
-        openMainWindow()
+        if CredentialManager.loadCredentials()?.lineAuthToken?.isEmpty == false {
+            openMainWindow()
+            DispatchQueue.main.async { [weak self] in
+                self?.state.refreshInbox(.startup)
+            }
+        } else {
+            showLoginPage()
+        }
+        DesktopUpdateManager.shared.checkOnLaunchIfNeeded()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -302,6 +314,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appMenu = NSMenu()
         appMenuItem.submenu = appMenu
         appMenu.addItem(withTitle: "About Yomi", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdatesFromMenu), keyEquivalent: "")
+        updateItem.target = self
+        appMenu.addItem(updateItem)
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Hide Yomi", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthersItem = NSMenuItem(
@@ -351,6 +366,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         windowMenu.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
 
         NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func checkForUpdatesFromMenu() {
+        DesktopUpdateManager.shared.checkForUpdates()
     }
 
     @objc func openMainWindowFromMenu() {
@@ -412,29 +431,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func openLoginWindow() {
-        hidePanel()
-
-        if loginWindow == nil {
-            let win = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 390, height: 410),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
-            win.title = "Connect LINE Account"
-            win.isReleasedWhenClosed = false
-            win.delegate = self
-            win.center()
-            win.contentViewController = NSHostingController(
-                rootView: LoginSheetView(viewModel: loginViewModel)
-            )
-            self.loginWindow = win
-        }
-
-        loginViewModel.step = .inputPhone
-        loginWindow?.center()
-        loginWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        showLoginPage()
     }
 
     func closeLoginWindow() {
@@ -479,30 +476,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    func showLoginPage() {
+        hidePanel()
+        loginWindow?.orderOut(nil)
+        loginViewModel.step = .inputPhone
+        let window = ensureMainWindow()
+        enforceMainWindowMinimum(window)
+        window.contentViewController = NSHostingController(
+            rootView: YomiLoginPageView(viewModel: loginViewModel)
+                .preferredColorScheme(state.appearance.colorScheme)
+        )
+        window.level = .normal
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func showInboxPage() {
+        let window = ensureMainWindow()
+        enforceMainWindowMinimum(window)
+        window.contentViewController = NSHostingController(
+            rootView: YomiEnterpriseMainWindowView(
+                state: state,
+                onOpenLogin: { [weak self] in self?.openLoginWindow() }
+            )
+        )
+        window.level = state.isSpotlightPinned ? .floating : .normal
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func openMainWindow() {
         hidePanel()
-
-        if mainWindow == nil {
-            let initialFrame = initialMainWindowFrame()
-            let win = YomiMainWindow(
-                contentRect: initialFrame
-            )
-            win.delegate = self
-            win.contentViewController = NSHostingController(
-                rootView: YomiEnterpriseMainWindowView(
-                    state: state,
-                    onOpenLogin: { [weak self] in
-                        self?.openLoginWindow()
-                    }
-                )
-            )
-            win.installTitlebar(state: state)
-            self.mainWindow = win
+        if CredentialManager.loadCredentials()?.lineAuthToken?.isEmpty == false {
+            showInboxPage()
+        } else {
+            showLoginPage()
         }
+    }
 
-        mainWindow?.level = state.isSpotlightPinned ? .floating : .normal
-        mainWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    private func ensureMainWindow() -> YomiMainWindow {
+        if let mainWindow { return mainWindow }
+        let initialFrame = initialMainWindowFrame()
+        let win = YomiMainWindow(
+            contentRect: initialFrame
+        )
+        win.delegate = self
+        win.installTitlebar(state: state)
+        self.mainWindow = win
+        return win
+    }
+
+    private func enforceMainWindowMinimum(_ window: NSWindow) {
+        let minimum = NSSize(width: 840, height: 560)
+        window.minSize = minimum
+        guard window.frame.width < minimum.width || window.frame.height < minimum.height else { return }
+        var frame = window.frame
+        frame.size.width = max(frame.width, minimum.width)
+        frame.size.height = max(frame.height, minimum.height)
+        window.setFrame(frame, display: true, animate: false)
     }
 
     /// Size and position only the first main-window creation. Reopening must
