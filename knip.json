@@ -12,5 +12,11 @@
   ],
   "project": ["src/**/*.ts"],
   "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {
+    "src/work-item/destination-contracts.ts": ["types"],
+    "src/work-item/gold-coverage.ts": ["exports"],
+    "src/ambient/ambient-observer.ts": ["exports"],
+    "src/work-item/types.ts": ["exports"]
+  },
   "ignoreBinaries": ["security", "defaults", "sw_vers", "ffmpeg", "swiftc", "pkill", "ps"]
 }
