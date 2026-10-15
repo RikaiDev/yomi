@@ -95,6 +95,14 @@ test('an aged-out token whose refresh fails classifies loginReason as expired', 
   expect(service.loginReason).toBe('expired')
 })
 
+test('LINE access-token refresh requirements enter the refresh path', async () => {
+  const service = await resumeWithProfileError(
+    new Error('Access token refresh required'),
+  )
+  expect(service.loginRequired).toBe(true)
+  expect(service.loginReason).toBe('expired')
+})
+
 test('the two causes tell the user different stories, with the same recovery', () => {
   const revoked = sessionRevokedError().content[0].text
   const expired = sessionExpiredError().content[0].text

@@ -7,7 +7,8 @@ import { recoverBootstrapKeys } from './e2ee/recovery/bootstrap-keys.js'
 import { STATE } from './service.js'
 
 const TERMINAL_ERROR_REGEX = /LOGGED_OUT|DIVESTED/i
-const AUTH_ERROR_REGEX = /expired|unauthorized|authentication|invalid.*token/i
+const AUTH_ERROR_REGEX =
+  /expired|unauthorized|authentication|invalid.*token|access token refresh required/i
 
 /**
  * Resolve the active LINE logger for one runtime.

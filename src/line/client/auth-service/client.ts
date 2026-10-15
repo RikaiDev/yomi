@@ -46,6 +46,14 @@ function unwrapAuthSuccess(method, result) {
   return result.fields?.[0] ?? true
 }
 
+function stringifyAuthValue(value: unknown): string {
+  return (
+    JSON.stringify(value, (_key, item) =>
+      typeof item === 'bigint' ? item.toString() : item,
+    ) ?? String(value)
+  )
+}
+
 /**
  * Create the auth capability bound to one LINE client runtime.
  *
@@ -86,7 +94,8 @@ export function createAuthClient(runtime) {
       }
       if (result.fields?.[1] && typeof result.fields[1] === 'object') {
         const exc = result.fields[1]
-        const msg = typeof exc[2] === 'string' ? exc[2] : JSON.stringify(exc)
+        const msg =
+          typeof exc[2] === 'string' ? exc[2] : stringifyAuthValue(exc)
         console.error(`[LINE] ${method} exception: ${msg}`)
       }
       return result
@@ -102,10 +111,7 @@ export function createAuthClient(runtime) {
       // stderr-only logger — stdout is the MCP JSON-RPC channel and this runs
       // inside the stdio server (token refresh on resume/rotation).
       const lineLog = getLineClientLog(runtime)
-      lineLog.info('auth.refresh.call', {
-        auth: `${String(runtime.authToken || '').slice(0, 16)}...`,
-        refresh: `${String(refreshToken || '').slice(0, 12)}...`,
-      })
+      lineLog.info('auth.refresh.call')
       const result = await runtime.sendAuth(
         'refresh',
         [[12, 1, [[11, 1, refreshToken]]]],
@@ -120,7 +126,6 @@ export function createAuthClient(runtime) {
         const tokenIssueTimeEpochSec =
           typeof resp[3] === 'bigint' ? Number(resp[3]) : resp[3] || null
         lineLog.info('auth.refresh.success', {
-          auth: `${String(resp[1]).slice(0, 16)}...`,
           next_in_hours: Math.round(durationUntilRefreshInSec / 3600),
         })
         return {
@@ -129,15 +134,8 @@ export function createAuthClient(runtime) {
           tokenIssueTimeEpochSec,
         }
       }
-      console.error(
-        '[LINE] refresh() exception payload:',
-        JSON.stringify(result, (_key, val) =>
-          typeof val === 'bigint' ? val.toString() : val,
-        ),
-      )
-      throw new Error(
-        `Token refresh failed: ${JSON.stringify(result, (_key, val) => (typeof val === 'bigint' ? val.toString() : val))}`,
-      )
+      lineLog.warn('auth.refresh.rejected')
+      throw new Error('Token refresh was rejected by LINE')
     },
 
     /**
