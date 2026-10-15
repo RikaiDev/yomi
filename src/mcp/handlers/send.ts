@@ -258,6 +258,11 @@ export async function handleSendFile(
  * person's mid in contentMetadata. `displayName` is resolved from the mid when
  * the caller omits it. One send per call; honest error on failure.
  *
+ * The recipient reads this string, so it is always the contact's own profile
+ * name (contact-query field 22) and never the name a shared cache holds. That
+ * cache exists to show the user the name they gave a friend locally, which is
+ * a private label and must not travel to a third party.
+ *
  * @param service - Resumed LineProtocolService.
  * @param args - Tool arguments.
  * @returns MCP tool result.
@@ -276,17 +281,10 @@ export async function handleSendContact(
   let displayName = args.displayName ?? ''
   if (!displayName) {
     try {
-      displayName = service.resolveName(args.contactMid) || ''
+      const contact = await service.getContact(args.contactMid)
+      displayName = contact?.displayName ?? ''
     } catch {
-      displayName = ''
-    }
-    if (!displayName) {
-      try {
-        const contact = await service.getContact(args.contactMid)
-        displayName = contact?.displayName ?? ''
-      } catch {
-        // Leave empty — LINE resolves the name from the mid on the recipient side.
-      }
+      // Leave empty — LINE resolves the name from the mid on the recipient side.
     }
   }
 

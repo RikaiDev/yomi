@@ -75,7 +75,6 @@ export class LineProtocolService extends EventEmitter {
   public invalidateSession!: (reason?: string) => Promise<void>
   public tryRefreshToken!: () => Promise<boolean>
   public resumeSession!: () => Promise<boolean>
-  public resolveName!: (mid: string) => string
   public getContact!: (mid: string) => Promise<any>
   public getGroup!: (groupId: string) => Promise<any>
   public listStickerPackages!: (language?: string) => Promise<any[]>
