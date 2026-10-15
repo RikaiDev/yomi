@@ -1,0 +1,21 @@
+# Normalize line endings in the working tree on every platform.
+#
+# Without this, a Windows checkout inherits core.autocrlf=true and rewrites LF
+# to CRLF, which the formatter reads as a whole-file diff. The Windows CI job
+# then fails lint on all 213 source files while the same commit is green on
+# macOS. Pinning the checkout to LF makes the working tree identical everywhere.
+* text=auto eol=lf
+
+# Files that must stay byte-exact, never line-ending normalized.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.dmg binary
+*.exe binary
+*.p12 binary
+*.woff binary
+*.woff2 binary
+*.onnx binary
+*.pt binary
