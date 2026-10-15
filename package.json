@@ -67,7 +67,7 @@
     "desktop:windows:qc": "npm run typecheck && npm run lint && npm run lint:comments && cargo test --manifest-path desktop/Cargo.toml && npm run desktop:windows:lint",
     "desktop:windows:i18n": "node scripts/windows-i18n-harness.mjs",
     "desktop:windows:harness": "node scripts/windows-desktop-harness.mjs",
-    "version": "node scripts/sync-version.mjs && git add src/version.ts",
+    "version": "node scripts/sync-version.mjs && git add src/version.ts desktop/mac-native/Info.plist desktop/Cargo.toml",
     "prepublishOnly": "npm run build",
     "test:fixture-hygiene": "node scripts/test-fixture-hygiene.mjs",
     "desktop:install-local": "bash scripts/install-swift-desktop-local.sh"
