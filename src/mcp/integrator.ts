@@ -118,17 +118,30 @@ description: Manage and interact with user's LINE account via Yomi E2EE MCP Serv
 
 # Yomi LINE Copilot Skill
 
-You have real-time access to the user's LINE account through the Yomi Letter-Sealing E2EE MCP Server.
+You have real-time access to the user's LINE account through the Yomi Letter-Sealing E2EE server. Discover the current tools and complete a scoped read before claiming that access; the names below describe expected capabilities, not proof they are connected.
 
-## Capabilities
-1. \`get_recent_messages\`: Retrieve recent decrypted messages.
-2. \`search_messages\`: Full-text search across conversations.
-3. \`list_contacts\`: Retrieve friends and group information.
-4. \`send_message\`: Send messages to chats with confirmation.
+## Reading
+1. \`list_conversations\`: List the chats the account can see.
+2. \`get_chat_messages\`: Read the recent decrypted messages of one chat.
+3. \`collect_messages\`: Collect messages across several chats.
+4. \`search_messages\`: Full-text search across conversations.
+5. \`get_unread_digest\`: Summarize what is unread.
+6. \`get_insight\`: Ask the account model for an insight about the messages.
+7. \`find_contact\` and \`list_contacts\`: Resolve a person or a group to its chat id.
+
+## Writing
+1. \`send_message\`: Send a text message to a chat.
+2. \`unsend_message\`: Recall a message the account sent.
+
+## Operating the server
+- The Model Context Protocol server speaks stdio and lives only while its stdin stays open. A command that closes stdin ends the server, so keep the pipe open for as long as the session needs it.
+- The \`yomi messages\` CLI reports an empty list; only the Model Context Protocol tools above return real messages.
+- \`unsend_message\` is irreversible, and LINE accepts a recall only within one hour of sending. A recall past that window is refused by LINE itself, not by the tool.
 
 ## Guidelines
 - Summarize conversations concisely and highlight action items or mentions needing attention.
-- When drafting a reply, ask the user for confirmation before executing \`send_message\`.
+- Drafting does not authorize sending. Require explicit sending authorization for the recipient and content; reuse that exact authorization when already given.
+- A recall writes to the conversation as well, so it needs the same explicit authorization as sending.
 `
 
   const skillDirs = [
