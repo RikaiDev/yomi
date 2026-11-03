@@ -145,6 +145,7 @@ You have real-time access to the user's LINE account through the Yomi Letter-Sea
 `
 
   const skillDirs = [
+    join(home, '.agents', 'skills', 'yomi-line-manager'),
     join(home, '.claude', 'skills', 'yomi-line-manager'),
     join(
       home,

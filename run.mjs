@@ -268,6 +268,29 @@ switch (cmd) {
     }));
     process.exit(0);
   }
+  case 'unsend-message':
+  case 'unsend': {
+    const messageId = args[1];
+    if (!messageId) {
+      console.error(JSON.stringify({ error: 'messageId required' }));
+      process.exit(1);
+    }
+    const { LineProtocolService } = await load('line/core/service');
+    const service = new LineProtocolService();
+    if (!(await service.resumeSession())) process.exit(1);
+    try {
+      const res = await service.unsendMessage(messageId);
+      console.log(JSON.stringify({
+        unsent: true,
+        messageId,
+        ...res,
+      }));
+      process.exit(0);
+    } catch (err) {
+      console.error(JSON.stringify({ error: err.message || String(err) }));
+      process.exit(1);
+    }
+  }
   case 'send-image': {
     const chatId = args[1];
     const imagePath = args[2];
@@ -419,6 +442,7 @@ Usage:
   yomi                Start the MCP stdio server (default)
   yomi serve          Same as above, explicit
   yomi login [...]    Run the passwordless login flow in a terminal
+  yomi unsend <id>    Retract (unsend) a message sent within the last hour
   yomi help           Show this help
   yomi version        Print version
 

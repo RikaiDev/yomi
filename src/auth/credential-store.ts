@@ -214,11 +214,12 @@ export class CredentialStore {
     this.filePath = fallbackFilePath
     this.cache = new Map()
     this.loaded = false
-    // Desktop background bridges are deliberately read-only.  They must use
-    // the user-isolated credential file and never invoke `security` to mutate
-    // the Keychain during a 15s poll (which causes repeated macOS prompts).
+    // The user-isolated credential file (0600 mode) is fast, reliable, and avoids
+    // triggering disruptive macOS SecurityAgent GUI prompts. Mutating the Keychain
+    // via `security` CLI is opt-in (via YOMI_USE_KEYCHAIN=1) rather than default.
     this.secureStorageEnabled =
       process.platform === 'darwin' &&
+      process.env.YOMI_USE_KEYCHAIN === '1' &&
       process.env.YOMI_NO_KEYCHAIN !== '1' &&
       process.env.YOMI_READ_ONLY_SESSION !== '1'
     this.keychainService = this.secureStorageEnabled
@@ -250,10 +251,14 @@ export class CredentialStore {
       }
     } catch {}
 
-    if (this.secureStorageEnabled && this.keychainService) {
-      const result = await this.keychainService.getCredential(
-        this.keychainAccount,
-      )
+    const keychain =
+      this.keychainService ??
+      (process.platform === 'darwin' && process.env.YOMI_NO_KEYCHAIN !== '1'
+        ? getKeychainService()
+        : null)
+
+    if (keychain) {
+      const result = await keychain.getCredential(this.keychainAccount)
       if (result.success && result.password) {
         try {
           const fs = await import('node:fs/promises')
@@ -265,7 +270,6 @@ export class CredentialStore {
         } catch {}
         return result.password
       }
-      return null
     }
 
     return null

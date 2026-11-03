@@ -72,6 +72,8 @@ test('derives directories with path.dirname, never by slicing on a forward slash
 test('read-only desktop session disables Keychain mutation', async () => {
   const previousNoKeychain = process.env.YOMI_NO_KEYCHAIN
   const previousReadOnly = process.env.YOMI_READ_ONLY_SESSION
+  const previousUseKeychain = process.env.YOMI_USE_KEYCHAIN
+  process.env.YOMI_USE_KEYCHAIN = '1'
   process.env.YOMI_NO_KEYCHAIN = '0'
   process.env.YOMI_READ_ONLY_SESSION = '1'
   try {
@@ -87,5 +89,30 @@ test('read-only desktop session disables Keychain mutation', async () => {
     else process.env.YOMI_NO_KEYCHAIN = previousNoKeychain
     if (previousReadOnly == null) delete process.env.YOMI_READ_ONLY_SESSION
     else process.env.YOMI_READ_ONLY_SESSION = previousReadOnly
+    if (previousUseKeychain == null) delete process.env.YOMI_USE_KEYCHAIN
+    else process.env.YOMI_USE_KEYCHAIN = previousUseKeychain
+  }
+})
+
+test('keychain mutation is opt-in and disabled by default on darwin', async () => {
+  const previousNoKeychain = process.env.YOMI_NO_KEYCHAIN
+  const previousReadOnly = process.env.YOMI_READ_ONLY_SESSION
+  const previousUseKeychain = process.env.YOMI_USE_KEYCHAIN
+  delete process.env.YOMI_NO_KEYCHAIN
+  delete process.env.YOMI_READ_ONLY_SESSION
+  delete process.env.YOMI_USE_KEYCHAIN
+  try {
+    const { CredentialStore } = await import('./credential-store.js')
+    const dir = await mkdtemp(join(tmpdir(), 'yomi-default-'))
+    const store = new CredentialStore('line', join(dir, 'line.json'))
+    expect(store.secureStorageEnabled).toBe(false)
+    expect(store.keychainService).toBeNull()
+  } finally {
+    if (previousNoKeychain != null)
+      process.env.YOMI_NO_KEYCHAIN = previousNoKeychain
+    if (previousReadOnly != null)
+      process.env.YOMI_READ_ONLY_SESSION = previousReadOnly
+    if (previousUseKeychain != null)
+      process.env.YOMI_USE_KEYCHAIN = previousUseKeychain
   }
 })
