@@ -144,7 +144,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'One-shot unread digest: every LINE conversation with unread messages, each with its most recent messages (default 10), E2EE-decrypted, with resolved sender names. Saves calling list_conversations then get_chat_messages per chat. Read-only: never marks anything read, never touches the search index; denylist-excluded conversations are omitted. Returns an empty list when nothing is unread — never fabricated.',
+      'One-shot unread digest: every LINE conversation with unread messages (all pages of the inbox, newest activity first), each with its most recent messages (default 10), E2EE-decrypted, with resolved sender names. Saves calling list_conversations then get_chat_messages per chat. Read-only: never marks anything read, never touches the search index; denylist-excluded conversations are omitted. Returns an empty list when nothing is unread — never fabricated.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -156,7 +156,7 @@ export const TOOLS: Tool[] = [
         limit: {
           type: 'number',
           description:
-            'Maximum number of conversations to scan for unread (default 20).',
+            'Maximum number of unread conversations to return, most recently active first (default: all of them).',
         },
       },
     },

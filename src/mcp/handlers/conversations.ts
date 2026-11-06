@@ -1,4 +1,5 @@
 import { isSquareChatMid } from '../../line/client/square-service/client.js'
+import { listBoxesByRecency } from '../../line/core/message-box-recency.js'
 import { sanitizeMessagePreview } from '../../line/core/message-preview.js'
 import { decryptLineMessage } from '../../line/core/message-query-service.js'
 import type { LineProtocolService } from '../../line/core/service.js'
@@ -46,12 +47,9 @@ export async function handleListConversations(
       )
     }
   } catch {}
-  const result = await service.client.getMessageBoxes({
-    lastMessagesPerMessageBoxCount: 1,
-    messageBoxCountLimit: args.limit ?? 20,
-    withUnreadCount: true,
-  })
-  const boxes = result.messageBoxes || []
+  const boxes = (
+    await listBoxesByRecency(service, { withUnreadCount: true })
+  ).slice(0, args.limit ?? 20)
   const names = await resolveConversationNames(
     service,
     boxes.map((box: any) => box.id).filter(Boolean),
@@ -295,15 +293,14 @@ export async function handleGetUnreadDigest(
   service: LineProtocolService,
   args: { perChat?: number; limit?: number },
 ) {
-  const result = await service.client.getMessageBoxes({
-    lastMessagesPerMessageBoxCount: 1,
-    messageBoxCountLimit: args.limit ?? 20,
-    withUnreadCount: true,
-  })
   const excluded = getExcludedChatIds()
-  const unreadBoxes = (result.messageBoxes || []).filter(
+  const allUnread = (
+    await listBoxesByRecency(service, { withUnreadCount: true })
+  ).filter(
     (box: any) => (box.unreadCount ?? 0) > 0 && box.id && !excluded.has(box.id),
   )
+  const unreadBoxes =
+    args.limit && args.limit > 0 ? allUnread.slice(0, args.limit) : allUnread
   const names = await resolveConversationNames(
     service,
     unreadBoxes.map((box: any) => box.id),
@@ -339,6 +336,12 @@ export async function handleGetUnreadDigest(
     }),
   )
   const content: any[] = [{ type: 'text' as const, text: toonText(digest) }]
+  if (unreadBoxes.length < allUnread.length) {
+    content.push({
+      type: 'text' as const,
+      text: `Showing the ${unreadBoxes.length} most recently active of ${allUnread.length} unread conversations (limit=${args.limit}). Omit limit to list all.`,
+    })
+  }
   const note = phiNote(acc)
   if (note) content.push(note)
   return { content }

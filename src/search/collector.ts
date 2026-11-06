@@ -27,6 +27,7 @@
  * embedding succeeded, so keyword search keeps working either way.
  */
 
+import { listBoxesByRecency } from '../line/core/message-box-recency.js'
 import type { LineProtocolService } from '../line/core/service.js'
 import { resolveConversationNames, resolveSenderNames } from '../mcp/names.js'
 import { createCliLogger } from '../util/log.js'
@@ -82,12 +83,9 @@ async function resolveTargetChats(
   if (chatIds && chatIds.length > 0) {
     return resolveConversationNames(service, chatIds)
   }
-  const result = await service.client.getMessageBoxes({
-    lastMessagesPerMessageBoxCount: 1,
-    messageBoxCountLimit: DEFAULT_CHAT_LIMIT,
-    withUnreadCount: false,
-  })
-  const boxes = result.messageBoxes || []
+  const boxes = (
+    await listBoxesByRecency(service, { withUnreadCount: false })
+  ).slice(0, DEFAULT_CHAT_LIMIT)
   const ids = boxes.map((box: any) => box.id).filter(Boolean)
   return resolveConversationNames(service, ids)
 }
