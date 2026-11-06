@@ -118,7 +118,7 @@ description: Manage and interact with user's LINE account via Yomi E2EE MCP Serv
 
 # Yomi LINE Copilot Skill
 
-You have real-time access to the user's LINE account through the Yomi Letter-Sealing E2EE server. Discover the current tools and complete a scoped read before claiming that access; the names below describe expected capabilities, not proof they are connected.
+You have real-time access to the user's LINE account through the Yomi Letter-Sealing E2EE server. Check which of these tools your runtime actually exposes, and complete a scoped read before claiming that access; the names below describe expected capabilities, not proof they are connected.
 
 ## Reading
 1. \`list_conversations\`: List the chats the account can see.
@@ -134,9 +134,15 @@ You have real-time access to the user's LINE account through the Yomi Letter-Sea
 2. \`unsend_message\`: Recall a message the account sent.
 
 ## Operating the server
+- The Yomi Model Context Protocol server is registered globally for the coding tools on this machine. Every tool keeps its own server list, so a tool that does not expose the names above is missing its own registration, not the server.
+- When the names above are in your tool list, call them directly. Start the server yourself only when they are absent.
 - The Model Context Protocol server speaks stdio and lives only while its stdin stays open. A command that closes stdin ends the server, so keep the pipe open for as long as the session needs it.
 - The \`yomi messages\` CLI reports an empty list; only the Model Context Protocol tools above return real messages.
 - \`unsend_message\` is irreversible, and LINE accepts a recall only within one hour of sending. A recall past that window is refused by LINE itself, not by the tool.
+
+## Recovering message text
+- A message can come back with no text while the conversation still holds it. The local search index keeps the plaintext, so look the same message id up in \`search-index.db\` in the Yomi data directory before you report a message as empty.
+- An empty text field is not proof of a recall. A recall is an unsend you made yourself, and LINE refuses one outside the first hour.
 
 ## Guidelines
 - Summarize conversations concisely and highlight action items or mentions needing attention.

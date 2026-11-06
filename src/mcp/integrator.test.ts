@@ -66,4 +66,29 @@ describe('MCP Integrator', () => {
     expect(mentionedTools.has('send_message')).toBe(true)
     expect(mentionedTools.has('unsend_message')).toBe(true)
   })
+
+  test('skill tells the agent to use the mounted tools before starting a server', async () => {
+    // An agent that cannot see the yomi tools used to conclude that the
+    // server was gone and start one by hand. The skill has to state the
+    // order of operations, so a missing registration reads as a missing
+    // registration instead of a missing server.
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+
+    const integratorPath = fileURLToPath(
+      new URL('integrator.ts', import.meta.url),
+    )
+    const source = readFileSync(integratorPath, 'utf8')
+
+    const match = source.match(
+      /const skillContent = `([\s\S]*?)`\n\n\s*const skillDirs/,
+    )
+    expect(match).not.toBeNull()
+    const skillContent = match![1]
+
+    expect(skillContent).toContain('call them directly')
+    expect(skillContent).toContain(
+      'Start the server yourself only when they are absent',
+    )
+  })
 })
