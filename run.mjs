@@ -433,14 +433,107 @@ switch (cmd) {
   case 'serve':
     await load('mcp/server');
     break;
+  case 'daemon': {
+    const subCmd = args[1] ?? 'start';
+    const { startDaemonServer, stopDaemon, getRunningDaemon } = await load('mcp/daemon');
+
+    if (subCmd === 'status') {
+      const daemon = await getRunningDaemon();
+      if (!daemon) {
+        console.log(JSON.stringify({ running: false }));
+      } else {
+        console.log(JSON.stringify({ running: true, ...daemon }));
+      }
+      process.exit(0);
+    }
+
+    if (subCmd === 'stop') {
+      const res = await stopDaemon();
+      if (res.stopped) {
+        console.log(JSON.stringify({ stopped: true, pid: res.pid }));
+      } else {
+        console.log(JSON.stringify({ stopped: false, message: 'Daemon is not running' }));
+      }
+      process.exit(0);
+    }
+
+    if (subCmd === 'start' || subCmd === 'run') {
+      const isForeground = args.includes('--foreground') || args.includes('-f');
+      const portIdx = args.indexOf('--port');
+      const port = portIdx >= 0 && args[portIdx + 1] ? parseInt(args[portIdx + 1], 10) : undefined;
+
+      const existing = await getRunningDaemon();
+      if (existing) {
+        console.log(JSON.stringify({ started: false, message: 'Daemon already running', ...existing }));
+        process.exit(0);
+      }
+
+      if (isForeground) {
+        await startDaemonServer({ port });
+        break;
+      }
+
+      const { spawn } = await import('node:child_process');
+      const child = spawn(process.execPath, [process.argv[1], 'daemon', '--foreground', ...(port ? ['--port', String(port)] : [])], {
+        detached: true,
+        stdio: 'ignore',
+        env: process.env,
+      });
+      child.unref();
+
+      let running = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        running = await getRunningDaemon();
+        if (running) break;
+      }
+
+      if (running) {
+        console.log(JSON.stringify({ started: true, ...running }));
+        process.exit(0);
+      } else {
+        console.error(JSON.stringify({ started: false, error: 'Daemon failed to initialize in background' }));
+        process.exit(1);
+      }
+    }
+
+    if (subCmd === 'restart') {
+      await stopDaemon();
+      await new Promise((r) => setTimeout(r, 500));
+      const { spawn } = await import('node:child_process');
+      const child = spawn(process.execPath, [process.argv[1], 'daemon', '--foreground'], {
+        detached: true,
+        stdio: 'ignore',
+        env: process.env,
+      });
+      child.unref();
+      let running = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        running = await getRunningDaemon();
+        if (running) break;
+      }
+      if (running) {
+        console.log(JSON.stringify({ restarted: true, ...running }));
+        process.exit(0);
+      } else {
+        console.error(JSON.stringify({ restarted: false, error: 'Daemon failed to restart' }));
+        process.exit(1);
+      }
+    }
+
+    console.error(`Unknown daemon command: ${subCmd}\nUsage: yomi daemon [start|stop|status|restart] [--foreground] [--port <number>]`);
+    process.exit(1);
+  }
   case 'help':
   case '--help':
   case '-h':
     console.log(`Yomi (読み) — read, reply, send images to, and search your LINE from any AI agent.
 
 Usage:
-  yomi                Start the MCP stdio server (default)
+  yomi                Start the MCP stdio server (default, proxies to daemon if running)
   yomi serve          Same as above, explicit
+  yomi daemon [...]   Manage background persistent MCP daemon (start|stop|status|restart)
   yomi login [...]    Run the passwordless login flow in a terminal
   yomi unsend <id>    Retract (unsend) a message sent within the last hour
   yomi help           Show this help
@@ -448,6 +541,9 @@ Usage:
 
 Examples:
   npx @rikaidev/yomi                  # start MCP server
+  npx @rikaidev/yomi daemon start     # start persistent shared daemon
+  npx @rikaidev/yomi daemon status    # check daemon status
+  npx @rikaidev/yomi daemon stop      # stop background daemon
   npx @rikaidev/yomi login            # interactive login
   npx @rikaidev/yomi login --phone +886912345678 --region TW`);
     break;

@@ -79,46 +79,8 @@ import { toolsForClient } from './ui/tools-with-ui.js'
 
 const log = createCliLogger('Yomi')
 
-/**
- * Build and start the Yomi MCP server over stdio.
- */
-async function main(): Promise<void> {
-  const service = new LineProtocolService()
-  // A Node EventEmitter with zero 'error' listeners turns any emit('error')
-  // into an uncaught exception that kills this process (see pwless-login-flow.ts,
-  // auth-session-service.ts). This listener must exist for the lifetime of the
-  // service so a login/session error surfaces as a log line, not a crash — the
-  // real failure still reaches callers through the normal throw/rejection path.
-  service.on('error', (error: any) =>
-    log.warn('service.error', { error: error?.message ?? String(error) }),
-  )
-  const resumed = await service.resumeSession()
-  if (!resumed) {
-    log.warn('session.resume_failed', { message: NO_CREDENTIALS_MESSAGE })
-  } else {
-    log.info('session.resumed', { mid: service.profile?.mid ?? null })
-    startCapture(service, getDefaultEmbedder()).catch((error: any) => {
-      log.error('capture.start_failed', {
-        error: error?.message ?? String(error),
-      })
-    })
-  }
-
-  // Asked once per process, bounded, best-effort: a hand-installed .mcpb
-  // bundle never auto-updates, so this notice is the only way a GUI-only user
-  // learns a newer Yomi exists (see ../util/update-check.ts). Awaited here
-  // because `instructions` is built once, before any client connects.
-  const updateNotice = await checkForUpdate()
-  if (updateNotice) {
-    log.info('update.available', { current: YOMI_VERSION })
-  }
-
-  // `instructions` is surfaced by the MCP SDK to the client/model on
-  // initialize — a "TOS on connect" privacy disclosure. It is a consent
-  // notice, not decoration. A short model directive precedes the canonical
-  // policy prose, which lives ONLY in PRIVACY.md (see ./policy.ts) so the
-  // disclosure is single-sourced and never drifts from get_scope_policy.
-  const instructions =
+export function buildInstructions(updateNotice?: string | null): string {
+  return (
     (updateNotice ? `${updateNotice}\n\n` : '') +
     'SESSION ERRORS — if a tool fails with a login-required or signed-out ' +
     'error, the MCP server and its connection are healthy: LINE revoked this ' +
@@ -145,8 +107,14 @@ async function main(): Promise<void> {
     'policy; call get_scope_policy only when the user asks to see the policy again or ' +
     'wants the current exclusion list. Policy follows:\n\n' +
     getPrivacyPolicyText()
+  )
+}
 
-  const buildServer = ({ era }: McpRequestContext): Server => {
+export function createBuildServer(
+  service: LineProtocolService,
+  instructions: string,
+): (ctx: McpRequestContext) => Server {
+  return ({ era }: McpRequestContext): Server => {
     const server = new Server(
       { name: 'yomi', version: YOMI_VERSION },
       {
@@ -511,6 +479,46 @@ async function main(): Promise<void> {
 
     return server
   }
+}
+
+/**
+ * Build and start the Yomi MCP server over stdio.
+ */
+async function main(): Promise<void> {
+  // If a background daemon is running and standalone is not forced, proxy stdio to it!
+  if (process.env.YOMI_STANDALONE !== '1') {
+    const { getRunningDaemon, proxyStdioToDaemon } = await import('./daemon.js')
+    const daemon = await getRunningDaemon()
+    if (daemon) {
+      log.info('daemon.connected', { port: daemon.port, pid: daemon.pid })
+      await proxyStdioToDaemon(daemon)
+      return
+    }
+  }
+
+  const service = new LineProtocolService()
+  service.on('error', (error: any) =>
+    log.warn('service.error', { error: error?.message ?? String(error) }),
+  )
+  const resumed = await service.resumeSession()
+  if (!resumed) {
+    log.warn('session.resume_failed', { message: NO_CREDENTIALS_MESSAGE })
+  } else {
+    log.info('session.resumed', { mid: service.profile?.mid ?? null })
+    startCapture(service, getDefaultEmbedder()).catch((error: any) => {
+      log.error('capture.start_failed', {
+        error: error?.message ?? String(error),
+      })
+    })
+  }
+
+  const updateNotice = await checkForUpdate()
+  if (updateNotice) {
+    log.info('update.available', { current: YOMI_VERSION })
+  }
+
+  const instructions = buildInstructions(updateNotice)
+  const buildServer = createBuildServer(service, instructions)
 
   serveStdio(buildServer, {
     legacy: 'serve',
