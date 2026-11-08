@@ -80,7 +80,7 @@ export function readDaemonInfo(): DaemonInfo | null {
 export async function isDaemonHealthy(info: DaemonInfo): Promise<boolean> {
   try {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 1000)
+    const timer = setTimeout(() => controller.abort(), 3000)
     const res = await fetch(`http://${info.host}:${info.port}/health`, {
       signal: controller.signal,
     })
@@ -104,10 +104,16 @@ export async function getRunningDaemon(): Promise<DaemonInfo | null> {
   if (healthy) {
     return info
   }
+  // Check if PID is still alive. If alive, do NOT delete daemon.json (avoid competing instances)
   try {
-    rmSync(daemonInfoPath())
-  } catch {}
-  return null
+    process.kill(info.pid, 0)
+    return info
+  } catch {
+    try {
+      rmSync(daemonInfoPath())
+    } catch {}
+    return null
+  }
 }
 
 export interface StartDaemonOptions {

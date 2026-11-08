@@ -434,7 +434,7 @@ switch (cmd) {
     await load('mcp/server');
     break;
   case 'daemon': {
-    const subCmd = args[1] ?? 'start';
+    const subCmd = args[1] && !args[1].startsWith('-') ? args[1] : 'start';
     const { startDaemonServer, stopDaemon, getRunningDaemon } = await load('mcp/daemon');
 
     if (subCmd === 'status') {
@@ -474,15 +474,19 @@ switch (cmd) {
       }
 
       const { spawn } = await import('node:child_process');
-      const child = spawn(process.execPath, [process.argv[1], 'daemon', '--foreground', ...(port ? ['--port', String(port)] : [])], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env,
-      });
+      const child = spawn(
+        process.execPath,
+        [process.argv[1], 'daemon', 'start', '--foreground', ...(port ? ['--port', String(port)] : [])],
+        {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env,
+        },
+      );
       child.unref();
 
       let running = null;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 100; i++) {
         await new Promise((r) => setTimeout(r, 100));
         running = await getRunningDaemon();
         if (running) break;
@@ -501,14 +505,14 @@ switch (cmd) {
       await stopDaemon();
       await new Promise((r) => setTimeout(r, 500));
       const { spawn } = await import('node:child_process');
-      const child = spawn(process.execPath, [process.argv[1], 'daemon', '--foreground'], {
+      const child = spawn(process.execPath, [process.argv[1], 'daemon', 'start', '--foreground'], {
         detached: true,
         stdio: 'ignore',
         env: process.env,
       });
       child.unref();
       let running = null;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 100; i++) {
         await new Promise((r) => setTimeout(r, 100));
         running = await getRunningDaemon();
         if (running) break;
