@@ -63,7 +63,7 @@ function resolveChatId(message: any, myMid: string | null): string | null {
  */
 export async function startCapture(
   service: LineProtocolService,
-  embedder: Embedder,
+  embedder?: Embedder,
 ): Promise<void> {
   try {
     const summary = await collectMessages(service, { embedder })

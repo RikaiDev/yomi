@@ -505,11 +505,15 @@ async function main(): Promise<void> {
     log.warn('session.resume_failed', { message: NO_CREDENTIALS_MESSAGE })
   } else {
     log.info('session.resumed', { mid: service.profile?.mid ?? null })
-    startCapture(service, getDefaultEmbedder()).catch((error: any) => {
-      log.error('capture.start_failed', {
-        error: error?.message ?? String(error),
+    if (process.env.YOMI_NO_CAPTURE !== '1') {
+      const embedder =
+        process.env.YOMI_EMBEDDINGS === '1' ? getDefaultEmbedder() : undefined
+      startCapture(service, embedder).catch((error: any) => {
+        log.error('capture.start_failed', {
+          error: error?.message ?? String(error),
+        })
       })
-    })
+    }
   }
 
   const updateNotice = await checkForUpdate()
