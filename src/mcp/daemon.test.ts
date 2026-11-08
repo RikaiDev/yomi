@@ -3,7 +3,8 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import {
   type DaemonInfo,
   daemonInfoPath,
@@ -27,6 +28,10 @@ describe('Yomi MCP Daemon', () => {
       host: '127.0.0.1',
       startedAt: new Date().toISOString(),
       version: '0.6.2',
+    }
+    const dir = dirname(path)
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
     }
     writeFileSync(path, JSON.stringify(fakeInfo), 'utf8')
     expect(existsSync(path)).toBe(true)

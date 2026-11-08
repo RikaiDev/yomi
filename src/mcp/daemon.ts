@@ -8,8 +8,15 @@
  * redundant processes, memory duplication, and session race conditions.
  */
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer, type Server as HttpServer } from 'node:http'
+import { dirname } from 'node:path'
 import { Readable } from 'node:stream'
 import {
   createMcpHandler,
@@ -240,7 +247,12 @@ export async function startDaemonServer(
   }
 
   try {
-    writeFileSync(daemonInfoPath(), JSON.stringify(info, null, 2), 'utf8')
+    const file = daemonInfoPath()
+    const dir = dirname(file)
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+    writeFileSync(file, JSON.stringify(info, null, 2), 'utf8')
   } catch (err: any) {
     log.warn('daemon.info_write_failed', { error: err?.message ?? String(err) })
   }
