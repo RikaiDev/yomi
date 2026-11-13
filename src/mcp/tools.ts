@@ -886,4 +886,24 @@ export const TOOLS: Tool[] = [
     },
     name: 'get_scope_policy',
   },
+  {
+    description:
+      "Analyse YOUR (the user's) personal LINE writing style from the local search index and return a structured profile: aggregate metrics (avg length, emoji ratio, formality, frequent phrases) plus recent message samples. Call this BEFORE drafting a reply on the user's behalf so the draft matches how they actually write — their tone, length, greeting habits, and vocabulary. Optionally pass chatId to focus on the style used in a specific conversation (e.g. how they write to a particular group vs. 1:1). Reads only the local index (no network); requires collect_messages to have indexed the user's own sent messages first.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chatId: {
+          type: 'string',
+          description:
+            'Optional: focus the style analysis on a specific conversation (as returned by list_conversations). When provided, chatSamples in the result shows how the user writes in that particular chat.',
+        },
+        sampleSize: {
+          type: 'number',
+          description:
+            'Number of recent messages to include as samples in the response (default 50, max 200).',
+        },
+      },
+    },
+    name: 'get_style_profile',
+  },
 ]

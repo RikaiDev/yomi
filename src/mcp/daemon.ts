@@ -98,6 +98,50 @@ export async function isDaemonHealthy(info: DaemonInfo): Promise<boolean> {
 export async function getRunningDaemon(): Promise<DaemonInfo | null> {
   const info = readDaemonInfo()
   if (!info) {
+    // daemon.json is missing — a daemon may still be running on the default
+    // port (e.g. it was started by an older version that wrote the file to a
+    // different path, or the file was cleaned up). Probe the default port
+    // directly so we don't spawn a competing instance.
+    const port = process.env.YOMI_PORT
+      ? parseInt(process.env.YOMI_PORT, 10)
+      : DEFAULT_DAEMON_PORT
+    const probe: DaemonInfo = {
+      pid: 0,
+      port,
+      host: DEFAULT_DAEMON_HOST,
+      startedAt: '',
+      version: '',
+    }
+    if (await isDaemonHealthy(probe)) {
+      // Reconstruct what we can from the health endpoint.
+      try {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 3000)
+        const res = await fetch(
+          `http://${DEFAULT_DAEMON_HOST}:${port}/health`,
+          {
+            signal: controller.signal,
+          },
+        )
+        clearTimeout(timer)
+        const json = (await res.json()) as {
+          ok?: boolean
+          pid?: number
+          version?: string
+          uptime?: number
+        }
+        if (json?.ok === true) {
+          const reconstructed: DaemonInfo = {
+            pid: json.pid ?? 0,
+            port,
+            host: DEFAULT_DAEMON_HOST,
+            startedAt: '',
+            version: json.version ?? '',
+          }
+          return reconstructed
+        }
+      } catch {}
+    }
     return null
   }
   const healthy = await isDaemonHealthy(info)
