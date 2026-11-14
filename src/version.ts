@@ -4,4 +4,4 @@
  * virtual filesystem). MUST stay equal to the "version" field in
  * package.json — the test in version.test.ts enforces that.
  */
-export const YOMI_VERSION = '0.6.12'
+export const YOMI_VERSION = '0.6.13'
