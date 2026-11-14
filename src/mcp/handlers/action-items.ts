@@ -17,7 +17,6 @@
 import { CONTENT_TYPE } from '../../line/core/constants.js'
 import { listBoxesByRecency } from '../../line/core/message-box-recency.js'
 import { sanitizeMessagePreview } from '../../line/core/message-preview.js'
-import { decryptLineMessage } from '../../line/core/message-query-service.js'
 import type { LineProtocolService } from '../../line/core/service.js'
 import { getExcludedChatIds } from '../../search/scope.js'
 import { resolveConversationNames, resolveSenderNames } from '../names.js'
@@ -50,6 +49,7 @@ function textOf(message: any): string {
 
 function isMeaningful(message: any): boolean {
   const ct = Number(message?.contentType ?? 0)
+  if (textOf(message).length > 0) return true
   const noise = new Set([
     CONTENT_TYPE.NONE,
     CONTENT_TYPE.PRESENCE,
@@ -58,7 +58,6 @@ function isMeaningful(message: any): boolean {
     CONTENT_TYPE.CHATEVENT,
   ])
   if (noise.has(ct)) return false
-  if (textOf(message).length > 0) return true
   const meaningfulTypes = new Set([
     CONTENT_TYPE.IMAGE,
     CONTENT_TYPE.VIDEO,
@@ -405,13 +404,8 @@ export async function handleGetActionItems(
       const unreadCount = box.unreadCount ?? 0
       const fetchCount = Math.min(Math.max(perChat, unreadCount + 15, 30), 120)
       const raw = await service.getRecentMessages(chatId, fetchCount)
-      const messages = service.e2eeManager
-        ? await Promise.all(
-            raw.map((m: any) =>
-              decryptLineMessage(service.e2eeManager, m, chatId),
-            ),
-          )
-        : raw
+      // getRecentMessages already returns decrypted messages; avoid re-decrypting.
+      const messages = raw
       const senderNames = await resolveSenderNames(
         service,
         messages.map((m: any) => m.from).filter(Boolean),
