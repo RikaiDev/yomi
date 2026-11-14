@@ -8,6 +8,7 @@
  * redundant processes, memory duplication, and session race conditions.
  */
 
+import { spawn } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -28,7 +29,7 @@ import { startCapture } from '../search/capture.js'
 import { getDefaultEmbedder } from '../search/default-embedder.js'
 import { yomiDataPath } from '../util/data-dir.js'
 import { createCliLogger } from '../util/log.js'
-import { checkForUpdate } from '../util/update-check.js'
+import { checkForUpdate, compareVersions } from '../util/update-check.js'
 import { YOMI_VERSION } from '../version.js'
 import { NO_CREDENTIALS_MESSAGE } from './handlers/index.js'
 import { buildInstructions, createBuildServer } from './server.js'
@@ -379,6 +380,86 @@ export async function stopDaemon(): Promise<{
     } catch {}
     return { stopped: false }
   }
+}
+
+/**
+ * Start the daemon in a detached background process using the current runtime
+ * and entrypoint, then wait until it is healthy. Used for automatic restarts
+ * after package updates so users do not have to run `yomi daemon restart`.
+ */
+export async function startDaemonInBackground(
+  options: { port?: number } = {},
+): Promise<DaemonInfo | null> {
+  const port = options.port
+  const entry = process.argv[1]
+  if (!entry) {
+    return null
+  }
+  const child = spawn(
+    process.execPath,
+    [
+      entry,
+      'daemon',
+      'start',
+      '--foreground',
+      ...(port ? ['--port', String(port)] : []),
+    ],
+    {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    },
+  )
+  child.unref()
+
+  let running: DaemonInfo | null = null
+  for (let i = 0; i < 100; i++) {
+    await new Promise((r) => setTimeout(r, 100))
+    running = await getRunningDaemon()
+    if (running) {
+      break
+    }
+  }
+  return running
+}
+
+/**
+ * Ensure the running daemon (if any) matches this installed Yomi version.
+ * When a stale daemon is detected, restart it automatically and transparently.
+ */
+export async function ensureDaemonUpToDate(): Promise<DaemonInfo | null> {
+  const daemon = await getRunningDaemon()
+  if (!daemon) {
+    return null
+  }
+  if (!daemon.version || daemon.version === YOMI_VERSION) {
+    return daemon
+  }
+  if (compareVersions(YOMI_VERSION, daemon.version) <= 0) {
+    return daemon
+  }
+
+  log.info('daemon.auto_restart', {
+    from: daemon.version,
+    to: YOMI_VERSION,
+    port: daemon.port,
+  })
+  await stopDaemon()
+  await new Promise((r) => setTimeout(r, 300))
+  const restarted = await startDaemonInBackground({ port: daemon.port })
+  if (restarted) {
+    log.info('daemon.auto_restarted', {
+      version: restarted.version,
+      pid: restarted.pid,
+      port: restarted.port,
+    })
+  } else {
+    log.warn('daemon.auto_restart_failed', {
+      from: daemon.version,
+      to: YOMI_VERSION,
+    })
+  }
+  return restarted
 }
 
 export async function proxyStdioToDaemon(info: DaemonInfo): Promise<void> {

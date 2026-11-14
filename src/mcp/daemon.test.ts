@@ -132,7 +132,17 @@ describe('Yomi MCP Daemon', () => {
     try {
       rmSync(daemonInfoPath())
     } catch {}
-    const res = await stopDaemon()
-    expect(res.stopped).toBe(false)
+    const originalPort = process.env.YOMI_PORT
+    process.env.YOMI_PORT = '59998'
+    try {
+      const res = await stopDaemon()
+      expect(res.stopped).toBe(false)
+    } finally {
+      if (originalPort === undefined) {
+        delete process.env.YOMI_PORT
+      } else {
+        process.env.YOMI_PORT = originalPort
+      }
+    }
   })
 })

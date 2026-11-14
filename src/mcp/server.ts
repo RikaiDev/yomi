@@ -504,9 +504,14 @@ export function createBuildServer(
 async function main(): Promise<void> {
   // If a background daemon is running and standalone is not forced, proxy stdio to it!
   if (process.env.YOMI_STANDALONE !== '1') {
-    const { getRunningDaemon, proxyStdioToDaemon } = await import('./daemon.js')
-    const daemon = await getRunningDaemon()
+    const { ensureDaemonUpToDate, getRunningDaemon, proxyStdioToDaemon } =
+      await import('./daemon.js')
+    let daemon = await getRunningDaemon()
     if (daemon) {
+      const updated = await ensureDaemonUpToDate()
+      if (updated) {
+        daemon = updated
+      }
       log.info('daemon.connected', { port: daemon.port, pid: daemon.pid })
       await proxyStdioToDaemon(daemon)
       return

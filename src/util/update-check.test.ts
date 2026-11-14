@@ -26,7 +26,8 @@ test('the notice names the running version and how to update', () => {
   expect(notice).toContain('9.9.9')
   expect(notice).toContain('bun add -g @rikaidev/yomi@latest')
   expect(notice).toContain('npm install -g @rikaidev/yomi@latest')
-  expect(notice).toContain('yomi daemon restart')
+  expect(notice).toContain('restarts automatically')
+  expect(notice).toContain('no manual `yomi daemon restart`')
   expect(notice).not.toContain('or reinstall the package')
 })
 
