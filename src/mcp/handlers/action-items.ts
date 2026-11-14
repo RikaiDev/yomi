@@ -1,23 +1,19 @@
 /**
- * "Ball in court" analysis — generalized, heuristic action-item detection over
+ * "Ball in court" analysis — AI-native, heuristic action-item detection over
  * LINE conversations (who likely needs to act next).
  *
- * Deterministic, read-only analysis over recent message flow. It does not read
- * illocutionary force perfectly (no LLM), so it returns reasons, confidence,
- * and evidence messages for inspection. It is designed to be useful by default:
- * - picks the latest actionable inbound evidence (question/request/mention),
- *   not just the last attachment in a burst
- * - treats unread/inbound-after-my-last-reply as pending on my side
- * - distinguishes official/broadcast traffic from personal 1:1 requests
- * - surfaces group mentions/requests as team/mine with attribution
- *
- * Purely read-only: no marks-read, no index writes.
+ * Uses local embedding semantic similarity (natural-language intent anchors)
+ * plus conversation structure (sender, recency, unread state, mentions, group)
+ * instead of hardcoded keyword dictionaries. Returns reasons, confidence, and
+ * evidence for inspection. Read-only: no marks-read, no index writes.
  */
 
 import { CONTENT_TYPE } from '../../line/core/constants.js'
 import { listBoxesByRecency } from '../../line/core/message-box-recency.js'
 import { sanitizeMessagePreview } from '../../line/core/message-preview.js'
 import type { LineProtocolService } from '../../line/core/service.js'
+import { getDefaultEmbedder } from '../../search/default-embedder.js'
+import type { Embedder } from '../../search/embedder.js'
 import { getExcludedChatIds } from '../../search/scope.js'
 import { resolveConversationNames, resolveSenderNames } from '../names.js'
 import { createPhiAccumulator, maskInto, phiNote } from '../phi-guard.js'
@@ -31,6 +27,92 @@ interface BallResult {
   confidence: Confidence
   reasons: string[]
   evidence?: any
+}
+
+type Intent =
+  | 'actionable_request'
+  | 'informational_or_ack'
+  | 'broadcast_or_promo'
+  | 'directed_to_other'
+
+const INTENT_ANCHORS: Record<Intent, string[]> = {
+  actionable_request: [
+    'asks me a question and expects my answer or decision',
+    'requests me to do something, provide information, confirm, arrange, send, pay, reply, or take action',
+    'follows up waiting for my response or a task I need to handle',
+  ],
+  informational_or_ack: [
+    'shares information, status, or thanks with no action or reply needed from me',
+    'a brief acknowledgement, greeting, or closing message that does not ask me to do anything',
+  ],
+  broadcast_or_promo: [
+    'a broadcast announcement, promotion, advertisement, or notification sent to many people, not a personal request to me',
+  ],
+  directed_to_other: [
+    'addressed to another specific person in the conversation, asking them (not me) to act or reply',
+  ],
+}
+
+let anchorVectorsPromise: Promise<Map<Intent, number[][]>> | null = null
+
+function dot(a: number[], b: number[]): number {
+  let v = 0
+  const n = Math.min(a.length, b.length)
+  for (let i = 0; i < n; i++) v += a[i] * b[i]
+  return v
+}
+
+async function getAnchorVectors(
+  embedder: Embedder,
+): Promise<Map<Intent, number[][]>> {
+  if (!anchorVectorsPromise) {
+    anchorVectorsPromise = (async () => {
+      const intents = Object.keys(INTENT_ANCHORS) as Intent[]
+      const texts = intents.flatMap((i) => INTENT_ANCHORS[i])
+      const vecs = await embedder.embed(texts)
+      const map = new Map<Intent, number[][]>()
+      let idx = 0
+      for (const intent of intents) {
+        map.set(intent, vecs.slice(idx, idx + INTENT_ANCHORS[intent].length))
+        idx += INTENT_ANCHORS[intent].length
+      }
+      return map
+    })().catch((err) => {
+      anchorVectorsPromise = null
+      throw err
+    })
+  }
+  return anchorVectorsPromise
+}
+
+async function classifyIntent(
+  texts: string[],
+  embedder: Embedder,
+): Promise<Array<{ intent: Intent; score: number; margin: number }>> {
+  if (texts.length === 0) return []
+  const anchors = await getAnchorVectors(embedder)
+  const msgVecs = await embedder.embed(texts.map((t) => t || 'no text content'))
+  const intents = Object.keys(INTENT_ANCHORS) as Intent[]
+  return msgVecs.map((mv) => {
+    const scores = new Map<Intent, number>()
+    for (const intent of intents) {
+      let best = -Infinity
+      for (const av of anchors.get(intent) ?? []) {
+        best = Math.max(best, dot(mv, av))
+      }
+      scores.set(intent, best)
+    }
+    const ranked = [...intents].sort(
+      (a, b) => (scores.get(b) ?? 0) - (scores.get(a) ?? 0),
+    )
+    const top = ranked[0]
+    const second = ranked[1]
+    return {
+      intent: top,
+      score: scores.get(top) ?? 0,
+      margin: (scores.get(top) ?? 0) - (scores.get(second) ?? 0),
+    }
+  })
 }
 
 function messageTimestamp(message: any): number {
@@ -58,18 +140,7 @@ function isMeaningful(message: any): boolean {
     CONTENT_TYPE.CHATEVENT,
   ])
   if (noise.has(ct)) return false
-  const meaningfulTypes = new Set([
-    CONTENT_TYPE.IMAGE,
-    CONTENT_TYPE.VIDEO,
-    CONTENT_TYPE.AUDIO,
-    CONTENT_TYPE.FILE,
-    CONTENT_TYPE.LOCATION,
-    CONTENT_TYPE.CONTACT,
-    CONTENT_TYPE.STICKER,
-    CONTENT_TYPE.RICH,
-    CONTENT_TYPE.FLEX,
-  ])
-  return meaningfulTypes.has(ct)
+  return true
 }
 
 function contentTypeLabel(ct: number): string {
@@ -85,34 +156,6 @@ function contentTypeLabel(ct: number): string {
     [CONTENT_TYPE.FLEX]: 'flex',
   }
   return map[ct] ?? ''
-}
-
-function looksActionable(text: string): { hit: boolean; cues: string[] } {
-  const t = text.trim()
-  if (!t) return { hit: false, cues: [] }
-  const cues: string[] = []
-  if (/[?？]/.test(t)) cues.push('question')
-  const patterns: Array<[RegExp, string]> = [
-    [/(請|麻煩|幫我|幫忙|可否|能否|是否|方便|拜託|勞煩|還請)/u, 'request'],
-    [
-      /(確認|提供|回覆|回報|告知|更新|傳|給我|補|修|處理|安排|協助|開立|報價|匯款|付款|簽|送出|報名|填|聯繫|電話)/u,
-      'action',
-    ],
-    [/(什麼時候|何時|哪天|幾點|有空|要不要|可以嗎|好嗎|嗎$)/u, 'question'],
-    [/(提醒|記得|截止|期限|到期|今天|明天|盡快|asap)/iu, 'time_sensitive'],
-  ]
-  for (const [re, label] of patterns) {
-    if (re.test(t) && !cues.includes(label)) cues.push(label)
-  }
-  return { hit: cues.length > 0, cues }
-}
-
-function looksNonActionableAck(text: string): boolean {
-  const t = text.trim()
-  if (!t) return false
-  return /^(好|好的|ok|OK|收到|了解|瞭解|謝謝|感謝|感恩|辛苦了|沒問題|可以|👌|👍|🙏)+[!！。.~～…]*$/u.test(
-    t,
-  )
 }
 
 function mentionsSomeone(
@@ -136,14 +179,6 @@ function mentionsSomeone(
   return { me, all }
 }
 
-function isLikelyOfficial(chatId: string, name: string | null): boolean {
-  if (!chatId.startsWith('u')) return false
-  const n = name ?? ''
-  return /(通知|官方|LINE\s|LINE$|Bank|Pay|購物|禮物|TV|TODAY|錢包|發票|貼圖|Store|GAME|社群|商家|Service|客服|公告|Rangers|抽獎|優惠|POINTS|GO\b|MINI App)/iu.test(
-    n,
-  )
-}
-
 function messagePreview(message: any): string {
   const text = sanitizeMessagePreview(textOf(message))
   if (text) return text
@@ -151,14 +186,13 @@ function messagePreview(message: any): string {
   return label ? `[${label}]` : ''
 }
 
-function classifyBall(
+async function classifyBall(
   messages: any[],
   myMid: string | null,
-  chatId: string,
-  chatName: string | null,
   isGroup: boolean,
   unreadCount: number,
-): BallResult & { lastInbound?: any; lastMine?: any } {
+  embedder: Embedder | null,
+): Promise<BallResult & { lastInbound?: any; lastMine?: any }> {
   const meaningful = messages
     .filter(isMeaningful)
     .sort((a, b) => messageTimestamp(a) - messageTimestamp(b))
@@ -180,138 +214,194 @@ function classifyBall(
       )
     : meaningful.filter((m) => !isMe(m, myMid))
 
-  const official = isLikelyOfficial(chatId, chatName)
   const pendingInbound = unreadCount > 0 || inboundAfterMine.length > 0
 
-  if (official && !isGroup) {
-    const actionableInbound = [...inboundAfterMine]
-      .reverse()
-      .find((m) => looksActionable(textOf(m)).hit)
-    if (pendingInbound && actionableInbound) {
-      const cues = looksActionable(textOf(actionableInbound)).cues
-      return {
-        ball: 'mine',
-        confidence: 'medium',
-        reasons: ['official_but_actionable', ...cues],
-        lastInbound: actionableInbound,
-        lastMine,
-        evidence: actionableInbound,
-      }
-    }
-    return {
-      ball: 'none',
-      confidence: unreadCount > 0 ? 'medium' : 'high',
-      reasons: ['official_or_notification'],
-      lastInbound,
-      lastMine,
-      evidence: lastInbound ?? last,
+  // Semantic classification over relevant texts (AI-native)
+  let intentById = new Map<
+    string,
+    { intent: Intent; score: number; margin: number }
+  >()
+  const candidates = pendingInbound
+    ? inboundAfterMine.length > 0
+      ? inboundAfterMine
+      : lastInbound
+        ? [lastInbound]
+        : []
+    : last && isMe(last, myMid)
+      ? [last]
+      : []
+  const textCandidates = candidates
+    .map((m) => ({ m, t: textOf(m) }))
+    .filter((x) => x.t.length > 0)
+  if (embedder && textCandidates.length > 0) {
+    try {
+      const results = await classifyIntent(
+        textCandidates.map((x) => x.t),
+        embedder,
+      )
+      textCandidates.forEach((x, i) => {
+        intentById.set(String(x.m.id ?? i), results[i])
+      })
+    } catch {
+      intentById = new Map()
     }
   }
 
-  // If there is inbound after my last reply (or unread), evaluate that inbound.
+  const getIntent = (m: any) => intentById.get(String(m?.id ?? ''))
+
   if (pendingInbound && lastInbound) {
     const relevant =
       inboundAfterMine.length > 0 ? inboundAfterMine : [lastInbound]
     const latest = relevant[relevant.length - 1]
-    const actionable =
-      [...relevant].reverse().find((m) => {
-        const t = textOf(m)
-        return (
-          looksActionable(t).hit ||
-          mentionsSomeone(m, myMid).me ||
-          mentionsSomeone(m, myMid).all
-        )
-      }) ?? latest
-    const text = textOf(actionable)
-    const act = looksActionable(text)
-    const mention = mentionsSomeone(actionable, myMid)
 
-    if (mention.me) {
-      return {
-        ball: 'mine',
-        confidence: 'high',
-        reasons: ['mentioned_me', ...act.cues, unreadCount > 0 ? 'unread' : ''],
-        lastInbound: actionable,
-        lastMine,
-        evidence: actionable,
+    // pick evidence: mentioned me/all > actionable by intent > latest
+    let evidence = latest
+    let evidenceIntent: Intent | null = getIntent(latest)?.intent ?? null
+    let evidenceScore = getIntent(latest)?.score ?? 0
+    for (let i = relevant.length - 1; i >= 0; i--) {
+      const m = relevant[i]
+      const mention = mentionsSomeone(m, myMid)
+      const it = getIntent(m)
+      if (mention.me) {
+        evidence = m
+        evidenceIntent = 'actionable_request'
+        evidenceScore = 1
+        break
+      }
+      if (mention.all && isGroup) {
+        evidence = m
+        evidenceIntent = 'actionable_request'
+        evidenceScore = 0.9
+        break
+      }
+      if (
+        it?.intent === 'actionable_request' &&
+        (evidenceIntent !== 'actionable_request' || it.score >= evidenceScore)
+      ) {
+        evidence = m
+        evidenceIntent = it.intent
+        evidenceScore = it.score
+      } else if (
+        !evidenceIntent &&
+        it &&
+        it.intent !== 'informational_or_ack'
+      ) {
+        evidence = m
+        evidenceIntent = it.intent
+        evidenceScore = it.score
       }
     }
+
+    const mention = mentionsSomeone(evidence, myMid)
+    const actionable =
+      mention.me ||
+      mention.all ||
+      evidenceIntent === 'actionable_request' ||
+      (evidenceIntent === null && textOf(evidence).length === 0)
+    const directedOther =
+      isGroup && evidenceIntent === 'directed_to_other' && !mention.me
+
     if (isGroup) {
-      if (mention.all) {
+      if (mention.me || (mention.all && actionable)) {
         return {
           ball: 'mine',
           confidence: 'high',
           reasons: [
-            'mentioned_all',
-            ...act.cues,
-            unreadCount > 0 ? 'unread' : '',
+            mention.me ? 'mentioned_me' : 'mentioned_all',
+            'semantic_actionable',
+            'unread_or_pending',
           ],
-          lastInbound: actionable,
+          lastInbound: evidence,
           lastMine,
-          evidence: actionable,
+          evidence,
         }
       }
-      if (act.hit) {
+      if (directedOther) {
         return {
-          ball: 'team',
+          ball: 'none',
           confidence: 'medium',
-          reasons: [
-            'group_inbound_actionable',
-            ...act.cues,
-            unreadCount > 0 ? 'unread' : '',
-          ],
-          lastInbound: actionable,
+          reasons: ['group_addressed_to_other'],
+          lastInbound: latest,
           lastMine,
-          evidence: actionable,
+          evidence,
+        }
+      }
+      if (actionable) {
+        return {
+          ball: mention.all ? 'mine' : 'team',
+          confidence: evidenceIntent ? 'medium' : 'medium',
+          reasons: [
+            mention.all ? 'mentioned_all' : 'group_actionable',
+            'semantic_actionable',
+            'unread_or_pending',
+          ],
+          lastInbound: evidence,
+          lastMine,
+          evidence,
+        }
+      }
+      if (evidenceIntent === 'informational_or_ack') {
+        return {
+          ball: 'none',
+          confidence: 'medium',
+          reasons: ['group_informational'],
+          lastInbound: latest,
+          lastMine,
+          evidence: latest,
         }
       }
       return {
         ball: 'team',
         confidence: 'low',
-        reasons: [
-          'group_inbound_pending',
-          unreadCount > 0 ? 'unread' : 'inbound_unanswered',
-        ],
+        reasons: ['group_inbound_pending', 'unread_or_pending'],
         lastInbound: latest,
         lastMine,
         evidence: latest,
       }
     }
 
-    if (act.hit) {
+    // 1:1
+    if (actionable) {
       return {
         ball: 'mine',
-        confidence: 'high',
-        reasons: [
-          'inbound_actionable',
-          ...act.cues,
-          unreadCount > 0 ? 'unread' : '',
-        ],
-        lastInbound: actionable,
+        confidence:
+          evidenceIntent === 'actionable_request' || mention.me
+            ? 'high'
+            : 'medium',
+        reasons: ['semantic_actionable', 'unread_or_pending'],
+        lastInbound: evidence,
         lastMine,
-        evidence: actionable,
+        evidence,
       }
     }
-    // 1:1 inbound without explicit cue: still pending reply/review
+    if (evidenceIntent === 'informational_or_ack') {
+      return {
+        ball: 'none',
+        confidence: 'medium',
+        reasons: ['semantic_informational'],
+        lastInbound: latest,
+        lastMine,
+        evidence: latest,
+      }
+    }
     return {
       ball: 'mine',
-      confidence: unreadCount > 0 ? 'medium' : 'medium',
-      reasons: [unreadCount > 0 ? 'unread_inbound' : 'inbound_unanswered'],
+      confidence: 'medium',
+      reasons: ['inbound_pending'],
       lastInbound: latest,
       lastMine,
       evidence: latest,
     }
   }
 
-  // No pending inbound: I spoke last
+  // No pending inbound: last is mine
   if (lastMine && isMe(last, myMid)) {
-    const myText = textOf(last)
-    const act = looksActionable(myText)
-    if (act.hit) {
+    const it = getIntent(last)
+    if (it?.intent === 'actionable_request') {
       return {
         ball: 'theirs',
         confidence: 'medium',
-        reasons: ['i_asked_waiting_reply', ...act.cues],
+        reasons: ['i_awaiting_reply', 'semantic_actionable'],
         lastInbound,
         lastMine: last,
         evidence: last,
@@ -319,10 +409,7 @@ function classifyBall(
     }
     return {
       ball: 'theirs',
-      confidence:
-        looksNonActionableAck(myText) || myText.length === 0
-          ? 'medium'
-          : 'high',
+      confidence: 'high',
       reasons: ['i_replied_last'],
       lastInbound,
       lastMine: last,
@@ -330,19 +417,8 @@ function classifyBall(
     }
   }
 
-  // Fallbacks
-  if (isGroup) {
-    return {
-      ball: 'none',
-      confidence: 'low',
-      reasons: ['group_no_pending'],
-      lastInbound,
-      lastMine,
-      evidence: last,
-    }
-  }
   return {
-    ball: 'none',
+    ball: isGroup ? 'team' : 'none',
     confidence: 'low',
     reasons: ['no_pending'],
     lastInbound,
@@ -396,6 +472,15 @@ export async function handleGetActionItems(
   )
   const acc = createPhiAccumulator()
 
+  // AI-native semantic classifier (local embeddings). If unavailable, analysis
+  // still proceeds on structural signals (recency/unread/mentions/flow).
+  let embedder: Embedder | null = null
+  try {
+    embedder = getDefaultEmbedder()
+  } catch {
+    embedder = null
+  }
+
   const items = await Promise.all(
     selected.map(async (box: any) => {
       const chatId = box.id
@@ -403,20 +488,17 @@ export async function handleGetActionItems(
       const isGroup = chatId.startsWith('c') || chatId.startsWith('r')
       const unreadCount = box.unreadCount ?? 0
       const fetchCount = Math.min(Math.max(perChat, unreadCount + 15, 30), 120)
-      const raw = await service.getRecentMessages(chatId, fetchCount)
-      // getRecentMessages already returns decrypted messages; avoid re-decrypting.
-      const messages = raw
+      const messages = await service.getRecentMessages(chatId, fetchCount)
       const senderNames = await resolveSenderNames(
         service,
         messages.map((m: any) => m.from).filter(Boolean),
       )
-      const verdict = classifyBall(
+      const verdict = await classifyBall(
         messages,
         myMid,
-        chatId,
-        chatName,
         isGroup,
         unreadCount,
+        embedder,
       )
       const evidence =
         verdict.evidence || verdict.lastInbound || verdict.lastMine
