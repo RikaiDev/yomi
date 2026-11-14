@@ -406,6 +406,22 @@ function decodeVector(blob: Uint8Array): Float32Array {
 }
 
 /**
+ * Remove embeddings that do not belong to the active model. This makes model
+ * upgrades (e.g. different model label or vector dimension) automatic: stale
+ * vectors are discarded so they are never compared against incompatible
+ * vectors and can be re-embedded from stored message text.
+ *
+ * @param model - Active embedder model label to keep.
+ * @returns Number of stale embedding rows deleted.
+ */
+export function pruneStaleEmbeddings(model: string): number {
+  const handle = getDb()
+  const stmt = handle.prepare('DELETE FROM embeddings WHERE model != $model;')
+  const result = stmt.run({ $model: model }) as { changes?: number } | void
+  return Number((result as any)?.changes ?? 0)
+}
+
+/**
  * Upsert a batch of message embeddings for one embedder model, keyed on
  * (messageId, model). Called by the collector after upsertMessages, with
  * whatever Embedder the caller injected — this function has no opinion on
@@ -502,7 +518,7 @@ export function getMessagesMissingEmbedding(
  * @param b - Second vector.
  * @returns Cosine similarity in [-1, 1].
  */
-function cosineSimilarity(a: Float32Array, b: number[]): number {
+function cosineSimilarity(a: Float32Array, b: ArrayLike<number>): number {
   let dot = 0
   let normA = 0
   let normB = 0
@@ -562,9 +578,13 @@ export async function semanticSearch(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     const { vector, ...result } = row
+    const decoded = decodeVector(vector)
+    if (decoded.length !== queryVector.length) {
+      continue
+    }
     scored.push({
       ...result,
-      score: cosineSimilarity(decodeVector(vector), queryVector),
+      score: cosineSimilarity(decoded, queryVector),
     })
     if ((i + 1) % SEMANTIC_SCORE_CHUNK === 0 && i + 1 < rows.length) {
       await yieldToEventLoop()

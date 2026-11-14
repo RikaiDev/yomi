@@ -36,6 +36,7 @@ import { getExcludedChatIds } from './scope.js'
 import {
   getMessagesMissingEmbedding,
   type MessageRecord,
+  pruneStaleEmbeddings,
   upsertEmbeddings,
   upsertMessages,
 } from './store.js'
@@ -152,6 +153,16 @@ export async function collectMessages(
   }
   let messagesIndexed = 0
   let messagesEmbedded = 0
+
+  if (options.embedder) {
+    try {
+      pruneStaleEmbeddings(options.embedder.modelLabel)
+    } catch (error: any) {
+      log.warn('embed.prune_failed', {
+        error: error?.message ?? String(error),
+      })
+    }
+  }
 
   for (const [chatId, chatName] of chatNames) {
     const messages = await service.getRecentMessages(chatId, perChat)
