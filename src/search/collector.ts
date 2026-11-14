@@ -42,7 +42,30 @@ import {
 
 const log = createCliLogger('Yomi')
 
-const EMBED_BATCH = 64
+const DEFAULT_EMBED_BATCH = 8
+const DEFAULT_EMBED_BACKFILL_MAX = 512
+const MAX_EMBED_TEXT_CHARS = 2000
+
+function embedBatchSize(): number {
+  const raw = Number(process.env.YOMI_EMBED_BATCH)
+  if (Number.isFinite(raw) && raw >= 1) return Math.min(Math.floor(raw), 64)
+  return DEFAULT_EMBED_BATCH
+}
+
+function embedBackfillMax(): number {
+  const raw = Number(process.env.YOMI_EMBED_BACKFILL_MAX)
+  if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw)
+  return DEFAULT_EMBED_BACKFILL_MAX
+}
+
+function normalizeEmbedText(text: string): string {
+  const t = text ?? ''
+  return t.length > MAX_EMBED_TEXT_CHARS ? t.slice(0, MAX_EMBED_TEXT_CHARS) : t
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
+}
 
 /** Options for one collect_messages run. */
 export interface CollectMessagesOptions {
@@ -55,6 +78,16 @@ export interface CollectMessagesOptions {
    * Omit to skip embedding entirely (index stays keyword-only).
    */
   embedder?: Embedder
+  /**
+   * Skip global backfill of already-indexed messages missing embeddings.
+   * Useful for frequent live flushes to avoid repeated full-index sweeps.
+   */
+  skipBackfill?: boolean
+  /**
+   * Maximum number of missing embeddings to backfill in this run.
+   * Omit for the default budget. Ignored when skipBackfill is true.
+   */
+  backfillMax?: number
 }
 
 /** Summary of one collect_messages run. */
@@ -165,9 +198,13 @@ export async function collectMessages(
   // from a run where the model wasn't loaded. This is why re-running
   // collect_messages repairs a partially-embedded index without re-fetching
   // from LINE. The rows just embedded above are no longer "missing", so they
-  // are not embedded twice.
-  if (options.embedder) {
-    messagesEmbedded += await backfillMissingEmbeddings(options.embedder)
+  // are not embedded twice. Live/incremental flushes can skip or cap this to
+  // keep latency and memory bounded.
+  if (options.embedder && !options.skipBackfill) {
+    messagesEmbedded += await backfillMissingEmbeddings(
+      options.embedder,
+      options.backfillMax,
+    )
   }
 
   return { chatsScanned: chatNames.size, messagesIndexed, messagesEmbedded }
@@ -183,16 +220,25 @@ export async function collectMessages(
  * @param embedder - Injected embedder to embed missing rows with.
  * @returns Number of messages newly embedded and stored.
  */
-async function backfillMissingEmbeddings(embedder: Embedder): Promise<number> {
-  const missing = getMessagesMissingEmbedding(embedder.modelLabel)
-  if (missing.length === 0) {
+async function backfillMissingEmbeddings(
+  embedder: Embedder,
+  max?: number,
+): Promise<number> {
+  const missingAll = getMessagesMissingEmbedding(embedder.modelLabel)
+  if (missingAll.length === 0) {
     return 0
   }
+  const limit = Math.max(0, max ?? embedBackfillMax())
+  const missing =
+    limit >= missingAll.length ? missingAll : missingAll.slice(0, limit)
   let embedded = 0
-  for (let i = 0; i < missing.length; i += EMBED_BATCH) {
-    const batch = missing.slice(i, i + EMBED_BATCH)
+  const batchSize = embedBatchSize()
+  for (let i = 0; i < missing.length; i += batchSize) {
+    const batch = missing.slice(i, i + batchSize)
     try {
-      const vectors = await embedder.embed(batch.map((row) => row.text))
+      const vectors = await embedder.embed(
+        batch.map((row) => normalizeEmbedText(row.text)),
+      )
       embedded += upsertEmbeddings(
         batch.map((row, j) => ({
           messageId: row.messageId,
@@ -206,6 +252,9 @@ async function backfillMissingEmbeddings(embedder: Embedder): Promise<number> {
         remaining: missing.length - embedded,
       })
       break
+    }
+    if (i + batchSize < missing.length) {
+      await yieldToEventLoop()
     }
   }
   return embedded
@@ -230,17 +279,32 @@ async function embedAndStore(
   if (!embedder || rows.length === 0) {
     return 0
   }
-  try {
-    const vectors = await embedder.embed(rows.map((row) => row.text))
-    return upsertEmbeddings(
-      rows.map((row, i) => ({ messageId: row.messageId, vector: vectors[i] })),
-      embedder.modelLabel,
-    )
-  } catch (error: any) {
-    log.warn('embed.failed', {
-      error: error?.message ?? String(error),
-      count: rows.length,
-    })
-    return 0
+  let embedded = 0
+  const batchSize = embedBatchSize()
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const batch = rows.slice(i, i + batchSize)
+    try {
+      const vectors = await embedder.embed(
+        batch.map((row) => normalizeEmbedText(row.text)),
+      )
+      embedded += upsertEmbeddings(
+        batch.map((row, j) => ({
+          messageId: row.messageId,
+          vector: vectors[j],
+        })),
+        embedder.modelLabel,
+      )
+    } catch (error: any) {
+      log.warn('embed.failed', {
+        error: error?.message ?? String(error),
+        count: batch.length,
+        remaining: rows.length - i,
+      })
+      break
+    }
+    if (i + batchSize < rows.length) {
+      await yieldToEventLoop()
+    }
   }
+  return embedded
 }

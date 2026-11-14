@@ -189,6 +189,9 @@ export async function startDaemonServer(
   } else {
     log.info('session.resumed', { mid: service.profile?.mid ?? null })
     if (process.env.YOMI_NO_CAPTURE !== '1') {
+      // Embeddings are enabled by default. Set YOMI_EMBEDDINGS=0 to disable
+      // semantic vectors (keyword search still works); capture itself can be
+      // disabled with YOMI_NO_CAPTURE=1.
       const embedder =
         process.env.YOMI_EMBEDDINGS === '0' ? undefined : getDefaultEmbedder()
       startCapture(service, embedder).catch((error: any) => {

@@ -66,10 +66,14 @@ export async function startCapture(
   embedder?: Embedder,
 ): Promise<void> {
   try {
-    const summary = await collectMessages(service, { embedder })
+    const summary = await collectMessages(service, {
+      embedder,
+      backfillMax: 256,
+    })
     log.info('capture.catchup', {
       chatsScanned: summary.chatsScanned,
       messagesIndexed: summary.messagesIndexed,
+      messagesEmbedded: summary.messagesEmbedded,
     })
   } catch (error: any) {
     // A runtime with no SQLite is not a hiccup this loop recovers from — the
@@ -103,6 +107,7 @@ export async function startCapture(
         chatIds,
         perChat: LIVE_PER_CHAT,
         embedder,
+        skipBackfill: true,
       })
     } catch (error: any) {
       log.warn('capture.index_failed', {

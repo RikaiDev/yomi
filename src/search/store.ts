@@ -515,6 +515,13 @@ function cosineSimilarity(a: Float32Array, b: number[]): number {
   return denom === 0 ? 0 : dot / denom
 }
 
+const SEMANTIC_SCAN_MAX = 20000
+const SEMANTIC_SCORE_CHUNK = 2000
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
 /**
  * Semantic search: embed the query with the caller-injected Embedder, then
  * brute-force cosine-similarity-rank all stored vectors for that model.
@@ -545,17 +552,24 @@ export async function semanticSearch(
            e.vector as vector
     FROM embeddings e
     JOIN messages m ON m.messageId = e.messageId
-    WHERE e.model = $model;
+    WHERE e.model = $model
+    ORDER BY m.createdTime DESC
+    LIMIT $limit;
   `)
-    .all({ $model: embedder.modelLabel })
+    .all({ $model: embedder.modelLabel, $limit: SEMANTIC_SCAN_MAX })
 
-  const scored = rows.map((row) => {
+  const scored: SemanticSearchResult[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
     const { vector, ...result } = row
-    return {
+    scored.push({
       ...result,
       score: cosineSimilarity(decodeVector(vector), queryVector),
+    })
+    if ((i + 1) % SEMANTIC_SCORE_CHUNK === 0 && i + 1 < rows.length) {
+      await yieldToEventLoop()
     }
-  })
+  }
   scored.sort((a, b) => b.score - a.score)
   return scored.slice(0, limit)
 }

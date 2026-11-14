@@ -541,7 +541,7 @@ async function main(): Promise<void> {
     log.info('session.resumed', { mid: service.profile?.mid ?? null })
     if (process.env.YOMI_NO_CAPTURE !== '1') {
       const embedder =
-        process.env.YOMI_EMBEDDINGS === '1' ? getDefaultEmbedder() : undefined
+        process.env.YOMI_EMBEDDINGS === '0' ? getDefaultEmbedder() : undefined
       startCapture(service, embedder).catch((error: any) => {
         log.error('capture.start_failed', {
           error: error?.message ?? String(error),

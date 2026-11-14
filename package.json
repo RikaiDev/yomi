@@ -73,7 +73,7 @@
     "desktop:install-local": "bash scripts/install-swift-desktop-local.sh"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
+    "@huggingface/transformers": "^4.3.1",
     "@modelcontextprotocol/server": "^2.0.0",
     "@toon-format/toon": "^2.3.1",
     "curve25519-js": "^0.0.4",

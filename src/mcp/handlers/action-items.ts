@@ -19,6 +19,25 @@ import { resolveConversationNames, resolveSenderNames } from '../names.js'
 import { createPhiAccumulator, maskInto, phiNote } from '../phi-guard.js'
 import { toonText } from './shared.js'
 
+const SEMANTIC_TIMEOUT_MS = 15000
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    return (await Promise.race([
+      promise,
+      new Promise<T | null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms)
+      }),
+    ])) as T | null
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 type Ball = 'mine' | 'theirs' | 'team' | 'none' | 'unknown'
 type Confidence = 'high' | 'medium' | 'low'
 
@@ -235,13 +254,18 @@ async function classifyBall(
     .filter((x) => x.t.length > 0)
   if (embedder && textCandidates.length > 0) {
     try {
-      const results = await classifyIntent(
-        textCandidates.map((x) => x.t),
-        embedder,
+      const results = await withTimeout(
+        classifyIntent(
+          textCandidates.map((x) => x.t),
+          embedder,
+        ),
+        SEMANTIC_TIMEOUT_MS,
       )
-      textCandidates.forEach((x, i) => {
-        intentById.set(String(x.m.id ?? i), results[i])
-      })
+      if (results) {
+        textCandidates.forEach((x, i) => {
+          intentById.set(String(x.m.id ?? i), results[i])
+        })
+      }
     } catch {
       intentById = new Map()
     }
