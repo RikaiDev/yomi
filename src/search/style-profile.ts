@@ -11,15 +11,6 @@
 
 import { getDb } from './store.js'
 
-interface StickerSample {
-  stickerId: string
-  packageId: string
-  /** Sticker text/alt if available in index. */
-  text: string | null
-  chatId: string
-  createdTime: number | null
-}
-
 export interface StyleCard {
   /** Messages analyzed for text style. */
   textSampleSize: number
@@ -399,13 +390,3 @@ export function getStyleCard(
   }
   return analyze(rows)
 }
-
-// Internal aliases kept for potential future use
-type _StyleProfile = StyleCard
-function _buildStyleProfile(
-  userMid: string,
-  chatId?: string,
-): StyleCard | null {
-  return getStyleCard(userMid, chatId)
-}
-void _buildStyleProfile
