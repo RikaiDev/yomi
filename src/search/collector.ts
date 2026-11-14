@@ -124,7 +124,8 @@ export async function collectMessages(
     const messages = await service.getRecentMessages(chatId, perChat)
     const withText = messages.filter(
       (message: any) =>
-        typeof message.text === 'string' && message.text.length > 0,
+        (typeof message.text === 'string' && message.text.length > 0) ||
+        message.contentType === 7,
     )
     if (withText.length === 0) {
       continue
@@ -133,15 +134,28 @@ export async function collectMessages(
       service,
       withText.map((message: any) => message.from).filter(Boolean),
     )
-    const rows: MessageRecord[] = withText.map((message: any) => ({
-      chatId,
-      chatName: chatName ?? null,
-      messageId: String(message.id),
-      fromMid: message.from ?? null,
-      fromName: senderNames.get(message.from) ?? null,
-      text: message.text,
-      createdTime: message.createdTime ?? message.deliveredTime ?? null,
-    }))
+    const rows: MessageRecord[] = withText.map((message: any) => {
+      const isSticker = message.contentType === 7
+      const meta = message?.contentMetadata || {}
+      const stickerId = isSticker && meta.STKID ? String(meta.STKID) : null
+      const stickerPackageId =
+        isSticker && meta.STKPKGID ? String(meta.STKPKGID) : null
+      const stickerText = meta.STKTXT ? String(meta.STKTXT) : ''
+      return {
+        chatId,
+        chatName: chatName ?? null,
+        messageId: String(message.id),
+        fromMid: message.from ?? null,
+        fromName: senderNames.get(message.from) ?? null,
+        text: isSticker
+          ? stickerText || `[sticker:${stickerPackageId}/${stickerId}]`
+          : message.text,
+        createdTime: message.createdTime ?? message.deliveredTime ?? null,
+        contentType: message.contentType ?? 0,
+        stickerId,
+        stickerPackageId,
+      }
+    })
     messagesIndexed += upsertMessages(rows)
     messagesEmbedded += await embedAndStore(rows, options.embedder)
   }

@@ -99,14 +99,16 @@ export function buildInstructions(updateNotice?: string | null): string {
     '`key: value`; uniform arrays are `name[count]{columns}:` followed by ' +
     'comma-separated rows. Small status/write results remain compact JSON; ' +
     'errors remain plain text.\n\n' +
-    'STYLE PROFILE — default behavior: before drafting, suggesting, or ' +
-    'composing any LINE reply/message for the user, ALWAYS call ' +
-    '`get_style_profile` first (pass `chatId` for the target conversation ' +
-    "when known). Match the user's actual voice — length, tone, emoji use, " +
-    'greetings/farewells, punctuation, and frequent phrases — from real ' +
-    'profile samples. Never draft in a generic/template voice and never ' +
-    'fabricate a style. If the index has no sent-message samples, state that ' +
-    'and ask to run `collect_messages` before drafting.\n\n' +
+    'STYLE PROFILE (DIGITAL TWIN, default): before drafting, suggesting, or ' +
+    'sending ANY LINE reply/message for the user, ALWAYS call ' +
+    '`get_style_profile` first (pass target `chatId` when known). The card is ' +
+    'token-efficient: follow `guide`/`signals`/`examples` for voice and ' +
+    'phrasing, `behavior.segmentation` to split into multiple short messages ' +
+    '(send sequentially to mimic bursts) instead of one block, and ' +
+    '`behavior.stickerUsage` + `topStickers` (stickerId/packageId) to add ' +
+    'stickers via `send_sticker` when the user would. Match per-chat nuances ' +
+    'from `chat` when present. Never use generic/template/AI voice, never ' +
+    'fabricate style; if no samples, state it and ask to run `collect_messages`.\n\n' +
     'PRIVACY DISCLOSURE (say ONCE per session) — the first time this session ' +
     'does a bulk read (collect_messages/search_messages/get_insight), tell the user once, in ' +
     'plain language, that Yomi captures all conversations by default, keeps the data ' +
@@ -470,7 +472,7 @@ export function createBuildServer(
           case 'get_style_profile':
             return await handleGetStyleProfile(
               service,
-              (args ?? {}) as { chatId?: string; sampleSize?: number },
+              (args ?? {}) as { chatId?: string },
             )
           default:
             return toolError(`Unknown tool: ${name}`)

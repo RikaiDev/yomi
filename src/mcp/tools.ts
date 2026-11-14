@@ -888,19 +888,14 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      "Analyse YOUR (the user's) personal LINE writing style from the local search index and return a structured profile: aggregate metrics (avg length, emoji ratio, formality, frequent phrases) plus recent message samples. ALWAYS call this before drafting, suggesting, or composing any LINE reply/message for the user — matching their voice is Yomi's default, not opt-in. Pass chatId to focus on how they write in that specific conversation. Reads only the local index (no network); requires collect_messages to have indexed the user's own sent messages first.",
+      "Return a compact DIGITAL TWIN style card for the user from the local index (token-efficient): tone/phrasing guide, message segmentation/bursting (how to split into multiple short messages), emoji habits, and sticker habits (when to use, with top stickerId/packageId to send via send_sticker) plus a few short examples. ALWAYS call before drafting/composing/sending any LINE reply or message — matching the user's voice and messaging behavior is Yomi's default. Pass chatId to get per-conversation nuances. Reads local index only (no network); needs collect_messages to have indexed user's sent messages.",
     inputSchema: {
       type: 'object' as const,
       properties: {
         chatId: {
           type: 'string',
           description:
-            'Optional: focus the style analysis on a specific conversation (as returned by list_conversations). When provided, chatSamples in the result shows how the user writes in that particular chat.',
-        },
-        sampleSize: {
-          type: 'number',
-          description:
-            'Number of recent messages to include as samples in the response (default 50, max 200).',
+            'Optional: target conversation MID to include per-chat style nuances (segmentation/sticker habits can differ per chat).',
         },
       },
     },

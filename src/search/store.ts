@@ -65,6 +65,9 @@ export interface MessageRecord {
   fromName: string | null
   text: string
   createdTime: number | null
+  contentType?: number
+  stickerId?: string | null
+  stickerPackageId?: string | null
 }
 
 /** One search hit returned by searchMessages. */
@@ -133,9 +136,26 @@ export function getDb(): Database {
       fromName TEXT,
       text TEXT NOT NULL,
       search_text TEXT NOT NULL,
-      createdTime INTEGER
+      createdTime INTEGER,
+      contentType INTEGER DEFAULT 0,
+      stickerId TEXT,
+      stickerPackageId TEXT
     );
   `)
+  // Migrate existing databases: add columns if missing.
+  const cols = handle
+    .prepare<{ name: string }>('PRAGMA table_info(messages)')
+    .all()
+    .map((c) => c.name)
+  if (!cols.includes('contentType')) {
+    handle.exec('ALTER TABLE messages ADD COLUMN contentType INTEGER DEFAULT 0')
+  }
+  if (!cols.includes('stickerId')) {
+    handle.exec('ALTER TABLE messages ADD COLUMN stickerId TEXT')
+  }
+  if (!cols.includes('stickerPackageId')) {
+    handle.exec('ALTER TABLE messages ADD COLUMN stickerPackageId TEXT')
+  }
   handle.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
       search_text,
@@ -208,8 +228,8 @@ export function upsertMessages(rows: MessageRecord[]): number {
   }
   const handle = getDb()
   const stmt = handle.prepare(`
-    INSERT INTO messages (messageId, chatId, chatName, fromMid, fromName, text, search_text, createdTime)
-    VALUES ($messageId, $chatId, $chatName, $fromMid, $fromName, $text, $searchText, $createdTime)
+    INSERT INTO messages (messageId, chatId, chatName, fromMid, fromName, text, search_text, createdTime, contentType, stickerId, stickerPackageId)
+    VALUES ($messageId, $chatId, $chatName, $fromMid, $fromName, $text, $searchText, $createdTime, $contentType, $stickerId, $stickerPackageId)
     ON CONFLICT(messageId) DO UPDATE SET
       chatId = excluded.chatId,
       chatName = excluded.chatName,
@@ -217,7 +237,10 @@ export function upsertMessages(rows: MessageRecord[]): number {
       fromName = excluded.fromName,
       text = excluded.text,
       search_text = excluded.search_text,
-      createdTime = excluded.createdTime;
+      createdTime = excluded.createdTime,
+      contentType = excluded.contentType,
+      stickerId = excluded.stickerId,
+      stickerPackageId = excluded.stickerPackageId;
   `)
   const upsertAll = handle.transaction((batch: MessageRecord[]) => {
     for (const row of batch) {
@@ -230,6 +253,9 @@ export function upsertMessages(rows: MessageRecord[]): number {
         $text: row.text,
         $searchText: toSearchText(row.text),
         $createdTime: row.createdTime,
+        $contentType: row.contentType ?? 0,
+        $stickerId: row.stickerId ?? null,
+        $stickerPackageId: row.stickerPackageId ?? null,
       })
     }
   })

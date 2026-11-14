@@ -56,7 +56,7 @@ function contentTypeToLabel(contentType: number): string {
 }
 
 function classifySourceType(
-  chatId: string,
+  _chatId: string,
   senderMid: string | null,
   senderName: string | null,
   isSelf: boolean,

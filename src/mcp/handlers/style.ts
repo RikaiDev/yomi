@@ -1,29 +1,19 @@
 /**
- * MCP handler for `get_style_profile` — returns the user's personal writing
- * style analysis so an AI assistant can draft LINE replies that sound like
- * the user rather than a generic template.
+ * MCP handler for `get_style_profile` — returns a compact "digital twin"
+ * style card so the AI can draft LINE replies that fully match the user's
+ * voice: tone, phrasing, message segmentation/bursting, and sticker habits.
  *
- * Reads from the local search index (same DB as search_messages) — no
- * network calls, no external API. Works without a live LINE session as long
- * as the index has the user's own sent messages (collected via
- * collect_messages or background capture).
+ * Reads only the local search index (no network). Works if the index has
+ * the user's sent messages; session is only needed to know the user's MID.
  */
 
 import type { LineProtocolService } from '../../line/core/service.js'
-import { buildStyleProfile } from '../../search/style-profile.js'
+import { getStyleCard } from '../../search/style-profile.js'
 import { jsonResult, toolError } from './shared.js'
 
-/**
- * Handle `get_style_profile` — return the user's personal writing style
- * profile, optionally focused on a specific conversation.
- *
- * @param service - Resumed LineProtocolService (used for profile.mid).
- * @param args - Tool arguments.
- * @returns MCP tool result with the style profile.
- */
 export async function handleGetStyleProfile(
   service: LineProtocolService,
-  args: { chatId?: string; sampleSize?: number },
+  args: { chatId?: string },
 ) {
   const userMid = service.profile?.mid
   if (!userMid) {
@@ -33,20 +23,18 @@ export async function handleGetStyleProfile(
     )
   }
 
-  const sampleSize = Math.min(Math.max(args.sampleSize ?? 50, 1), 200)
-
   try {
-    const profile = buildStyleProfile(userMid, args.chatId, sampleSize)
+    const card = getStyleCard(userMid, args.chatId)
 
-    if (profile.sampleSize === 0) {
+    if (!card || (card.textSampleSize === 0 && card.stickerSampleSize === 0)) {
       return jsonResult({
-        sampleSize: 0,
+        ok: false,
         message:
-          'No sent messages found in the search index. Run collect_messages first to index your messages.',
+          'No sent messages found in the search index. Run collect_messages to index your messages, then retry.',
       })
     }
 
-    return jsonResult(profile)
+    return jsonResult({ ok: true, ...card })
   } catch (error: any) {
     return toolError(
       `Failed to build style profile: ${error?.message ?? String(error)}`,

@@ -1,293 +1,411 @@
 /**
- * Yomi personal style profile — extracts the user's own sent messages from
- * the search index and analyses their writing patterns so an AI assistant
- * can draft replies that sound like the user, not like a generic template.
+ * Yomi personal style profile — "digital twin" style card for the user.
  *
- * The profile is built on demand from the local search index (no external
- * API calls). It queries messages where `fromMid` matches the user's own
- * LINE MID, then computes:
+ * Returns a compact, token-efficient style card so an AI can draft LINE
+ * replies that match the user's actual voice: phrasing, message segmentation
+ * (bursting), emoji usage, and sticker habits (when/how/which stickers).
  *
- * - **Message samples**: recent messages the user sent, grouped by chat,
- *   so the AI can see how they write in different contexts.
- * - **Style metrics**: average length, sentence patterns, emoji usage,
- *   greeting/farewell conventions, formality level, punctuation habits.
- * - **Chat-context pairs**: for a given chatId, the user's own messages
- *   in that conversation, so the AI can match the tone of that specific
- *   relationship.
- *
- * All data stays on-device (same SQLite index as search_messages).
+ * Data comes from the local search index only (no network). The profile is
+ * computed on demand from the user's own sent messages (fromMid = user).
  */
 
 import { getDb } from './store.js'
 
-/** A single message the user sent, with enough context for style analysis. */
-export interface StyleSample {
+interface StickerSample {
+  stickerId: string
+  packageId: string
+  /** Sticker text/alt if available in index. */
+  text: string | null
+  chatId: string
+  createdTime: number | null
+}
+
+export interface StyleCard {
+  /** Messages analyzed for text style. */
+  textSampleSize: number
+  /** Stickers analyzed. */
+  stickerSampleSize: number
+  /** Compact natural-language style guide (primary, token-efficient). */
+  guide: string[]
+  /** Quantitative signals (small). */
+  signals: {
+    avgChars: number
+    medianChars: number
+    /** Fraction of messages with emoji. */
+    emojiRate: number
+    /** Fraction of messages that are greetings/openers. */
+    greetingRate: number
+    /** Fraction of messages that are closings/gratitude. */
+    closingRate: number
+    /** Fraction ending with question mark. */
+    questionRate: number
+    /** Typical burst size: messages sent within 60s of previous in same chat. */
+    burstTypical: number
+    /** Median gap in seconds between messages in a burst (<60s gaps). */
+    burstGapSec: number
+    /** Fraction of user activity that is stickers (vs text). */
+    stickerRate: number
+    formality: 'casual' | 'neutral' | 'formal'
+  }
+  /** Short examples of how the user actually writes (few-shot, token-capped). */
+  examples: string[]
+  /** Per-chat nuances for the target chat (when chatId provided). */
+  chat?: {
+    chatId: string
+    chatName: string | null
+    textSampleSize: number
+    stickerSampleSize: number
+    notes: string[]
+    examples: string[]
+    topStickers: { packageId: string; stickerId: string; count: number }[]
+  }
+  /** Global top stickers the user sends. */
+  topStickers: { packageId: string; stickerId: string; count: number }[]
+  /** Guidance for when to use stickers and how to segment. */
+  behavior: {
+    segmentation: string
+    stickerUsage: string
+  }
+}
+
+interface MsgRow {
   chatId: string
   chatName: string | null
   text: string
   createdTime: number | null
+  contentType: number
+  stickerId: string | null
+  stickerPackageId: string | null
 }
 
-/** Aggregate style metrics computed from the user's sent messages. */
-export interface StyleMetrics {
-  /** Total user-sent messages in the index. */
-  totalMessages: number
-  /** Average character length per message. */
-  avgLength: number
-  /** Fraction of messages containing emoji (0-1). */
-  emojiRatio: number
-  /** Fraction of messages containing a greeting word. */
-  greetingRatio: number
-  /** Fraction of messages containing a farewell or gratitude word. */
-  farewellRatio: number
-  /** Fraction of messages ending with a period/full stop. */
-  periodEndingRatio: number
-  /** Fraction of messages ending with an exclamation mark. */
-  exclamationRatio: number
-  /** Fraction of messages ending with a question mark. */
-  questionRatio: number
-  /** Most common message length (mode, bucketed by 10). */
-  commonLengthBucket: string
-  /** Top keywords / phrases the user uses frequently (simple frequency). */
-  frequentPhrases: { phrase: string; count: number }[]
-  /** Detected formality: "casual" | "neutral" | "formal". */
-  formality: 'casual' | 'neutral' | 'formal'
-}
-
-/** Full style profile returned to the AI assistant. */
-export interface StyleProfile {
-  /** Number of messages analysed. */
-  sampleSize: number
-  /** Aggregate metrics across all the user's messages. */
-  metrics: StyleMetrics
-  /** Recent messages (most recent first), capped to keep the response small. */
-  samples: StyleSample[]
-  /** Per-chat samples for a specific conversation, if chatId was provided. */
-  chatSamples?: StyleSample[]
-}
-
-/** Common greeting words in Traditional Chinese and English. */
 const GREETING_RE =
-  /(?:哈囉|哈嚕|嗨|早安|午安|晚安|你好|您好|hi\b|hello\b|hey\b|good\s*morning|good\s*evening|morning\b)/i
-
-/** Common farewell / gratitude words. */
-const FAREWELL_RE =
-  /(?:謝謝|多謝|thanks?\b|thank\s*you|掰|再見|bye\b|晚安|see\s*you|later\b)/i
-
-/** Emoji detection: covers common Unicode emoji blocks. */
+  /^(?:哈囉|哈嚕|嗨|早安|午安|晚安|你好|您好|安安|hi\b|hello\b|hey\b|morning\b)/i
+const CLOSING_RE =
+  /(?:謝謝|多謝|感謝|辛苦|thanks?\b|thank\s*you|thx\b|掰|再見|bye\b|晚安|改天見|先這樣|88)/i
 const EMOJI_RE =
-  /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u
+  /(?:[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FE0F}])/u
+const CASUAL_RE =
+  /(?:哈哈+|呵呵|嘿嘿|www+|XD|xD|lol|欸|耶|喔+|哦+|啦|囉|嘛|齁|ㄏㄏ|QQ|哭哭|www)/i
+const FORMAL_RE = /(?:您好|敬請|煩請|惠請|懇請|此致|敬上|順頌|貴|承蒙|謹)/
 
-/** Simple CJK + Latin token extraction for phrase frequency. */
-function extractPhrases(text: string): string[] {
-  // Extract 2-4 character CJK runs and Latin words (2+ chars).
-  const cjkRuns =
-    text.match(/[\u{4E00}-\u{9FFF}\u{3400}-\u{4DBF}]{2,4}/gu) ?? []
-  const latinWords =
-    text.match(/[a-zA-Z]{2,}/gi)?.map((w) => w.toLowerCase()) ?? []
-  // Also capture common 1-char CJK sentence-final particles.
-  const particles = text.match(/[了啦呢吧啊喔噢嘛]/g) ?? []
-  return [...cjkRuns, ...latinWords, ...particles]
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0
+  const s = [...nums].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2)
 }
 
-/**
- * Count phrase frequencies across an array of texts, returning the top-N.
- */
-function topPhrases(
-  texts: string[],
-  topN = 20,
-): { phrase: string; count: number }[] {
+function queryUserMessages(
+  userMid: string,
+  chatId?: string,
+  limit = 500,
+): MsgRow[] {
+  const handle = getDb()
+  if (chatId) {
+    return handle
+      .prepare<MsgRow>(
+        `SELECT chatId, chatName, text, createdTime, contentType, stickerId, stickerPackageId
+         FROM messages
+         WHERE fromMid = $userMid AND chatId = $chatId
+         ORDER BY createdTime DESC NULLS LAST
+         LIMIT $limit`,
+      )
+      .all({ $userMid: userMid, $chatId: chatId, $limit: limit })
+  }
+  return handle
+    .prepare<MsgRow>(
+      `SELECT chatId, chatName, text, createdTime, contentType, stickerId, stickerPackageId
+       FROM messages
+       WHERE fromMid = $userMid
+       ORDER BY createdTime DESC NULLS LAST
+       LIMIT $limit`,
+    )
+    .all({ $userMid: userMid, $limit: limit })
+}
+
+function computeBurst(rows: MsgRow[]): { typical: number; gapSec: number } {
+  // Group by chat, ascending time
+  const byChat = new Map<string, number[]>()
+  for (const r of rows) {
+    if (r.createdTime == null) continue
+    const arr = byChat.get(r.chatId) ?? []
+    arr.push(r.createdTime)
+    byChat.set(r.chatId, arr)
+  }
+  const burstSizes: number[] = []
+  const gaps: number[] = []
+  for (const times of byChat.values()) {
+    times.sort((a, b) => a - b)
+    let size = 1
+    for (let i = 1; i < times.length; i++) {
+      const gap = (times[i] - times[i - 1]) / 1000
+      if (gap <= 60) {
+        size++
+        gaps.push(Math.round(gap))
+      } else {
+        if (size > 0) burstSizes.push(size)
+        size = 1
+      }
+    }
+    burstSizes.push(size)
+  }
+  if (burstSizes.length === 0) return { typical: 1, gapSec: 0 }
+  // typical = median burst size (cap influence)
+  return { typical: median(burstSizes), gapSec: gaps.length ? median(gaps) : 0 }
+}
+
+function topStickers(
+  rows: MsgRow[],
+  limit = 8,
+): { packageId: string; stickerId: string; count: number }[] {
   const freq = new Map<string, number>()
-  for (const text of texts) {
-    const phrases = extractPhrases(text)
-    // Count each phrase once per message (not per occurrence within a message)
-    // to avoid one long message dominating.
-    const seen = new Set(phrases)
-    for (const p of seen) {
-      freq.set(p, (freq.get(p) ?? 0) + 1)
+  for (const r of rows) {
+    if (r.contentType === 7 && r.stickerId && r.stickerPackageId) {
+      const k = `${r.stickerPackageId}:${r.stickerId}`
+      freq.set(k, (freq.get(k) ?? 0) + 1)
     }
   }
   return [...freq.entries()]
-    .map(([phrase, count]) => ({ phrase, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, topN)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([k, count]) => {
+      const [packageId, stickerId] = k.split(':')
+      return { packageId, stickerId, count }
+    })
 }
 
-/**
- * Determine formality level from message patterns.
- */
+function pickExamples(texts: string[], max = 6, maxChars = 600): string[] {
+  const out: string[] = []
+  let total = 0
+  // Prefer varied lengths
+  const sorted = [...texts].sort((a, b) => a.length - b.length)
+  const picks = [
+    sorted[0],
+    sorted[Math.floor(sorted.length * 0.25)],
+    sorted[Math.floor(sorted.length * 0.5)],
+    sorted[Math.floor(sorted.length * 0.75)],
+    sorted[sorted.length - 1],
+    sorted[Math.floor(sorted.length * 0.1)],
+  ].filter(Boolean) as string[]
+  const seen = new Set<string>()
+  for (const t of picks) {
+    if (seen.has(t)) continue
+    seen.add(t)
+    const s = t.length > 120 ? `${t.slice(0, 117)}…` : t
+    if (total + s.length > maxChars) break
+    out.push(s)
+    total += s.length
+    if (out.length >= max) break
+  }
+  return out
+}
+
 function detectFormality(
   texts: string[],
-  emojiRatio: number,
-  exclamationRatio: number,
+  emojiRate: number,
+  stickerRate: number,
 ): 'casual' | 'neutral' | 'formal' {
-  let formalScore = 0
-  let casualScore = 0
+  let formal = 0
+  let casual = 0
   for (const t of texts) {
-    // Formal markers
-    if (/(?:您好|敬請|請見|麻煩|惠請|懇請|敬請|順祝)/.test(t)) formalScore++
-    if (/(?:此致|敬上|順頌)/.test(t)) formalScore++
-    // Casual markers
-    if (EMOJI_RE.test(t)) casualScore += 2
-    if (/(?:啦|囉|喔|噢|嘛|耶|欸|嘿)/.test(t)) casualScore++
-    if (/(?:哈哈|呵呵|嘿嘿|蛤|XD|xD|www)/i.test(t)) casualScore += 2
-    if (/(?:\bOK\b|okay|k\b|嗯|嗯嗯)/i.test(t)) casualScore++
+    if (FORMAL_RE.test(t)) formal++
+    if (CASUAL_RE.test(t)) casual++
   }
-  // Factor in aggregate signals
-  if (emojiRatio > 0.3) casualScore += 5
-  if (exclamationRatio > 0.2) casualScore += 3
-
-  const avg = texts.length || 1
-  if (formalScore / avg > 0.15) return 'formal'
-  if (casualScore / avg > 0.3) return 'casual'
+  if (emojiRate > 0.15) casual += Math.ceil(texts.length * 0.2)
+  if (stickerRate > 0.2) casual += Math.ceil(texts.length * 0.1)
+  if (formal > casual && formal > texts.length * 0.1) return 'formal'
+  if (casual > formal) return 'casual'
   return 'neutral'
 }
 
-/**
- * Compute aggregate style metrics from the user's sent messages.
- */
-function computeMetrics(texts: string[]): StyleMetrics {
-  const total = texts.length
-  if (total === 0) {
-    return {
-      totalMessages: 0,
-      avgLength: 0,
-      emojiRatio: 0,
-      greetingRatio: 0,
-      farewellRatio: 0,
-      periodEndingRatio: 0,
-      exclamationRatio: 0,
-      questionRatio: 0,
-      commonLengthBucket: 'N/A',
-      frequentPhrases: [],
-      formality: 'neutral',
-    }
-  }
-
-  let emojiCount = 0
-  let greetingCount = 0
-  let farewellCount = 0
-  let periodCount = 0
-  let exclamationCount = 0
-  let questionCount = 0
-  let totalLength = 0
-  const lengthBuckets = new Map<string, number>()
-
-  for (const text of texts) {
-    const len = text.length
-    totalLength += len
-
-    // Length bucket (by 10)
-    const bucketStart = Math.floor(len / 10) * 10
-    const bucketLabel = `${bucketStart}-${bucketStart + 9}`
-    lengthBuckets.set(bucketLabel, (lengthBuckets.get(bucketLabel) ?? 0) + 1)
-
-    if (EMOJI_RE.test(text)) emojiCount++
-    if (GREETING_RE.test(text)) greetingCount++
-    if (FAREWELL_RE.test(text)) farewellCount++
-
-    const trimmed = text.trim()
-    if (/[。．.]$/.test(trimmed)) periodCount++
-    if (/[！!]$/.test(trimmed)) exclamationCount++
-    if (/[？?]$/.test(trimmed)) questionCount++
-  }
-
-  // Find most common length bucket
-  let maxBucketCount = 0
-  let commonBucket = 'N/A'
-  for (const [bucket, count] of lengthBuckets) {
-    if (count > maxBucketCount) {
-      maxBucketCount = count
-      commonBucket = bucket
-    }
-  }
-
-  const emojiRatio = emojiCount / total
-  const exclamationRatio = exclamationCount / total
-
-  return {
-    totalMessages: total,
-    avgLength: Math.round(totalLength / total),
-    emojiRatio: Math.round(emojiRatio * 100) / 100,
-    greetingRatio: Math.round((greetingCount / total) * 100) / 100,
-    farewellRatio: Math.round((farewellCount / total) * 100) / 100,
-    periodEndingRatio: Math.round((periodCount / total) * 100) / 100,
-    exclamationRatio: Math.round(exclamationRatio * 100) / 100,
-    questionRatio: Math.round((questionCount / total) * 100) / 100,
-    commonLengthBucket: commonBucket,
-    frequentPhrases: topPhrases(texts),
-    formality: detectFormality(texts, emojiRatio, exclamationRatio),
-  }
-}
-
-/**
- * Fetch the user's own sent messages from the search index.
- *
- * @param userMid - The user's LINE MID (from service.profile.mid).
- * @param limit - Maximum number of messages to return (default 200).
- * @param chatId - Optional: restrict to a specific chat.
- * @returns Array of messages the user sent, most recent first.
- */
-export function getUserMessages(
-  userMid: string,
-  limit = 200,
-  chatId?: string,
-): StyleSample[] {
-  const handle = getDb()
-  const rows = handle
-    .prepare<{
-      chatId: string
-      chatName: string | null
-      text: string
-      createdTime: number | null
-    }>(
-      chatId
-        ? `SELECT chatId, chatName, text, createdTime
-           FROM messages
-           WHERE fromMid = $userMid AND chatId = $chatId AND length(text) > 0
-           ORDER BY createdTime DESC NULLS LAST
-           LIMIT $limit`
-        : `SELECT chatId, chatName, text, createdTime
-           FROM messages
-           WHERE fromMid = $userMid AND length(text) > 0
-           ORDER BY createdTime DESC NULLS LAST
-           LIMIT $limit`,
+function buildGuide(
+  s: StyleCard['signals'],
+  burst: { typical: number; gapSec: number },
+  _topStickerCount: number,
+): string[] {
+  const g: string[] = []
+  g.push(`語氣:${s.formality}; 平均${s.avgChars}字/則(中位${s.medianChars})`)
+  if (burst.typical >= 2) {
+    g.push(
+      `分段:常連發${burst.typical}則短訊(間隔約${burst.gapSec}s),把想法拆成多則而非一大段`,
     )
-    .all({ $userMid: userMid, $chatId: chatId ?? null, $limit: limit })
-  return rows
+  } else {
+    g.push(`分段:多為單則完整訊息`)
+  }
+  if (s.emojiRate > 0.05)
+    g.push(`emoji:偶爾使用(約${Math.round(s.emojiRate * 100)}%)`)
+  else g.push(`emoji:很少或不用`)
+  if (s.stickerRate > 0.05) {
+    g.push(
+      `貼圖:會用(約佔${Math.round(s.stickerRate * 100)}%訊息); 常用貼圖見 topStickers, 回覆時可視情境搭配同款/同系列`,
+    )
+  } else {
+    g.push(`貼圖:少用`)
+  }
+  if (s.greetingRate > 0.05) g.push(`開場:常帶招呼語`)
+  if (s.closingRate > 0.1) g.push(`收尾:常帶致謝/收尾語`)
+  if (s.questionRate > 0.15) g.push(`提問:常用問句`)
+  g.push(`原則:完全模仿語氣/用詞/分段節奏與貼圖習慣,不加模板客套,不改寫成AI腔`)
+  return g
+}
+
+function analyze(rows: MsgRow[], chatId?: string): StyleCard {
+  const textRows = rows.filter(
+    (r) =>
+      r.contentType !== 7 && typeof r.text === 'string' && r.text.length > 0,
+  )
+  const stickerRows = rows.filter((r) => r.contentType === 7)
+  const texts = textRows.map((r) => r.text)
+  const lens = texts.map((t) => t.length)
+  const avgChars = texts.length
+    ? Math.round(lens.reduce((a, b) => a + b, 0) / lens.length)
+    : 0
+  const medChars = median(lens)
+  const emojiRate = texts.length
+    ? texts.filter((t) => EMOJI_RE.test(t)).length / texts.length
+    : 0
+  const greetingRate = texts.length
+    ? texts.filter((t) => GREETING_RE.test(t)).length / texts.length
+    : 0
+  const closingRate = texts.length
+    ? texts.filter((t) => CLOSING_RE.test(t)).length / texts.length
+    : 0
+  const questionRate = texts.length
+    ? texts.filter((t) => /[？?]/.test(t)).length / texts.length
+    : 0
+  const totalActs = textRows.length + stickerRows.length
+  const stickerRate = totalActs ? stickerRows.length / totalActs : 0
+  const burst = computeBurst(rows)
+  const formality = detectFormality(texts, emojiRate, stickerRate)
+  const signals = {
+    avgChars,
+    medianChars: medChars,
+    emojiRate: Math.round(emojiRate * 100) / 100,
+    greetingRate: Math.round(greetingRate * 100) / 100,
+    closingRate: Math.round(closingRate * 100) / 100,
+    questionRate: Math.round(questionRate * 100) / 100,
+    burstTypical: burst.typical,
+    burstGapSec: burst.gapSec,
+    stickerRate: Math.round(stickerRate * 100) / 100,
+    formality,
+  }
+  const globalStickers = topStickers(rows)
+  const guide = buildGuide(signals, burst, globalStickers.length)
+  const card: StyleCard = {
+    textSampleSize: textRows.length,
+    stickerSampleSize: stickerRows.length,
+    guide,
+    signals,
+    examples: pickExamples(texts, 6, 500),
+    topStickers: globalStickers,
+    behavior: {
+      segmentation:
+        burst.typical >= 2
+          ? `把回覆拆成約${burst.typical}則短訊依序送出(每則間隔幾秒),模擬連發;避免合併成一大段`
+          : '通常單則回覆即可',
+      stickerUsage:
+        stickerRate > 0.05 && globalStickers.length
+          ? `可在合適情境單獨送貼圖或文字後補貼圖;優先使用 topStickers 中的 stickerId/packageId(用 send_sticker)`
+          : '預設不加貼圖,除非對話情境明顯需要且使用者慣用',
+    },
+  }
+
+  if (chatId) {
+    const chatRows = rows.filter((r) => r.chatId === chatId)
+    const chatText = chatRows.filter((r) => r.contentType !== 7 && r.text)
+    const chatStk = chatRows.filter((r) => r.contentType === 7)
+    const chatName = chatRows[0]?.chatName ?? null
+    const chatBurst = computeBurst(chatRows)
+    const notes: string[] = []
+    if (chatText.length) {
+      const clens = chatText.map((r) => r.text.length)
+      notes.push(
+        `此對話:平均${Math.round(clens.reduce((a, b) => a + b, 0) / clens.length)}字/則`,
+      )
+      if (chatBurst.typical >= 2)
+        notes.push(`此對話常連發${chatBurst.typical}則`)
+    }
+    if (chatStk.length) notes.push(`此對話有貼圖互動(${chatStk.length}則)`)
+    card.chat = {
+      chatId,
+      chatName,
+      textSampleSize: chatText.length,
+      stickerSampleSize: chatStk.length,
+      notes,
+      examples: pickExamples(
+        chatText.map((r) => r.text),
+        4,
+        320,
+      ),
+      topStickers: topStickers(chatRows, 5),
+    }
+  }
+
+  return card
 }
 
 /**
- * Build a complete style profile for the user.
- *
- * @param userMid - The user's LINE MID.
- * @param chatId - Optional: focus on a specific conversation's style.
- * @param sampleSize - Number of recent messages to include as samples (default 50).
- * @returns Style profile with metrics and samples.
+ * Build a compact style card for the user. Pass chatId to include per-chat
+ * nuances (segmentation/sticker habits can differ by conversation).
  */
-export function buildStyleProfile(
+export function getStyleCard(
   userMid: string,
   chatId?: string,
-  sampleSize = 50,
-): StyleProfile {
-  // Fetch a larger set for metrics, but only include the most recent as samples.
-  const allMessages = getUserMessages(userMid, 500, chatId)
-  const sampleMessages = allMessages.slice(0, sampleSize)
-
-  const texts = allMessages.map((m) => m.text)
-  const metrics = computeMetrics(texts)
-
-  const profile: StyleProfile = {
-    sampleSize: allMessages.length,
-    metrics,
-    samples: sampleMessages,
+): StyleCard | null {
+  const rows = queryUserMessages(userMid, chatId, 600)
+  if (rows.length === 0) {
+    // If chat-scoped had nothing, try global
+    if (chatId) {
+      const global = queryUserMessages(userMid, undefined, 600)
+      if (global.length === 0) return null
+      return analyze(global, chatId)
+    }
+    return null
   }
-
-  // If chatId was specified, also include cross-chat samples for comparison.
+  // If chat-scoped, also include global context for better card
   if (chatId) {
-    const chatSamples = getUserMessages(userMid, 20, chatId)
-    profile.chatSamples = chatSamples
+    const global = queryUserMessages(userMid, undefined, 400)
+    // Use global for base style; enrich chat section from actual chat rows.
+    const card = analyze(global, chatId)
+    // Ensure chat section uses actual chat rows
+    const chatRows = rows
+    const chatText = chatRows.filter((r) => r.contentType !== 7 && r.text)
+    const chatStk = chatRows.filter((r) => r.contentType === 7)
+    const chatBurst = computeBurst(chatRows)
+    const notes: string[] = []
+    if (chatText.length) {
+      const clens = chatText.map((r) => r.text.length)
+      notes.push(
+        `此對話:平均${Math.round(clens.reduce((a, b) => a + b, 0) / clens.length)}字/則, ${chatText.length}則文字`,
+      )
+      if (chatBurst.typical >= 2)
+        notes.push(`此對話常連發${chatBurst.typical}則`)
+    }
+    if (chatStk.length) notes.push(`此對話貼圖${chatStk.length}則`)
+    card.chat = {
+      chatId,
+      chatName: chatRows[0]?.chatName ?? null,
+      textSampleSize: chatText.length,
+      stickerSampleSize: chatStk.length,
+      notes,
+      examples: pickExamples(
+        chatText.map((r) => r.text),
+        4,
+        320,
+      ),
+      topStickers: topStickers(chatRows, 5),
+    }
+    return card
   }
-
-  return profile
+  return analyze(rows)
 }
+
+// Internal aliases kept for potential future use
+type _StyleProfile = StyleCard
+function _buildStyleProfile(
+  userMid: string,
+  chatId?: string,
+): StyleCard | null {
+  return getStyleCard(userMid, chatId)
+}
+void _buildStyleProfile
