@@ -99,13 +99,14 @@ export function buildInstructions(updateNotice?: string | null): string {
     '`key: value`; uniform arrays are `name[count]{columns}:` followed by ' +
     'comma-separated rows. Small status/write results remain compact JSON; ' +
     'errors remain plain text.\n\n' +
-    'STYLE PROFILE — when the user asks you to draft a LINE reply (or says ' +
-    '「以我的風格」「用我的語氣」etc.), call get_style_profile FIRST to retrieve ' +
-    'their personal writing patterns (avg length, emoji ratio, formality, ' +
-    'frequent phrases, recent samples). Use those patterns to match their ' +
-    'voice. Pass chatId to focus on how they write in that specific ' +
-    'conversation. Never fabricate a style — base the draft on real data ' +
-    'from get_style_profile.\n\n' +
+    'STYLE PROFILE — default behavior: before drafting, suggesting, or ' +
+    'composing any LINE reply/message for the user, ALWAYS call ' +
+    '`get_style_profile` first (pass `chatId` for the target conversation ' +
+    "when known). Match the user's actual voice — length, tone, emoji use, " +
+    'greetings/farewells, punctuation, and frequent phrases — from real ' +
+    'profile samples. Never draft in a generic/template voice and never ' +
+    'fabricate a style. If the index has no sent-message samples, state that ' +
+    'and ask to run `collect_messages` before drafting.\n\n' +
     'PRIVACY DISCLOSURE (say ONCE per session) — the first time this session ' +
     'does a bulk read (collect_messages/search_messages/get_insight), tell the user once, in ' +
     'plain language, that Yomi captures all conversations by default, keeps the data ' +

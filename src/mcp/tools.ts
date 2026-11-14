@@ -888,7 +888,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      "Analyse YOUR (the user's) personal LINE writing style from the local search index and return a structured profile: aggregate metrics (avg length, emoji ratio, formality, frequent phrases) plus recent message samples. Call this BEFORE drafting a reply on the user's behalf so the draft matches how they actually write — their tone, length, greeting habits, and vocabulary. Optionally pass chatId to focus on the style used in a specific conversation (e.g. how they write to a particular group vs. 1:1). Reads only the local index (no network); requires collect_messages to have indexed the user's own sent messages first.",
+      "Analyse YOUR (the user's) personal LINE writing style from the local search index and return a structured profile: aggregate metrics (avg length, emoji ratio, formality, frequent phrases) plus recent message samples. ALWAYS call this before drafting, suggesting, or composing any LINE reply/message for the user — matching their voice is Yomi's default, not opt-in. Pass chatId to focus on how they write in that specific conversation. Reads only the local index (no network); requires collect_messages to have indexed the user's own sent messages first.",
     inputSchema: {
       type: 'object' as const,
       properties: {

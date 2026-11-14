@@ -127,7 +127,7 @@ You have real-time access to the user's LINE account through the Yomi Letter-Sea
 4. \`search_messages\`: Full-text search across conversations.
 5. \`get_unread_digest\`: Summarize what is unread.
 6. \`get_insight\`: Ask the account model for an insight about the messages.
-7. \`get_style_profile\`: Retrieve the user's personal writing style before drafting a reply.
+7. \`get_style_profile\`: ALWAYS retrieve the user's personal writing style before drafting any reply (default behavior).
 8. \`find_contact\` and \`list_contacts\`: Resolve a person or a group to its chat id.
 
 ## Writing
