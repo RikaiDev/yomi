@@ -38,7 +38,8 @@ function newestMtime(directory) {
 
 const distServerPath = fileURLToPath(new URL('mcp/server.js', distUrl));
 const distMtime = existsSync(distServerPath) ? statSync(distServerPath).mtimeMs : 0;
-const sourceIsNewer = existsSync(sourceRoot) && newestMtime(sourceRoot) > distMtime;
+const inNodeModules = import.meta.url.includes('/node_modules/');
+const sourceIsNewer = !inNodeModules && existsSync(sourceRoot) && newestMtime(sourceRoot) > distMtime;
 const built = existsSync(distServerPath) && process.env.YOMI_DEV_SOURCE !== '1' && !sourceIsNewer;
 const base = built ? distUrl : new URL('./src/', import.meta.url);
 const ext = built ? '.js' : '.ts';
