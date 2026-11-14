@@ -2,6 +2,8 @@
  * Barrel re-exporting every Yomi MCP handler and shared helper — the single
  * import source for server.ts.
  */
+
+export * from './action-items.js'
 export * from './contacts.js'
 export * from './conversations.js'
 export * from './groups.js'

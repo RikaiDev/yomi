@@ -29,6 +29,7 @@ import {
   handleCreateGroup,
   handleExcludeChats,
   handleFindContact,
+  handleGetActionItems,
   handleGetChatMessages,
   handleGetGroupMembers,
   handleGetInsight,
@@ -253,6 +254,17 @@ export function createBuildServer(
             return await handleGetUnreadDigest(
               service,
               (args ?? {}) as { perChat?: number; limit?: number },
+            )
+          case 'get_action_items':
+            return await handleGetActionItems(
+              service,
+              (args ?? {}) as {
+                limit?: number
+                perChat?: number
+                includeRead?: boolean
+                unreadOnly?: boolean
+                chatId?: string
+              },
             )
           case 'get_insight':
             return await handleGetInsight(

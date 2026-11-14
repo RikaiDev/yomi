@@ -144,6 +144,41 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
+      'Analyze conversations for ball-in-court ownership (who likely needs to act next). For each conversation returns ball=mine|theirs|team|none|unknown with heuristic reasons and confidence, the last relevant message, and unread count. Read-only (never marks read). Use to triage what needs my reply/action vs what I am waiting on; treat as evidence in groups or when messages are ambiguous/encrypted. Defaults to all non-excluded conversations; set unreadOnly/includeRead to focus unread, or chatId for one chat.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description:
+            'Maximum conversations to analyze, most recently active first (default: all).',
+        },
+        perChat: {
+          type: 'number',
+          description:
+            'Recent messages inspected per conversation (default 20, min 5, max 50).',
+        },
+        unreadOnly: {
+          type: 'boolean',
+          description:
+            'If true, analyze only conversations with unread messages.',
+        },
+        includeRead: {
+          type: 'boolean',
+          description:
+            'If false, same as unreadOnly=true (backward-friendly); default analyzes all conversations.',
+        },
+        chatId: {
+          type: 'string',
+          description:
+            'Analyze a single chat MID instead of scanning conversations.',
+        },
+      },
+    },
+    name: 'get_action_items',
+  },
+  {
+    description:
       'One-shot unread digest: every LINE conversation with unread messages (all pages of the inbox, newest activity first), each with its most recent messages (default 10), E2EE-decrypted, with resolved sender names. Saves calling list_conversations then get_chat_messages per chat. Read-only: never marks anything read, never touches the search index; denylist-excluded conversations are omitted. Returns an empty list when nothing is unread — never fabricated.',
     inputSchema: {
       type: 'object' as const,
