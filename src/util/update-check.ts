@@ -87,8 +87,11 @@ export function updateNotice(latest: string): string {
       ? 'Desktop Extension bundles do NOT auto-update when installed by hand: the human has to ' +
         'download the new .mcpb for their platform from ' +
         'https://github.com/RikaiDev/yomi/releases/latest and drag it into Claude Desktop again ' +
-        '(same extension, it replaces this one).'
-      : 'Update with `npx @rikaidev/yomi@latest` (or reinstall the package) to pick it up.'
+        '(same extension, it replaces this one). Restart Claude Desktop after replacing the bundle.'
+      : 'To update a shared local install, run `bun add -g @rikaidev/yomi@latest` (bun global) ' +
+        'or `npm install -g @rikaidev/yomi@latest` (npm global), then restart the Yomi daemon with ' +
+        '`yomi daemon restart` (or `npx @rikaidev/yomi daemon restart`) so the running daemon picks up the new version. ' +
+        'A plain `npx @rikaidev/yomi@latest` runs the new code once but does NOT update/restart an existing daemon.'
   return (
     `UPDATE AVAILABLE — this Yomi is ${YOMI_VERSION}; ${latest} has been published. ` +
     `${how} Mention this ONCE, early, in your own words, then carry on with what the user ` +

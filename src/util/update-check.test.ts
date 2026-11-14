@@ -24,7 +24,10 @@ test('the notice names the running version and how to update', () => {
   const notice = updateNotice('9.9.9')
   expect(notice).toContain(YOMI_VERSION)
   expect(notice).toContain('9.9.9')
-  expect(notice).toContain('npx @rikaidev/yomi@latest')
+  expect(notice).toContain('bun add -g @rikaidev/yomi@latest')
+  expect(notice).toContain('npm install -g @rikaidev/yomi@latest')
+  expect(notice).toContain('yomi daemon restart')
+  expect(notice).not.toContain('or reinstall the package')
 })
 
 test('an mcpb install is told to download a bundle, not to run npx', () => {

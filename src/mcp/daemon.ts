@@ -335,31 +335,44 @@ export async function stopDaemon(): Promise<{
   stopped: boolean
   pid?: number
 }> {
-  const info = readDaemonInfo()
+  let info = readDaemonInfo()
+  if (!info) {
+    // daemon.json missing: try to discover a running daemon via probe so we
+    // can still stop/restart it after upgrades (daemon may predate daemon.json
+    // or the file may have been cleaned up).
+    info = await getRunningDaemon()
+  }
   if (!info) {
     return { stopped: false }
   }
 
+  const pid = info.pid
+  if (!pid || pid <= 0) {
+    return { stopped: false }
+  }
+
   try {
-    process.kill(info.pid, 'SIGTERM')
+    process.kill(pid, 'SIGTERM')
     const start = Date.now()
     while (Date.now() - start < 3000) {
       await new Promise((r) => setTimeout(r, 100))
       try {
-        process.kill(info.pid, 0)
+        process.kill(pid, 0)
       } catch {
         try {
           rmSync(daemonInfoPath())
         } catch {}
-        return { stopped: true, pid: info.pid }
+        return { stopped: true, pid }
       }
     }
     // Force kill if graceful exit timed out
-    process.kill(info.pid, 'SIGKILL')
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {}
     try {
       rmSync(daemonInfoPath())
     } catch {}
-    return { stopped: true, pid: info.pid }
+    return { stopped: true, pid }
   } catch {
     try {
       rmSync(daemonInfoPath())
