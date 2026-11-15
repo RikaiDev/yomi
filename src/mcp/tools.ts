@@ -923,7 +923,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      "Return a compact DIGITAL TWIN style card for the user from the local index (token-efficient): tone/phrasing guide, message segmentation/bursting (how to split into multiple short messages), emoji habits, and sticker habits (when to use, with top stickerId/packageId to send via send_sticker) plus a few short examples. ALWAYS call before drafting/composing/sending any LINE reply or message — matching the user's voice and messaging behavior is Yomi's default. Pass chatId to get per-conversation nuances. Reads local index only (no network); needs collect_messages to have indexed user's sent messages.",
+      "Return a compact DIGITAL TWIN style card for the user from the local index (token-efficient): tone/phrasing guide, message segmentation/bursting (how to split into multiple short messages), emoji habits, sticker habits (when to use, with top stickerId/packageId to send via send_sticker), and a NARRATIVE STRUCTURE read (segment order such as context → delivered items → request → concrete parameters → deadline, concrete-data density, and whether the request hands the decision back to the recipient; marked as a heuristic approximation and omitted when the sample is too small). Plus a few short examples. ALWAYS call before drafting/composing/sending any LINE reply or message — matching the user's voice and messaging behavior is Yomi's default. Pass chatId to get per-conversation nuances. Reads local index only (no network); needs collect_messages to have indexed user's sent messages.",
     inputSchema: {
       type: 'object' as const,
       properties: {

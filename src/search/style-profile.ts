@@ -9,6 +9,11 @@
  * computed on demand from the user's own sent messages (fromMid = user).
  */
 
+import {
+  analyzeNarrative,
+  type NarrativeProfile,
+  narrativeGuideLines,
+} from './narrative.js'
 import { getDb } from './store.js'
 
 export interface StyleCard {
@@ -57,6 +62,12 @@ export interface StyleCard {
     segmentation: string
     stickerUsage: string
   }
+  /**
+   * Narrative structure of the user's messages (segment order, data density,
+   * request style). Optional: absent when the sample is too small to describe.
+   * The analysis is a keyword/punctuation heuristic, not semantic understanding.
+   */
+  narrative?: NarrativeProfile
 }
 
 interface MsgRow {
@@ -213,6 +224,7 @@ function buildGuide(
   s: StyleCard['signals'],
   burst: { typical: number; gapSec: number },
   _topStickerCount: number,
+  narrative?: NarrativeProfile,
 ): string[] {
   const g: string[] = []
   g.push(`語氣:${s.formality}; 平均${s.avgChars}字/則(中位${s.medianChars})`)
@@ -236,6 +248,7 @@ function buildGuide(
   if (s.greetingRate > 0.05) g.push(`開場:常帶招呼語`)
   if (s.closingRate > 0.1) g.push(`收尾:常帶致謝/收尾語`)
   if (s.questionRate > 0.15) g.push(`提問:常用問句`)
+  if (narrative) g.push(...narrativeGuideLines(narrative))
   g.push(`原則:完全模仿語氣/用詞/分段節奏與貼圖習慣,不加模板客套,不改寫成AI腔`)
   return g
 }
@@ -281,7 +294,11 @@ function analyze(rows: MsgRow[], chatId?: string): StyleCard {
     formality,
   }
   const globalStickers = topStickers(rows)
-  const guide = buildGuide(signals, burst, globalStickers.length)
+  const narrative = analyzeNarrative(
+    texts,
+    textRows.map((r) => r.chatId),
+  )
+  const guide = buildGuide(signals, burst, globalStickers.length, narrative)
   const card: StyleCard = {
     textSampleSize: textRows.length,
     stickerSampleSize: stickerRows.length,
@@ -299,6 +316,7 @@ function analyze(rows: MsgRow[], chatId?: string): StyleCard {
           ? `可在合適情境單獨送貼圖或文字後補貼圖;優先使用 topStickers 中的 stickerId/packageId(用 send_sticker)`
           : '預設不加貼圖,除非對話情境明顯需要且使用者慣用',
     },
+    narrative,
   }
 
   if (chatId) {
@@ -317,6 +335,14 @@ function analyze(rows: MsgRow[], chatId?: string): StyleCard {
         notes.push(`此對話常連發${chatBurst.typical}則`)
     }
     if (chatStk.length) notes.push(`此對話有貼圖互動(${chatStk.length}則)`)
+    const chatHonorific = narrative.honorifics.perChat.find(
+      (entry) => entry.chatId === chatId,
+    )
+    if (chatHonorific?.dominant) {
+      notes.push(
+        `此對話敬語以『${chatHonorific.dominant}』為主(您約${Math.round(chatHonorific.ningRate * 100)}%、妳約${Math.round(chatHonorific.neiRate * 100)}%)`,
+      )
+    }
     card.chat = {
       chatId,
       chatName,
