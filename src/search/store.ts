@@ -222,12 +222,82 @@ export function getDb(): Database {
       term TEXT NOT NULL,
       category TEXT NOT NULL,
       evidence TEXT NOT NULL,
+      origin TEXT NOT NULL DEFAULT 'named',
+      instances INTEGER NOT NULL DEFAULT 1,
+      confidence REAL NOT NULL DEFAULT 0.5,
       createdAt INTEGER NOT NULL
     );
   `)
   handle.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS persona_facts_subject_term
     ON persona_facts (subjectName, term);
+  `)
+  // Migrate: a database written before roles carried their origin, instance
+  // count and confidence. A fact recorded then was one the owner stated, so
+  // it keeps that meaning rather than being re-labelled as a model's
+  // conclusion.
+  const factCols = handle
+    .prepare<{ name: string }>('PRAGMA table_info(persona_facts)')
+    .all()
+    .map((c) => c.name)
+  if (!factCols.includes('origin')) {
+    handle.exec(
+      "ALTER TABLE persona_facts ADD COLUMN origin TEXT NOT NULL DEFAULT 'stated'",
+    )
+  }
+  if (!factCols.includes('instances')) {
+    handle.exec(
+      'ALTER TABLE persona_facts ADD COLUMN instances INTEGER NOT NULL DEFAULT 1',
+    )
+  }
+  if (!factCols.includes('confidence')) {
+    handle.exec(
+      'ALTER TABLE persona_facts ADD COLUMN confidence REAL NOT NULL DEFAULT 1',
+    )
+  }
+  // Derived evidence, computed from the conversations and written back here
+  // so a reader gets the current picture without rescanning the whole
+  // corpus. Each row is one piece of quotable evidence about one person.
+  //
+  // Note what is NOT here: a table of roles. Yomi does not decide what
+  // someone is — it hands over the evidence and lets the model reading the
+  // tool name them. What the model concludes is remembered separately, in
+  // `persona_facts`, with the sentence it based the name on.
+  handle.exec(`
+    CREATE TABLE IF NOT EXISTS persona_evidence (
+      id INTEGER PRIMARY KEY,
+      mid TEXT NOT NULL,
+      name TEXT,
+      kind TEXT NOT NULL,
+      form TEXT,
+      text TEXT NOT NULL,
+      occurrences INTEGER NOT NULL,
+      chatId TEXT,
+      chatName TEXT,
+      derivedAt INTEGER NOT NULL,
+      UNIQUE (mid, kind, form, text)
+    );
+  `)
+  // The personas themselves: one row per person, with what the evidence
+  // says about them.
+  handle.exec(`
+    CREATE TABLE IF NOT EXISTS persona_nodes (
+      mid TEXT PRIMARY KEY,
+      name TEXT,
+      addresses TEXT,
+      summary TEXT,
+      derivedAt INTEGER NOT NULL
+    );
+  `)
+  // When the derivation last ran, and over how many messages, so a caller can
+  // tell a fresh graph from a stale one.
+  handle.exec(`
+    CREATE TABLE IF NOT EXISTS persona_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      derivedAt INTEGER,
+      messageCount INTEGER,
+      roleCount INTEGER
+    );
   `)
   db = handle
   return handle
@@ -701,6 +771,12 @@ export interface PersonaFactRecord {
   category: string
   /** The owner's own sentence, verbatim. */
   evidence: string
+  /** Whether the owner stated it outright, or a model named it. */
+  origin: string
+  /** How many independent instances back it. */
+  instances: number
+  /** Confidence in [0,1], as the namer assessed it. */
+  confidence: number
 }
 
 /**
@@ -717,12 +793,15 @@ export function upsertPersonaFact(fact: PersonaFactRecord): number {
   const handle = getDb()
   handle
     .prepare(
-      `INSERT INTO persona_facts (subjectMid, subjectName, term, category, evidence, createdAt)
-     VALUES ($subjectMid, $subjectName, $term, $category, $evidence, $createdAt)
+      `INSERT INTO persona_facts (subjectMid, subjectName, term, category, evidence, origin, instances, confidence, createdAt)
+     VALUES ($subjectMid, $subjectName, $term, $category, $evidence, $origin, $instances, $confidence, $createdAt)
      ON CONFLICT(subjectName, term) DO UPDATE SET
        subjectMid = excluded.subjectMid,
        category = excluded.category,
        evidence = excluded.evidence,
+       origin = excluded.origin,
+       instances = excluded.instances,
+       confidence = excluded.confidence,
        createdAt = excluded.createdAt`,
     )
     .run({
@@ -731,6 +810,9 @@ export function upsertPersonaFact(fact: PersonaFactRecord): number {
       $term: fact.term,
       $category: fact.category,
       $evidence: fact.evidence,
+      $origin: fact.origin,
+      $instances: fact.instances,
+      $confidence: fact.confidence,
       $createdAt: now,
     })
   const row = handle
@@ -749,7 +831,7 @@ export function upsertPersonaFact(fact: PersonaFactRecord): number {
 export function listPersonaFacts(): PersonaFactRecord[] {
   return getDb()
     .prepare<PersonaFactRecord>(
-      `SELECT subjectMid, subjectName, term, category, evidence
+      `SELECT subjectMid, subjectName, term, category, evidence, origin, instances, confidence
        FROM persona_facts
        ORDER BY createdAt DESC;`,
     )
@@ -776,6 +858,150 @@ export function deletePersonaFact(subjectName: string, term: string): number {
     )
     .run({ $subjectName: subjectName, $term: term })
   return Number(before?.count ?? 0)
+}
+
+/** One piece of evidence as stored in the `persona_evidence` table. */
+export interface PersonaEvidenceRecord {
+  mid: string
+  name: string | null
+  kind: string
+  form: string | null
+  text: string
+  occurrences: number
+  chatId: string | null
+  chatName: string | null
+  derivedAt: number
+}
+
+/** One person as stored in the `persona_nodes` table. */
+export interface PersonaNodeRecord {
+  mid: string
+  name: string | null
+  /** JSON array of address forms. */
+  addresses: string | null
+  /** JSON array of role summaries. */
+  summary: string | null
+  derivedAt: number
+}
+
+/**
+ * Replace the derived evidence wholesale.
+ *
+ * The derivation always runs over the whole corpus, so its output replaces
+ * the previous output: evidence that is no longer supported disappears
+ * instead of lingering as a stale claim.
+ *
+ * @param evidence - The derived evidence.
+ * @param nodes - The derived personas.
+ * @param messageCount - How many messages the derivation read.
+ */
+export function replacePersonaEvidence(
+  evidence: PersonaEvidenceRecord[],
+  nodes: PersonaNodeRecord[],
+  messageCount: number,
+): void {
+  const handle = getDb()
+  const now = Date.now()
+  handle.exec('DELETE FROM persona_evidence;')
+  handle.exec('DELETE FROM persona_nodes;')
+  const insertEvidence = handle.prepare(
+    `INSERT INTO persona_evidence (mid, name, kind, form, text, occurrences, chatId, chatName, derivedAt)
+     VALUES ($mid, $name, $kind, $form, $text, $occurrences, $chatId, $chatName, $derivedAt)`,
+  )
+  for (const item of evidence) {
+    insertEvidence.run({
+      $mid: item.mid,
+      $name: item.name,
+      $kind: item.kind,
+      $form: item.form,
+      $text: item.text,
+      $occurrences: item.occurrences,
+      $chatId: item.chatId,
+      $chatName: item.chatName,
+      $derivedAt: now,
+    })
+  }
+  const insertNode = handle.prepare(
+    `INSERT INTO persona_nodes (mid, name, addresses, summary, derivedAt)
+     VALUES ($mid, $name, $addresses, $summary, $derivedAt)`,
+  )
+  for (const node of nodes) {
+    insertNode.run({
+      $mid: node.mid,
+      $name: node.name,
+      $addresses: node.addresses,
+      $summary: node.summary,
+      $derivedAt: now,
+    })
+  }
+  handle.exec(
+    `INSERT INTO persona_state (id, derivedAt, messageCount, roleCount)
+     VALUES (1, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       derivedAt = excluded.derivedAt,
+       messageCount = excluded.messageCount,
+       roleCount = excluded.roleCount`,
+    [now, messageCount, evidence.length],
+  )
+}
+
+/**
+ * Read every piece of derived evidence.
+ *
+ * @returns The evidence, most substantial first.
+ */
+export function listPersonaEvidence(): PersonaEvidenceRecord[] {
+  return getDb()
+    .prepare<PersonaEvidenceRecord>(
+      `SELECT mid, name, kind, form, text, occurrences, chatId, chatName, derivedAt
+       FROM persona_evidence
+       ORDER BY occurrences DESC, mid;`,
+    )
+    .all()
+}
+
+/**
+ * Read every derived persona.
+ *
+ * @returns The personas, by MID.
+ */
+export function listPersonaNodes(): PersonaNodeRecord[] {
+  return getDb()
+    .prepare<PersonaNodeRecord>(
+      `SELECT mid, name, addresses, summary, derivedAt
+       FROM persona_nodes
+       ORDER BY derivedAt DESC;`,
+    )
+    .all()
+}
+
+/**
+ * Read when the derivation last ran.
+ *
+ * @returns The derivation state, or null when it never ran.
+ */
+export function getPersonaState(): {
+  derivedAt: number | null
+  messageCount: number
+  roleCount: number
+} | null {
+  const row = getDb()
+    .prepare<{
+      derivedAt: number | null
+      messageCount: number | null
+      roleCount: number | null
+    }>(
+      'SELECT derivedAt, messageCount, roleCount FROM persona_state WHERE id = 1;',
+    )
+    .get()
+  if (!row) {
+    return null
+  }
+  return {
+    derivedAt: row.derivedAt ?? null,
+    messageCount: Number(row.messageCount ?? 0),
+    roleCount: Number(row.roleCount ?? 0),
+  }
 }
 
 export function saveCaptureState(state: {

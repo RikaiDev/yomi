@@ -8,11 +8,11 @@
  * sentence as the evidence.
  *
  * Usage:
- *   yomi persona-fact add <subjectName> <term> <evidence> [--mid <mid>] [--category <category>]
+ *   yomi persona-fact add <subjectName> <term> <evidence> [--mid <mid>] [--category <category>] [--origin named|stated] [--instances <n>] [--confidence <0-1>]
  *   yomi persona-fact list
+ *   yomi persona-fact remove <subjectName> <term>
  */
 
-import { roleCategoryOf } from '../search/persona-graph.js'
 import {
   deletePersonaFact,
   listPersonaFacts,
@@ -82,23 +82,37 @@ export async function cliPersonaFact(args: string[] = []): Promise<number> {
   const [subjectName, term, evidence] = positional
   if (!subjectName || !term || !evidence) {
     console.error(
-      'persona-fact add: usage: persona-fact add <subjectName> <term> <evidence> [--mid <mid>] [--category <category>]',
+      'persona-fact add: usage: persona-fact add <subjectName> <term> <evidence> [--mid <mid>] [--category <category>] [--origin named|stated] [--instances <n>] [--confidence <0-1>]',
     )
     return 1
   }
-  const category = flags.get('category') || roleCategoryOf(term) || 'household'
+  const category = flags.get('category') || 'other'
+  const origin = flags.get('origin') === 'stated' ? 'stated' : 'named'
+  const instances = Number(flags.get('instances')) || 1
+  const confidence = Number(flags.get('confidence')) || 0.5
   const id = upsertPersonaFact({
     subjectMid: flags.get('mid') || null,
     subjectName,
     term,
     category,
     evidence,
+    origin,
+    instances,
+    confidence,
   })
   console.log(
     JSON.stringify({
       ok: true,
       id,
-      fact: { subjectName, term, category, evidence },
+      fact: {
+        subjectName,
+        term,
+        category,
+        evidence,
+        origin,
+        instances,
+        confidence,
+      },
     }),
   )
   return 0

@@ -938,7 +938,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'Return a persona graph of the people in your conversations: the roles you stated for them, how you address them, how you behave with them, and how they write. Reads the local index only. Roles carry the sentence that stated them.',
+      'Return a persona graph of the people in your conversations: the address form you use with each of them, the work you delegate to them, their most substantial line, and the roles that have been named for them. Reads the local index only. IMPORTANT: Yomi does not name roles itself — it has no role vocabulary and runs no model. It hands you the evidence, quoted, and you decide who each person is; write your conclusion back with add_persona_fact so the next read starts from it.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -953,37 +953,61 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'Record a fact about a person that you stated outside LINE — for example "Yijun is my wife and our finance person". The persona graph can only report roles that were written down somewhere; this stores your own sentence as the evidence, so the graph can report the role later. Stored locally in the search index.',
+      'Record what you concluded about a person from the persona evidence — for example "the hospital pharmacist" for someone whose address form is "Lin pharmacist" and whose delegated work is invoice processing. Yomi has no role vocabulary, so this is where your reading of the evidence becomes part of the graph. The quoted sentence you pass as evidence is kept, so a later reader can check the conclusion against the words it came from.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         subjectName: {
           type: 'string',
           description:
-            'The person\'s name, as you write it (e.g. "Yijun"). Used to match the fact to a person in the graph.',
+            'The person\'s name, as it appears in the graph (e.g. "Lin Jialin"). Used to match the fact to a person.',
         },
         subjectMid: {
           type: 'string',
           description:
-            "Optional: the person's LINE MID, when you know it. More reliable than the name.",
+            "Optional: the person's LINE MID, when the graph gave you one. More reliable than the name.",
         },
         term: {
           type: 'string',
-          description: 'The role word (e.g. "wife", "finance", "pharmacist").',
+          description:
+            'The role, in your own words (e.g. "hospital pharmacist", "wife", "company finance").',
         },
         category: {
           type: 'string',
           description:
-            'Optional: role category — family, household, workplace, professional, or client. Defaults to family when the term is a known family word.',
+            'Optional: family, household, workplace, professional, client, or other.',
         },
         evidence: {
           type: 'string',
           description:
-            'Your own sentence, verbatim, that states the role. This is the evidence the graph will quote.',
+            'The quoted sentence the conclusion rests on, copied verbatim from the evidence in the graph.',
+        },
+        origin: {
+          type: 'string',
+          description:
+            "Optional: 'named' when you concluded it from the evidence (default), or 'stated' when the owner told you outright.",
+        },
+        instances: {
+          type: 'number',
+          description:
+            'Optional: how many independent pieces of evidence back this (default 1).',
+        },
+        confidence: {
+          type: 'number',
+          description: 'Optional: confidence in [0,1] (default 0.5).',
         },
       },
       required: ['subjectName', 'term', 'evidence'],
     },
     name: 'add_persona_fact',
+  },
+  {
+    description:
+      'Read the persisted persona evidence directly: for each person, the address form you use with them, the work you delegate to them, and their most substantial line, all quoted. This reads what the background pass last collected, so it is cheaper than get_persona_graph and does not rescan the corpus. Use it when you need the evidence about specific people.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {},
+    },
+    name: 'get_persona_evidence',
   },
 ]

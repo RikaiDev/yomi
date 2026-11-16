@@ -23,6 +23,11 @@ import type { LineProtocolService } from '../line/core/service.js'
 import { createCliLogger } from '../util/log.js'
 import { collectMessages } from './collector.js'
 import type { Embedder } from './embedder.js'
+import {
+  deriveAllEvidence,
+  deriveEvidenceForChats,
+  FULL_REDERIVE_INTERVAL_MS,
+} from './persona-index.js'
 import { SqliteUnavailableError } from './sqlite.js'
 import { saveCaptureState } from './store.js'
 
@@ -75,6 +80,13 @@ export async function startCapture(
       messagesIndexed: summary.messagesIndexed,
       messagesEmbedded: summary.messagesEmbedded,
     })
+    // The graph starts out empty after a fresh install, so the first full
+    // derivation runs right after the startup catch-up.
+    const selfMid = service.profile?.mid ?? null
+    if (selfMid) {
+      const evidence = deriveAllEvidence(selfMid)
+      log.info('capture.persona_initial', { evidence })
+    }
   } catch (error: any) {
     // A runtime with no SQLite is not a hiccup this loop recovers from — the
     // index will stay empty for the life of the process and every later flush
@@ -116,6 +128,7 @@ export async function startCapture(
       })
     }
     persistCursor(service)
+    refreshPersona(service.profile?.mid ?? null, chatIds)
   }
 
   service.client.on('message', (message: any) => {
@@ -130,12 +143,56 @@ export async function startCapture(
     }
   })
 
-  log.info('capture.started', {})
   service.client.startPolling().catch((error: any) => {
     log.error('capture.polling_stopped', {
       error: error?.message ?? String(error),
     })
   })
+
+  // The periodic full pass. The incremental pass above only sees the chats
+  // that just changed; this one reads everything, so a role that changed
+  // because of something elsewhere — a new title you started using in a
+  // different chat — is still noticed.
+  const fullTimer = setInterval(() => {
+    const selfMid = service.profile?.mid ?? null
+    if (!selfMid) {
+      return
+    }
+    try {
+      const evidence = deriveAllEvidence(selfMid)
+      log.info('capture.persona_full', { evidence })
+    } catch (error: any) {
+      log.warn('capture.persona_full_failed', {
+        error: error?.message ?? String(error),
+      })
+    }
+  }, FULL_REDERIVE_INTERVAL_MS)
+  fullTimer.unref?.()
+
+  log.info('capture.started', {})
+}
+
+/**
+ * Re-derive the roles of the people in the chats that just changed.
+ *
+ * Best-effort: the persona graph is a reading aid, and a failure to refresh
+ * it must never take the capture loop down with it.
+ *
+ * @param selfMid - The account owner's LINE MID.
+ * @param chatIds - The chats whose messages were just indexed.
+ */
+function refreshPersona(selfMid: string | null, chatIds: string[]): void {
+  if (!selfMid || chatIds.length === 0) {
+    return
+  }
+  try {
+    const evidence = deriveEvidenceForChats(selfMid, chatIds)
+    log.info('capture.persona_incremental', { chats: chatIds.length, evidence })
+  } catch (error: any) {
+    log.warn('capture.persona_incremental_failed', {
+      error: error?.message ?? String(error),
+    })
+  }
 }
 
 /**

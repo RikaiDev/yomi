@@ -36,6 +36,7 @@ import {
   handleGetInsight,
   handleGetMessageImage,
   handleGetMessageMedia,
+  handleGetPersonaEvidence,
   handleGetPersonaGraph,
   handleGetScopePolicy,
   handleGetStyleProfile,
@@ -186,7 +187,8 @@ export function createBuildServer(
         name === 'get_scope_policy' ||
         name === 'get_style_profile' ||
         name === 'get_persona_graph' ||
-        name === 'add_persona_fact'
+        name === 'add_persona_fact' ||
+        name === 'get_persona_evidence'
       if (!noSessionExempt) {
         // Three distinct "no session" stories, and the user gets sent looking in
         // the wrong place if we conflate them: LINE revoked this device's token
@@ -494,6 +496,8 @@ export function createBuildServer(
             return await handleGetPersonaGraph(
               (args ?? {}) as { limit?: number },
             )
+          case 'get_persona_evidence':
+            return await handleGetPersonaEvidence()
           case 'add_persona_fact':
             return await handleAddPersonaFact(
               (args ?? {}) as {

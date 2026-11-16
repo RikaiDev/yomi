@@ -35,33 +35,76 @@
  */
 
 import { analyzeNarrative, type NarrativeProfile } from './narrative.js'
+import { collectEvidence, type EvidenceRow } from './persona-evidence.js'
+import { deriveAllEvidence, getPersistedEvidence } from './persona-index.js'
 import { getExcludedChatIds } from './scope.js'
-import { getDb, listPersonaFacts } from './store.js'
+import {
+  getDb,
+  listPersonaFacts,
+  type PersonaEvidenceRecord,
+  type PersonaNodeRecord,
+} from './store.js'
 
-/** A role you stated for someone, with the sentence that stated it. */
-export interface PersonaRole {
-  /** The role word as it appeared, e.g. "wife" or "pharmacist". */
-  term: string
-  /** The role category the term belongs to. */
-  category: PersonaRoleCategory
-  /** Your own sentence, verbatim, that stated the role. */
-  evidence: string
-  /** Where the evidence lives. */
-  source: { chatId: string; chatName: string | null }
-  /**
-   * Where the role came from: a LINE message you sent, or a fact you stated
-   * outside LINE (stored in the `persona_facts` table).
-   */
-  origin: 'message' | 'stated'
-}
-
-/** Coarse grouping of a role word. */
+/**
+ * Coarse grouping of a role, chosen by whoever named the role.
+ *
+ * Yomi keeps the grouping free-form on purpose: the categories are a
+ * convenience for the reader, not a taxonomy the tool imposes.
+ */
 export type PersonaRoleCategory =
   | 'family'
   | 'household'
   | 'workplace'
   | 'professional'
   | 'client'
+  | 'other'
+
+/**
+ * A role for someone, with the evidence that supports it.
+ *
+ * Yomi never decides a role on its own. A role exists here because a model
+ * reading the evidence named it and wrote it back with the sentence it based
+ * the name on — so the evidence is always the user's own words.
+ */
+export interface PersonaRole {
+  /** The role term, e.g. "wife" or "pharmacist". */
+  term: string
+  /** The role category the term belongs to. */
+  category: PersonaRoleCategory
+  /** The sentence, verbatim, that the name was based on. */
+  evidence: string
+  /** Where the evidence lives. */
+  source: { chatId: string; chatName: string | null }
+  /**
+   * Where the role came from: a fact a model named from the evidence
+   * (`named`), or a fact the owner stated outright (`stated`).
+   */
+  origin: 'named' | 'stated'
+  /** How many independent instances back it. */
+  instances: number
+  /** Confidence in [0,1], as the namer assessed it. */
+  confidence: number
+}
+
+/**
+ * One piece of quotable evidence about a person.
+ *
+ * This is what yomi can say on its own: the address form used with them,
+ * the work delegated to them, and their most substantial line — each quoted
+ * from the conversation. What it means is left to the reader.
+ */
+export interface PersonaEvidenceLine {
+  /** What kind of evidence this is. */
+  kind: 'address' | 'request' | 'notable'
+  /** The address form, when the evidence is one. */
+  form: string | null
+  /** The evidence, quoted. */
+  text: string
+  /** How many times the form was used. */
+  occurrences: number
+  /** Where the evidence lives. */
+  source: { chatId: string; chatName: string | null }
+}
 
 /** How you address one person, with the message that shows it. */
 export interface PersonaAddress {
@@ -108,8 +151,17 @@ export interface PersonaVoice {
 export interface PersonaNode {
   mid: string
   name: string | null
-  /** Roles you stated for this person. */
+  /**
+   * Roles for this person, each with the evidence it rests on. Yomi does not
+   * decide these; they are what a model named from the evidence and wrote
+   * back.
+   */
   roles: PersonaRole[]
+  /**
+   * The quotable evidence about this person: the address form used with
+   * them, the work delegated to them, their most substantial line.
+   */
+  evidence: PersonaEvidenceLine[]
   /** Address forms you use for this person. */
   addresses: PersonaAddress[]
   /** Your conversations with this person. */
@@ -151,8 +203,10 @@ export interface PersonaGraph {
     edgeCount: number
     /** Edges actually included in the output. */
     edgesShown: number
-    /** Roles merged in from facts the owner stated outside LINE. */
-    statedFacts: number
+    /** Roles named for people, from facts written back by a reader. */
+    namedRoles: number
+    /** Pieces of quotable evidence collected about the people. */
+    evidenceCount: number
   }
 }
 
@@ -186,90 +240,15 @@ export interface PersonaFact {
   category: string
   /** The owner's own sentence, verbatim. */
   evidence: string
-}
-
-/**
- * Role words, grouped by category. A role is only reported when one of these
- * words appears in the same sentence as the person's name in YOUR message.
- */
-const ROLE_TERMS: { term: string; category: PersonaRoleCategory }[] = [
-  // family
-  { term: '太太', category: 'family' },
-  { term: '老婆', category: 'family' },
-  { term: '內人', category: 'family' },
-  { term: '妻子', category: 'family' },
-  { term: '老公', category: 'family' },
-  { term: '先生', category: 'family' },
-  { term: '媽媽', category: 'family' },
-  { term: '父親', category: 'family' },
-  { term: '父親', category: 'family' },
-  { term: '爸爸', category: 'family' },
-  { term: '哥哥', category: 'family' },
-  { term: '姐姐', category: 'family' },
-  { term: '弟弟', category: 'family' },
-  { term: '妹妹', category: 'family' },
-  { term: '兒子', category: 'family' },
-  { term: '女兒', category: 'family' },
-  // household
-  { term: '財務', category: 'household' },
-  { term: '會計', category: 'household' },
-  { term: '秘書', category: 'household' },
-  { term: '助理', category: 'household' },
-  // workplace
-  { term: '同事', category: 'workplace' },
-  { term: '主管', category: 'workplace' },
-  { term: '老闆', category: 'workplace' },
-  { term: '員工', category: 'workplace' },
-  { term: '工程師', category: 'workplace' },
-  { term: '設計師', category: 'workplace' },
-  { term: '業務', category: 'workplace' },
-  { term: '夥伴', category: 'workplace' },
-  // professional
-  { term: '醫師', category: 'professional' },
-  { term: '藥師', category: 'professional' },
-  { term: '護理師', category: 'professional' },
-  { term: '律師', category: 'professional' },
-  { term: '會計師', category: 'professional' },
-  { term: '顧問', category: 'professional' },
-  { term: '老師', category: 'professional' },
-  { term: '教授', category: 'professional' },
-  // client
-  { term: '客戶', category: 'client' },
-  { term: '業主', category: 'client' },
-  { term: '窗口', category: 'client' },
-  { term: '承辦', category: 'client' },
-]
-
-/**
- * Coerce a stored category string into a known category.
- *
- * A stored fact can carry any category the caller chose, so an unknown value
- * falls back to `household` rather than widening the type at runtime.
- *
- * @param category - The stored category.
- * @returns A known category.
- */
-function normalizeCategory(category: string): PersonaRoleCategory {
-  const known: PersonaRoleCategory[] = [
-    'family',
-    'household',
-    'workplace',
-    'professional',
-    'client',
-  ]
-  return known.includes(category as PersonaRoleCategory)
-    ? (category as PersonaRoleCategory)
-    : 'household'
-}
-
-/**
- * The category a role word belongs to, when it is a known role word.
- *
- * @param term - The role word to classify.
- * @returns The category, or null when the word is not a known role word.
- */
-export function roleCategoryOf(term: string): PersonaRoleCategory | null {
-  return ROLE_TERMS.find((entry) => entry.term === term)?.category ?? null
+  /**
+   * Whether the owner stated this outright, or a model named it from the
+   * evidence.
+   */
+  origin: 'named' | 'stated'
+  /** How many independent instances back it. */
+  instances: number
+  /** Confidence in [0,1], as the namer assessed it. */
+  confidence: number
 }
 
 /**
@@ -285,6 +264,29 @@ const GREETINGS = [
   '晚安',
   '你好呀',
 ]
+
+/**
+ * Coerce a stored category string into a known category.
+ *
+ * The categories are a convenience for the reader, so an unknown value falls
+ * back to `other` rather than widening the type at runtime.
+ *
+ * @param category - The stored category.
+ * @returns A known category.
+ */
+function normalizeRoleCategory(category: string): PersonaRoleCategory {
+  const known: PersonaRoleCategory[] = [
+    'family',
+    'household',
+    'workplace',
+    'professional',
+    'client',
+    'other',
+  ]
+  return known.includes(category as PersonaRoleCategory)
+    ? (category as PersonaRoleCategory)
+    : 'other'
+}
 
 /** Characters that end the head of a message. */
 const ADDRESS_BREAKS = /[。，！？!、：:;\n]/
@@ -308,10 +310,6 @@ function addressFormOf(text: string): string | null {
       return form.length >= 1 && form.length <= 6 ? form : null
     }
   }
-  const endsWithRole = ROLE_TERMS.some(({ term }) => head.endsWith(term))
-  if (endsWithRole && !/[是的我]/.test(head)) {
-    return head.length <= 8 ? head : null
-  }
   return null
 }
 
@@ -333,19 +331,6 @@ function oneLine(text: string): string {
     }
   }
   return text.trim()
-}
-
-/**
- * Split a message into sentence-ish units. Chinese business writing separates
- * sentences with 。！？； and clauses with ， — a role statement and the name
- * it belongs to usually sit in the same sentence, so clauses are kept whole
- * and only hard sentence breaks split.
- */
-function splitSentences(text: string): string[] {
-  return text
-    .split(/[。！？!?\n；;]/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
 }
 
 /**
@@ -467,11 +452,15 @@ function condenseVoice(
  */
 export function getPersonaGraph(
   selfMid: string,
-  options: { limit?: number; maxEdges?: number } = {},
+  options: { limit?: number; maxEdges?: number; derive?: boolean } = {},
 ): PersonaGraph {
   const limit = options.limit ?? 20_000
   const { rows, excluded } = loadRows(limit)
-  const graph = buildPersonaGraph(rows, selfMid, listPersonaFacts())
+  const graph = buildPersonaGraph(
+    rows,
+    selfMid,
+    listPersonaFacts() as PersonaFact[],
+  )
   const maxEdges = options.maxEdges ?? 200
   const edges = graph.edges.slice(0, maxEdges)
   return {
@@ -482,59 +471,34 @@ export function getPersonaGraph(
       excludedConversations: excluded,
       edgeCount: graph.edges.length,
       edgesShown: edges.length,
-      statedFacts: graph.method.statedFacts,
+      namedRoles: graph.method.namedRoles,
+      evidenceCount: graph.method.evidenceCount,
     },
   }
 }
 
-/** Copulas that introduce a definition of a person. */
-const DEFINITION_COPULAS = ['就是', '叫做', '叫', '是', '為']
-
 /**
- * The roles a sentence states for a person.
+ * Read the persisted persona evidence.
  *
- * A role counts only when the sentence DEFINES the person by it — "Yijun is
- * my wife and our company's finance person" states roles; "Yijun is in a
- * meeting with a colleague" mentions a role word that belongs to somebody
- * else entirely. Co-occurrence inside one sentence is not evidence, so the
- * rule is positional: the role word must sit in the definition that follows
- * the name, or in the definition that introduces it.
+ * The evidence collection runs in the background (see ./persona-index.ts),
+ * so this is the cheap path: it reads what the last pass collected instead
+ * of rescanning the corpus. When nothing has been collected yet, it collects
+ * once so a caller never sees an empty graph on a fresh install.
  *
- * @param sentence - The sentence to read.
- * @param name - The person's name as it appears in the sentence.
- * @returns The roles the sentence states for that person.
+ * @param selfMid - The account owner's LINE MID.
+ * @returns The persisted evidence, the personas, and when the pass ran.
  */
-function rolesStatedIn(
-  sentence: string,
-  name: string,
-): { term: string; category: PersonaRoleCategory }[] {
-  const found: { term: string; category: PersonaRoleCategory }[] = []
-  let index = sentence.indexOf(name)
-  while (index !== -1) {
-    const after = sentence.slice(index + name.length, index + name.length + 16)
-    const copula = DEFINITION_COPULAS.find((word) => after.startsWith(word))
-    if (copula) {
-      const region = after.slice(copula.length)
-      for (const { term, category } of ROLE_TERMS) {
-        if (region.includes(term) && !found.some((r) => r.term === term)) {
-          found.push({ term, category })
-        }
-      }
-    }
-    const before = sentence.slice(Math.max(0, index - 14), index)
-    for (const { term, category } of ROLE_TERMS) {
-      const tail = before.slice(-(term.length + 2))
-      if (
-        tail.startsWith(term) &&
-        /[是的為]/.test(tail.slice(term.length)) &&
-        !found.some((r) => r.term === term)
-      ) {
-        found.push({ term, category })
-      }
-    }
-    index = sentence.indexOf(name, index + name.length)
+export function getPersistedPersona(selfMid: string): {
+  evidence: PersonaEvidenceRecord[]
+  nodes: PersonaNodeRecord[]
+  state: { derivedAt: number | null; messageCount: number; roleCount: number }
+} {
+  const persisted = getPersistedEvidence()
+  if (persisted.state.roleCount === 0) {
+    deriveAllEvidence(selfMid)
+    return getPersistedEvidence()
   }
-  return found
+  return persisted
 }
 
 /**
@@ -606,97 +570,41 @@ export function buildPersonaGraph(
       mid,
       name: person.name,
       roles: [],
+      evidence: [],
       addresses: [],
       conversations: [],
       voice: null,
     })
   }
 
-  // Roles and address forms, read only from YOUR messages.
-  const roleSeen = new Set<string>()
-  const addressSeen = new Set<string>()
-  for (const row of rows) {
-    if (row.fromMid !== selfMid || !row.text.trim()) {
-      continue
-    }
-    for (const sentence of splitSentences(row.text)) {
-      for (const [candidate, owners] of nameOwners) {
-        if (owners.length !== 1) {
-          continue
-        }
-        const mid = owners[0]
-        const node = nodes.get(mid)
-        if (!node) {
-          continue
-        }
-        for (const { term, category } of rolesStatedIn(sentence, candidate)) {
-          const key = `${mid}|${term}`
-          if (roleSeen.has(key)) {
-            continue
-          }
-          roleSeen.add(key)
-          node.roles.push({
-            term,
-            category,
-            evidence: oneLine(sentence),
-            source: { chatId: row.chatId, chatName: row.chatName },
-            origin: 'message',
-          })
-        }
-      }
-    }
-  }
-
-  // Roles the owner stated outside LINE, merged in with the same evidence
-  // discipline. A fact is matched to a person by MID when it has one, and
-  // otherwise by name — a name that matches exactly one person in the graph.
-  // A fact about somebody who never appears in the index still gets a node,
-  // because the point of the fact is to describe them.
-  let statedFacts = 0
-  for (const fact of facts) {
-    let mid: string | undefined
-    if (fact.subjectMid && nodes.has(fact.subjectMid)) {
-      mid = fact.subjectMid
-    } else {
-      const candidates = nameOwners.get(fact.subjectName)
-      mid = candidates?.length === 1 ? candidates[0] : undefined
-    }
-    if (!mid) {
-      // Unknown person: keep them in the graph under their stated name. A
-      // second fact about the same name must add to that node, not replace it.
-      mid = `stated:${fact.subjectName}`
-      if (!nodes.has(mid)) {
-        nodes.set(mid, {
-          mid,
-          name: fact.subjectName,
-          roles: [],
-          addresses: [],
-          conversations: [],
-          voice: null,
-        })
-      }
-    }
-    const node = nodes.get(mid)
+  // Evidence: what the conversations actually show about each person. This is
+  // the part yomi can say on its own — the address form used with them, the
+  // work delegated to them, and their most substantial line — each quoted.
+  // It never names a role; the model reading this decides what it means.
+  const evidenceSeen = new Set<string>()
+  const namedSeen = new Set<string>()
+  for (const item of collectEvidence(rows as EvidenceRow[], selfMid)) {
+    const node = nodes.get(item.mid)
     if (!node) {
       continue
     }
-    const key = `${mid}|${fact.term}`
-    if (roleSeen.has(key)) {
+    const key = `${item.mid}|${item.kind}|${item.form ?? item.text}`
+    if (evidenceSeen.has(key)) {
       continue
     }
-    roleSeen.add(key)
-    statedFacts += 1
-    node.roles.push({
-      term: fact.term,
-      category: normalizeCategory(fact.category),
-      evidence: oneLine(fact.evidence),
-      source: { chatId: 'persona-facts', chatName: '使用者口述' },
-      origin: 'stated',
+    evidenceSeen.add(key)
+    node.evidence.push({
+      kind: item.kind,
+      form: item.form,
+      text: item.text,
+      occurrences: item.occurrences,
+      source: item.source,
     })
   }
 
   // Address forms: what you call them at the start of a message, in a
   // one-to-one conversation where there is no other candidate.
+  const addressSeen = new Set<string>()
   for (const [chatId, chatRows] of chats) {
     const others = new Set(
       chatRows
@@ -731,6 +639,58 @@ export function buildPersonaGraph(
       })
       break
     }
+  }
+
+  // Roles that a reader named. These come from the `persona_facts` table,
+  // which holds what someone concluded about a person together with the
+  // sentence it was based on. A fact is matched to a person by MID when it
+  // has one, and otherwise by name — a name that matches exactly one person
+  // in the graph. A fact about somebody who never appears in the index still
+  // gets a node, because the point of the fact is to describe them.
+  let statedFacts = 0
+  for (const fact of facts) {
+    let mid: string | undefined
+    if (fact.subjectMid && nodes.has(fact.subjectMid)) {
+      mid = fact.subjectMid
+    } else {
+      const candidates = nameOwners.get(fact.subjectName)
+      mid = candidates?.length === 1 ? candidates[0] : undefined
+    }
+    if (!mid) {
+      // Unknown person: keep them in the graph under their stated name. A
+      // second fact about the same name must add to that node, not replace it.
+      mid = `stated:${fact.subjectName}`
+      if (!nodes.has(mid)) {
+        nodes.set(mid, {
+          mid,
+          name: fact.subjectName,
+          roles: [],
+          evidence: [],
+          addresses: [],
+          conversations: [],
+          voice: null,
+        })
+      }
+    }
+    const node = nodes.get(mid)
+    if (!node) {
+      continue
+    }
+    const key = `${mid}|${fact.term}`
+    if (namedSeen.has(key)) {
+      continue
+    }
+    namedSeen.add(key)
+    statedFacts += 1
+    node.roles.push({
+      term: fact.term,
+      category: normalizeRoleCategory(fact.category),
+      evidence: oneLine(fact.evidence),
+      source: { chatId: 'persona-facts', chatName: '使用者口述' },
+      origin: fact.origin,
+      instances: fact.instances,
+      confidence: fact.confidence,
+    })
   }
 
   // Conversation behaviour and the other person's own voice.
@@ -825,7 +785,8 @@ export function buildPersonaGraph(
       excludedConversations: 0,
       edgeCount: edgeMap.size,
       edgesShown: edgeMap.size,
-      statedFacts,
+      namedRoles: statedFacts,
+      evidenceCount: evidenceSeen.size,
     },
   }
 }
@@ -848,7 +809,7 @@ function buildGuide(
       for (const role of person.roles) {
         const origin = role.origin === 'stated' ? '（你口述）' : ''
         lines.push(
-          `${label}：角色=${role.term}(${role.category})${origin}，依據〈${role.evidence}〉`,
+          `${label}：角色=${role.term}(${role.category})〔信心${role.confidence.toFixed(2)}〕${origin}，依據〈${role.evidence}〉`,
         )
       }
     }
@@ -890,7 +851,7 @@ function buildGuide(
     lines.push(`同一對話中出現的人：${pairs}`)
   }
   lines.push(
-    '角色只在你自己的訊息中同時出現「姓名＋角色詞」時才會被記錄，沒有句子就沒有角色；你另外口述的關係則以原話單獨記錄。',
+    'yomi 不替人命名角色：它沒有角色詞表，也不跑任何模型。每個人附的是證據——你怎麼稱呼對方、你交付給對方的工作、對方最有力的一句話，全部是你自己的原話；角色由讀這份結果的模型自己判斷，再用 add_persona_fact 寫回來。',
   )
   return lines
 }
