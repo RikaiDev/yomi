@@ -38,8 +38,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
+    "build": "node scripts/typecheck.mjs",
+    "typecheck": "node scripts/typecheck.mjs --noEmit",
     "start": "node run.mjs",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
