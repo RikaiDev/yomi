@@ -934,15 +934,43 @@ export function replacePersonaEvidence(
       $derivedAt: now,
     })
   }
-  handle.exec(
-    `INSERT INTO persona_state (id, derivedAt, messageCount, roleCount)
-     VALUES (1, ?, ?, ?)
+  writePersonaState(handle, {
+    derivedAt: now,
+    messageCount,
+    roleCount: evidence.length,
+  })
+}
+
+/**
+ * Record when the derivation ran and how much it read.
+ *
+ * The write uses named parameters on purpose. The runtime wrapper drops the
+ * second argument of `exec` under bun, so `exec(sql, [params])` silently
+ * binds nothing and writes NULLs — the row would exist and claim that
+ * nothing was ever derived. A handle is taken as an argument so this can be
+ * exercised against a throwaway database instead of the user's own index.
+ *
+ * @param handle - The database handle to write to.
+ * @param state - When the derivation ran, and how much it read.
+ */
+export function writePersonaState(
+  handle: Pick<Database, 'prepare'>,
+  state: { derivedAt: number; messageCount: number; roleCount: number },
+): void {
+  handle
+    .prepare(
+      `INSERT INTO persona_state (id, derivedAt, messageCount, roleCount)
+     VALUES (1, $derivedAt, $messageCount, $roleCount)
      ON CONFLICT(id) DO UPDATE SET
        derivedAt = excluded.derivedAt,
        messageCount = excluded.messageCount,
        roleCount = excluded.roleCount`,
-    [now, messageCount, evidence.length],
-  )
+    )
+    .run({
+      $derivedAt: state.derivedAt,
+      $messageCount: state.messageCount,
+      $roleCount: state.roleCount,
+    })
 }
 
 /**
