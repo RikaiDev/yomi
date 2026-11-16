@@ -71,15 +71,6 @@ export type RequestForm =
   | 'bare-vp'
   | 'conditional-query'
 
-/** Chinese label per request form. */
-export const REQUEST_FORM_LABELS: Record<RequestForm, string> = {
-  'mitigation-preposed': '迂迴標記前置',
-  'qing-vp': '請＋動詞短語',
-  'yao-vp': '要＋動詞短語',
-  'bare-vp': '裸動詞短語祈使',
-  'conditional-query': '條件式詢問',
-}
-
 /** Discourse unit a message line is cut into. */
 export type UnitKind = 'narrative' | 'field' | 'list' | 'request' | 'thanks'
 
