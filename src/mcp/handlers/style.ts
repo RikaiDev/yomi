@@ -2,11 +2,14 @@
  * MCP handler for `get_style_profile` — returns a compact "digital twin"
  * style card so the AI can draft LINE replies that fully match the user's
  * voice: tone, phrasing, message segmentation/bursting, sticker habits, and
- * the narrative structure of the user's messages (segment order, concrete-data
- * density, request style).
+ * the personal writing style of the user's own messages: discrete attributes
+ * over the ideational (value position, date/amount writing), interpersonal
+ * (speech acts, politeness-strategy position of requests, moves that reduce
+ * imposition) and textual (unit division, field arrangement, transition
+ * relations) layers, each rule backed by a rate or the user's own words.
  *
- * The narrative dimension is a keyword/punctuation heuristic and is omitted
- * when the indexed sample is too small to describe.
+ * The style dimension is a keyword/punctuation heuristic and is omitted when
+ * the indexed sample is too small to describe.
  *
  * Reads only the local search index (no network). Works if the index has
  * the user's sent messages; session is only needed to know the user's MID.

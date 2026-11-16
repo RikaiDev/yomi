@@ -63,9 +63,14 @@ export interface StyleCard {
     stickerUsage: string
   }
   /**
-   * Narrative structure of the user's messages (segment order, data density,
-   * request style). Optional: absent when the sample is too small to describe.
-   * The analysis is a keyword/punctuation heuristic, not semantic understanding.
+   * Personal writing style of the user's messages, as discrete attributes
+   * over the three metafunctions: ideational (where a concrete value sits
+   * relative to the action, how dates and amounts are written), interpersonal
+   * (speech acts, politeness-strategy position of requests, moves that
+   * reduce imposition) and textual (unit division, field arrangement,
+   * transition relations). Optional: absent when the sample is too small to
+   * describe. The analysis is a keyword/punctuation heuristic, not semantic
+   * understanding.
    */
   narrative?: NarrativeProfile
 }

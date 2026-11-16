@@ -1,143 +1,165 @@
 /**
- * Narrative-structure analysis for the user's own LINE messages.
+ * Structural style analysis of the user's own LINE messages.
  *
- * The style card already reports mechanical statistics (length, emoji, bursts,
- * stickers). This module adds an approximation of HOW the talker organizes a
- * message: which logical segments a message carries, in what order they
- * appear, how a request is framed, whether an instruction gives an executable
- * value or relays a third party's condition, how concrete fields are laid out
- * (one field per line, in blocks), which wording is used for dates, and which
- * honorific is used.
+ * Style is modelled as a set of PREDEFINED, INTERPRETABLE attributes, in the
+ * tradition of the linguistic-style survey literature (predefined features are
+ * interpretable; automatically learned features are effective but opaque).
+ * The dimensions follow the three Halliday metafunctions:
+ *
+ *   - ideational: content and information structure (where a concrete value
+ *     sits relative to the action verb, how dates and amounts are written,
+ *     whether the topic is stated first),
+ *   - interpersonal: speech acts and relational strategy (which speech act,
+ *     where a request sits on the politeness strategy ladder, which moves
+ *     reduce imposition, where a reason comes from),
+ *   - textual: unit division and cohesion (which units a message is cut
+ *     into, how they are separated, how fields are arranged, and which unit
+ *     follows which).
+ *
+ * Function-word and closing frequencies are reported as an IDENTIFICATION
+ * dimension only (stylometry: function words identify an author well, they do
+ * not tell a model how to imitate that author). Every other rule is an
+ * executable instruction backed by a rate or by the talker's own wording.
  *
  * EVERYTHING HERE IS A KEYWORD + PUNCTUATION HEURISTIC, not semantic
- * understanding, and every reported feature is derived from the analyzed
- * sample: the analyzer never assumes a particular talker's phrasing. Callers
- * must label the result as an approximation and must suppress a dimension
- * when the sample is too small or too flat to describe (see `sufficient`).
+ * understanding, and every reported attribute is derived from the analyzed
+ * sample. Callers must label the result as an approximation and must
+ * suppress a dimension when the sample is too small or too flat to describe.
  */
 
-/** Logical role of one segment inside a message. */
-export type NarrativeRole =
-  | 'context'
-  | 'delivery'
+/** Speech act performed by one clause. */
+export type SpeechAct =
+  | 'statement'
+  | 'explanation'
   | 'request'
-  | 'condition'
-  | 'reason'
-  | 'deadline'
-  | 'closing'
+  | 'question'
+  | 'confirmation'
+  | 'thanks'
 
-/** Chinese label per role, used in the style guide. */
-export const NARRATIVE_ROLE_LABELS: Record<NarrativeRole, string> = {
-  context: '交代現況與前提',
-  delivery: '說明已完成或已交付事項',
-  request: '提出請求並請對方確認',
-  condition: '列出條件、參數與具體資料',
-  reason: '交代理由或依據',
-  deadline: '給出期限與時程',
-  closing: '致謝收尾',
+/** Chinese label per speech act. */
+export const SPEECH_ACT_LABELS: Record<SpeechAct, string> = {
+  statement: '陳述',
+  explanation: '說明理由或背景',
+  request: '請求',
+  question: '詢問',
+  confirmation: '確認',
+  thanks: '致謝',
 }
 
 /**
- * Keyword patterns per role. Each pattern contributes one point when it
- * matches a segment; the highest scoring role wins the segment.
+ * Position of a request on the politeness strategy ladder (Brown & Levinson):
+ * a bald-on-record imperative, a negative-politeness request that fronts a
+ * mitigation marker, or an off-record/conditional request.
  */
-const ROLE_PATTERNS: Record<NarrativeRole, RegExp[]> = {
-  context: [
-    /都跑完|跑完了|目前|現在|進度|狀況|原因是|因為|既然|先說|先講|補充|對了|前置|比較急|比較趕|原來|先前|照之前|照我們|流程|程序|已經|退件|簽呈|但今天|早先/,
-  ],
-  delivery: [
-    /我這邊|我們這邊|這邊先|先做|做了一份|做了一版|做好|弄好|產出|附上|附件|如附件|送件|提交|打包|寫好|整理好|備妥|先備/,
-  ],
-  request: [
-    /請(?!於|購)|麻煩|拜託|幫忙|可否|有沒有|看一下|確認|回傳|寄出|開一下|處理一下|協助|看要不要|自行|需要的話|沒有的話|不然的話|務必/,
-  ],
-  condition: [
-    /金額|含稅|統編|抬頭|品名|細目|明細|單號|序號|編號|地址|收件|三聯式|報價|單價|規格|數量|尺寸|版本|共計|合計|新台幣|戶名|戶號|頁|簽名|用印|日期|號碼|費|款項/,
-  ],
-  reason: [
-    /因為|所以|由於|要用來|要用|需要|要看|用途|原因|理由|才請得到|才跑得完|才成立/,
-  ],
-  deadline: [
-    /今天|明天|後天|大後天|週[一二三四五六日天]|星期[一二三四五六日天]|禮拜|日前|期限|截止|最晚|下班前|月底|月初|年底|上旬|下旬|會到|寄出|請於/,
-  ],
-  closing: [/謝謝|感謝|多謝|感恩|辛苦了|麻煩(?:你|妳|您)了|thanks/i],
+export type PolitenessStrategy =
+  | 'bald-on-record'
+  | 'negative-politeness'
+  | 'off-record'
+
+/** Chinese label per politeness strategy. */
+export const POLITENESS_LABELS: Record<PolitenessStrategy, string> = {
+  'bald-on-record': '直接祈使',
+  'negative-politeness': '迂迴請求(降低 imposition)',
+  'off-record': '條件式暗示',
 }
 
-/** Tie-break order when two roles score equally (earlier wins). */
-const ROLE_PRIORITY: NarrativeRole[] = [
-  'closing',
-  'deadline',
-  'reason',
-  'condition',
-  'request',
-  'delivery',
-  'context',
-]
+/** Structural shape of a request clause. */
+export type RequestForm =
+  | 'mitigation-preposed'
+  | 'qing-vp'
+  | 'yao-vp'
+  | 'bare-vp'
+  | 'conditional-query'
+
+/** Chinese label per request form. */
+export const REQUEST_FORM_LABELS: Record<RequestForm, string> = {
+  'mitigation-preposed': '迂迴標記前置',
+  'qing-vp': '請＋動詞短語',
+  'yao-vp': '要＋動詞短語',
+  'bare-vp': '裸動詞短語祈使',
+  'conditional-query': '條件式詢問',
+}
+
+/** Discourse unit a message line is cut into. */
+export type UnitKind = 'narrative' | 'field' | 'list' | 'request' | 'thanks'
+
+/** Chinese label per unit kind. */
+export const UNIT_KIND_LABELS: Record<UnitKind, string> = {
+  narrative: '敘述單位',
+  field: '欄位單位',
+  list: '條列單位',
+  request: '請求單位',
+  thanks: '致謝單位',
+}
 
 /**
- * Canonical skeleton, used only to break ties between roles that appear at
- * the same position in the sample.
+ * A mitigation marker: a politeness cost marker placed in front of the verb
+ * phrase. Generic Chinese politeness vocabulary, not any talker's phrasing.
  */
-const ROLE_CANONICAL: NarrativeRole[] = [
-  'context',
-  'delivery',
-  'request',
-  'condition',
-  'reason',
-  'deadline',
-  'closing',
-]
+const MITIGATION_RE =
+  /(?:再|又|再要|要|得)?(?:麻煩|拜託|幫忙|勞煩|煩請|敬請)(?:您|妳|你)?/
 
-/** Roles that carry real work content (a flat sample has fewer than two). */
-const SUBSTANTIVE_ROLES: NarrativeRole[] = [
-  'context',
-  'delivery',
-  'request',
-  'condition',
-  'reason',
-  'deadline',
-]
+/** "qing" as a politeness marker in front of the verb phrase. */
+const QING_RE = /請(?!購|於|假|求|客)(?:您|妳|你)?/
 
-/**
- * Request prefix: the opening of a request (a politeness verb plus an
- * optional honorific). This is generic Chinese politeness vocabulary, not a
- * fixed sentence template of any talker; the prefix that is actually used is
- * counted from the sample.
- */
-const REQUEST_PREFIX_RE =
-  /(?:再|又)?(?:要)?(?:麻煩|拜託|幫忙)(?:您|妳|你)?|請(?!購|於)(?:您|妳|你)?/
+/** Markers of a request that hands the decision back to the recipient. */
+const CONDITIONAL_RE =
+  /可否|可不可以|能不能|是否|有沒有|要不要|好不[好]|行嗎|OK嗎|對不對|沒有的話|需要的話|如無|若無|不行的話|有問題的話|自行|看要不要/
 
-/** Family of a request prefix, ignoring the honorific. */
-const REQUEST_FAMILY_RE = /(?:再|又)?(?:要)?(?:麻煩|拜託|幫忙)|請(?!購|於)/
+/** Markers of an attached reason or of the circumstance a request rests on. */
+const REASON_MARKER_RE =
+  /因為|所以|由於|原因|理由|用途|要用來|要看|需求是|才請得到|退件|被退|退回|跑得完|跑不完|來不及|沒時間|延後|缺件|比較急|比較趕|趕時間/
 
-/** Temporal adjunct inside a request (a date, a weekday, a relative day). */
-const TIME_RE =
-  /\d{1,4}\s*[-/]\s*\d{1,2}(?:\s*[-/]\s*\d{1,4})?|今天|明天|後天|大後天|昨天|早上|下午|晚上|週[一二三四五六日天]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|下週[一二三四五六日天]|下個星期[一二三四五六日天]|下個月|月底|月初|年底|今年|週末/
+/** Markers of an explicit confirmation request. */
+const CONFIRM_RE = /確認|核對|看一下|看過|過目|簽核|回覆我|回報我/
 
-/** Sequence marker inside a request (first / then / after / only then). */
-const SEQ_RE = /先|再|後|然後|才/
-
-/** Concrete condition tokens inside a request. */
-const CONDITION_TOKEN_RE =
-  /三聯式|含稅|統編|抬頭|品名|單號|序號|細目|明細|地址|收件|簽名|用印|頁|格式|附件|數量|規格|日期|金額|數字|\d+\s*(?:元|號|頁)|\d{4,}/
-
-/**
- * Markers of a RELAYED condition: the talker passing on a third party's
- * requirement instead of giving an executable value.
- */
-const RELAYED_RE =
-  /含以後|含以前|以前|以後|以內|以上|以下|不超過|不得|至少|依|按照|照|規定|要求|合約|報價單|對方|院方|客戶|需符合|符合|條件/
-
-/** Markers of an attached reason. */
-const REASON_RE = /因為|所以|由於|要用來|需要建檔|要看|用途|原因|理由/
+/** Markers of a courtesy closing. */
+const THANKS_RE = /謝謝|感謝|多謝|感恩|辛苦了|麻煩(?:你|妳|您)了|thanks/i
 
 /** Action verbs that make a clause executable. */
 const ACTION_RE =
-  /開|寄|附|回傳|寫|蓋|簽|送|做|處理|給|打|填|核|付|收|取|拿|提出|辦|壓|列|報|發|匯|印|傳/
+  /開|寄|附|回傳|回覆|回報|寫|蓋|簽|送|做|處理|給|打|填|核|付|收|取|拿|提出|辦|列|報|發|匯|印|傳|上傳|確認/
 
-/** Markers of a request that hands the decision back to the recipient. */
-const DELEGATING_RE =
-  /有沒有|沒有的話|需要的話|如無|若無|可否|是否|要不要|自行|看要不要|不行的話|有問題的話|OK嗎|確認一下|判斷/
+/**
+ * Acknowledgements of receipt or understanding are not directives, even
+ * though they may contain an action verb.
+ */
+const ACK_RE = /^(?:收到|知道了|了解|好的|嗯+|OK|ok|收到[。！!]?)/
+
+/**
+ * A clause that OPENS with an action verb (optionally behind an adverb or a
+ * politeness marker). Only such a clause is a bare imperative: a clause that
+ * merely contains a verb states an arrangement, it does not ask for
+ * anything.
+ */
+const ACTION_START_RE =
+  /^(?:再|先|就|也|順|順便|代|幫|麻煩|拜託|幫忙|請|要|得|必須|需|需要|未|不)*\s*(?:開|寄|寄出|送|寫|寫好|蓋|做|做一份|填|打|印|傳|附|回傳|回覆|回報|處理|提出|上傳|確認|整理|備妥|產出|簽)/
+
+/** A clause that names its own subject at the front. */
+const SUBJECT_START_RE =
+  /^(?:我|我們|咱們|本人|咱|它|他們|對方|院方|廠商|客戶|台大|臺大)/
+
+/** A clause that mentions a subject anywhere. */
+const SUBJECT_RE = /我|咱|本人/
+
+/** Subordinators that open a clause. */
+const SUBORDINATOR_RE = /^(?:因為|由於|所以|如果|若|當|既然|至於|另外)/
+
+/**
+ * Markers of a THIRD PARTY inside a reason clause. A reason is relayed only
+ * when it points at somebody else's requirement; a reason the talker gives
+ * for his own arrangement is self-stated.
+ */
+const THIRD_PARTY_RE =
+  /對方|院方|客戶|廠商|學校|甲方|乙方|合約|報價單|規定|要求|依.+?(?:規定|要求|合約)|照.+?(?:規定|要求|合約)|上面|對上面/
+
+/** Markers of a RELAYED condition: a third party's requirement. */
+const RELAYED_RE =
+  /含以後|含以前|以前|以後|以內|以上|以下|不超過|不得|至少|依|按照|照|規定|要求|合約|報價單|對方|院方|客戶|需符合|符合|條件/
+
+/** Markers of the talker describing his own situation. */
+const SELF_STATE_RE =
+  /我這邊|我們這邊|目前|現在|進度|狀況|原來|先前|照之前|照我們|都跑完|跑完了|退件|已經|先說|補充|對了/
 
 /** Relative time words (today, a weekday, next week). */
 const RELATIVE_DATE_RE =
@@ -147,22 +169,17 @@ const RELATIVE_DATE_RE =
 const ABSOLUTE_DATE_RE =
   /\d{4}\s*[-/年]\s*\d{1,2}|\d{1,2}\s*[-/]\s*\d{1,2}|\d{1,2}\s*月\s*\d{1,2}\s*日/
 
-/** Explicit action ordering inside one message (first ... then ...). */
-const SEQUENCE_PAIR_RE = /先[^。！？!?；;]{0,40}?(再|後|然後|才)/
+/** A line written as one "label：value" pair. */
+const LABELLED_LINE_RE =
+  /^\s*([^\s：:，,。！？!?；;、]{1,12})\s*[:：]\s*([^：:、]+?)\s*$/
 
-/**
- * A line written as "label：value".
- *
- * The label vocabulary is deliberately open: only the SHAPE is checked (a
- * short label, a colon, a value), so the field names this talker uses are
- * reported back instead of a fixed list.
- */
-const LABELLED_LINE_RE = /^\s*([^\s：:，,。！？!?；;]{1,12})\s*[:：]\s*(\S.+)$/
+/** A "label：value" pair inside a line. */
+const FIELD_PAIR_RE =
+  /([^\s：:，,。！？!?；;、]{1,12})\s*[:：]\s*[^：:、，,。！？!?；;]+/g
 
-/** A colon inside a line (a field introducer). */
-const COLON_RE = /[:：]/
 /** An ordered list marker at the start of a line. */
 const LIST_MARKER_RE = /^\s*(?:\d+[.、)]|[-*•])\s/
+
 /** An absolute date written with a full year. */
 const ISO_DATE_RE = /\d{4}\s*[-/]\s*\d{1,2}\s*[-/]\s*\d{1,2}/
 /** An absolute date written as month/day. */
@@ -172,7 +189,10 @@ const CHINESE_DATE_RE = /\d{1,2}\s*月\s*\d{1,2}\s*日/
 /** An amount broken into parts. */
 const AMOUNT_BREAKDOWN_RE = /\d[\d,]*\s*[+＋]\s*\d[\d,]*\s*[=＝]/
 
-/** Concrete-data kinds, with the regex that detects each of them. */
+/** Sentence-final mood particles. */
+const MOOD_PARTICLES = ['嗎', '呢', '喔', '哦', '啦', '耶', '吧', '啊']
+
+/** Concrete data kinds, with the regex that detects each of them. */
 const DATA_PATTERNS: { kind: string; label: string; re: RegExp }[] = [
   {
     kind: 'date',
@@ -197,12 +217,19 @@ const DATA_PATTERNS: { kind: string; label: string; re: RegExp }[] = [
   { kind: 'percent', label: '百分比', re: /\d+(?:\.\d+)?\s*[%％]/ },
 ]
 
-/** Minimum messages before the narrative dimension is reported at all. */
+/** Minimum messages before the style dimension is reported at all. */
 const MIN_MESSAGES = 2
-/** Minimum segments before the narrative dimension is reported at all. */
-const MIN_SEGMENTS = 6
+/** Minimum clauses before the style dimension is reported at all. */
+const MIN_CLAUSES = 6
+/** Longest verbatim example printed in the guide. */
+const MAX_EXAMPLE_CHARS = 180
 
-/** One parsed request frame. */
+/**
+ * One parsed request frame.
+ *
+ * Kept for callers that want the literal prefix of a request clause; the
+ * frame is EVIDENCE for the request structure, not a feature of its own.
+ */
 export interface RequestFrame {
   /** The literal prefix found in the sample. */
   prefix: string
@@ -226,104 +253,111 @@ export interface RequestFrame {
   raw: string
 }
 
-/** How the talker lays concrete fields out inside a message. */
-export interface DataLayoutProfile {
-  /** Share of messages that contain at least one label/value line. */
-  labeledLineRate: number
-  /** Average number of label/value lines per message. */
-  labeledFieldsPerMessage: number
-  /** Share of messages that carry concrete data inside one paragraph. */
-  inlineFieldRate: number
-  /** Share of messages that use line breaks. */
-  multilineRate: number
-  /** Dominant absolute-date format. */
-  dateFormat: 'iso' | 'short' | 'chinese' | 'none'
-  /** Dominant amount format. */
-  amountFormat: 'with-tax' | 'breakdown' | 'plain' | 'none'
-  /** The field labels actually used, in order of first appearance. */
-  labels: string[]
+/** Punctuation and emoji habits. */
+export interface ToneStats {
+  /** Share of messages containing an emoji. */
+  emojiRate: number
+  /** Share of messages ending with a question mark. */
+  questionRate: number
+  /** Share of messages containing an exclamation mark. */
+  exclamationRate: number
+  /** Share of messages containing a tilde. */
+  tildeRate: number
+  /** Share of messages containing quotation marks. */
+  quoteMarkRate: number
+  /** Share of messages containing an ellipsis. */
+  ellipsisRate: number
 }
 
-/**
- * Block structure of a message: prose paragraphs versus runs of field lines.
- */
-export interface BlockStructureProfile {
-  /** Share of paragraph boundaries that are separated by a blank line. */
-  paragraphBlankLineRate: number
-  /** Share of prose clauses that are separated by a semicolon. */
-  semicolonClauseRate: number
-  /** Share of paragraphs that list several colon fields in one line. */
-  colonFieldSerialRate: number
-  /** Share of messages that use ordered list markers. */
-  listMarkerRate: number
-  /** Share of messages that contain at least one field block. */
-  fieldBlockRate: number
-  /** Average number of field blocks per message. */
-  blocksPerMessage: number
-  /** Average number of field lines per block. */
-  avgLinesPerBlock: number
-  /** Share of blocks separated from the prose by a blank line. */
-  blankLineSeparatedRate: number
-  /** Sentence terminators per prose line (about 1 means one sentence per line). */
-  proseSentenceRatio: number
+/** One step of a situation recipe. */
+export interface RecipeStep {
+  /** What the step does, described as an action or a speech act. */
+  description: string
+  /** Share of the recipe's messages that carry this step. */
+  rate: number
+  /** A verbatim excerpt from the talker's own message, when one exists. */
+  quote: string | null
 }
 
-/** Narrative shape of the talker's messages. */
+/** A drafting recipe derived from one recurring situation. */
+export interface Recipe {
+  /** Stable identifier of the situation. */
+  id: string
+  /** Chinese title of the situation. */
+  title: string
+  /** How many sample messages belong to this situation. */
+  sampleSize: number
+  /** Share of the sample that belongs to this situation. */
+  rate: number
+  /** The observed steps, in the order they were seen. */
+  steps: RecipeStep[]
+}
+
+/** A verbatim message of the talker, kept as the strongest style evidence. */
+export interface StyleExample {
+  /** The situation the message belongs to. */
+  situation: string
+  /** The talker's own message, verbatim. */
+  text: string
+}
+
+/** Something this talker does NOT do, with the evidence behind it. */
+export interface Prohibition {
+  /** What must not be added. */
+  text: string
+  /** The evidence for the prohibition. */
+  evidence: string
+}
+
+/** One observed transition between two adjacent behaviours. */
+export interface Transition {
+  /** Whether the transition is between speech acts or between units. */
+  scope: 'act' | 'unit'
+  /** Label of the behaviour that comes first. */
+  from: string
+  /** Label of the behaviour that comes next. */
+  to: string
+  /** How many times the transition was seen. */
+  count: number
+  /** Share of all transitions of the same scope. */
+  rate: number
+}
+
+/** Per-recipient register differences (tenor). */
+export interface RegisterProfile {
+  /** The conversation the register was measured on. */
+  chatId: string
+  /** How many messages of that conversation were analyzed. */
+  messageCount: number
+  /** How many requests the conversation contains. */
+  requestBase: number
+  /** Share of those requests that front a mitigation marker. */
+  mitigationRate: number
+  /** The honorific used most in that conversation. */
+  honorific: string | null
+}
+
+/** Structural style of the talker's messages. */
 export interface NarrativeProfile {
   /** Always true — the analysis is a keyword/punctuation heuristic. */
   heuristic: true
   /** Number of user messages analyzed. */
   sampleSize: number
-  /** Number of logical segments detected across the sample. */
-  segmentCount: number
-  /** Average number of logical segments per message. */
-  avgSegmentsPerMessage: number
-  /** Share of messages in which each role appears. */
-  roleRates: Partial<Record<NarrativeRole, number>>
-  /** Most frequent role ordering across the sample. */
-  dominantOrder: NarrativeRole[]
-  /** Share of role-bearing messages whose ordering agrees with dominantOrder. */
-  orderConcordance: number
-  /** Share of messages containing at least one concrete data kind. */
-  concreteDataRate: number
-  /** Concrete data kinds seen in the sample. */
-  concreteDataKinds: string[]
-  /** Share of messages that carry a request at all. */
-  requestRate: number
-  /** Share of requesting messages that hand the decision back to the recipient. */
-  delegatingRequestRate: number
-  /** Request frame habit (prefix + action + time/condition). */
-  requestFrame?: {
-    /** Number of parsed request frames. */
-    sampleSize: number
-    /** Most frequent literal prefix in the sample. */
-    prefix: string
-    /** Share of frames using that prefix. */
-    prefixRate: number
-    /** Share of frames carrying a temporal adjunct. */
-    timeRate: number
-    /** Share of frames carrying a concrete condition. */
-    conditionRate: number
-    /** Share of frames carrying a sequence marker. */
-    sequenceRate: number
-    /** Frame template, built from the sample's own prefix and adjuncts. */
-    template: string
-    /** A real example taken from the talker's own messages. */
-    example: string
-    /** Share of instructions that give a directly executable value. */
-    directiveRate: number
-    /** Share of instructions that relay a third party's condition. */
-    relayedRate: number
-    /** Share of instructions that carry a concrete value at all. */
-    valueRate: number
-    /** Share of instructions that carry an attached reason. */
-    reasonRate: number
-    /** Dominant instruction style. */
-    style: 'directive' | 'relayed' | 'plain'
-    /** Example of the dominant instruction style. */
-    styleExample: string
+  /** Number of clauses analyzed. */
+  clauseCount: number
+
+  /** ideational: where a concrete value sits relative to the action verb. */
+  valuePosition: {
+    /** Value before the action (background first). */
+    preposed: number
+    /** Value after the action (supplementary). */
+    postposed: number
+    /** How many clauses decided the position. */
+    base: number
   }
-  /** Relative vs absolute date wording. */
+  /** ideational: share of messages whose first clause states the topic. */
+  topicFirstRate: number
+  /** ideational: relative vs absolute date wording. */
   dateStyle: {
     /** Share of dated messages using a relative day word. */
     relativeRate: number
@@ -332,7 +366,56 @@ export interface NarrativeProfile {
     /** Which wording dominates. */
     preferred: 'relative' | 'absolute' | 'mixed' | 'none'
   }
-  /** Honorific habits. */
+  /** ideational: dominant absolute-date format. */
+  dateFormat: 'iso' | 'short' | 'chinese' | 'none'
+  /** ideational: dominant amount format. */
+  amountFormat: 'with-tax' | 'breakdown' | 'plain' | 'none'
+  /** ideational: share of messages carrying at least one concrete value. */
+  concreteDataRate: number
+  /** Concrete data kinds seen in the sample. */
+  concreteDataKinds: string[]
+
+  /** interpersonal: share of clauses per speech act. */
+  actRates: { act: SpeechAct; label: string; count: number; rate: number }[]
+  /** interpersonal: position of requests on the politeness ladder. */
+  strategyRates: {
+    strategy: PolitenessStrategy
+    label: string
+    count: number
+    rate: number
+  }[]
+  /** How many requests the strategy rates are measured on. */
+  requestBase: number
+  /** interpersonal: moves that reduce imposition, measured on requests. */
+  mitigationMoves: {
+    /** Share of requests that carry a reason. */
+    reason: number
+    /** Share of requests that carry a deadline. */
+    deadline: number
+    /** Share of requests that hand the decision back. */
+    delegation: number
+    /** How many requests decided the moves. */
+    base: number
+  }
+  /** interpersonal: where a reason comes from. */
+  reasonSource: {
+    /** Reasons the talker gives for himself. */
+    self: number
+    /** Reasons relayed from a third party. */
+    relayed: number
+    /** How many reasons decided the source. */
+    base: number
+  }
+  /** interpersonal: irrelevant self-description inside requests. */
+  selfDisclosure: {
+    /** Share of requests that carry unrelated self-description. */
+    rate: number
+    /** How many requests decided the disclosure. */
+    base: number
+    /** A verbatim example, when one exists. */
+    example: string | null
+  }
+  /** interpersonal: honorific habits (IDENTIFICATION dimension). */
   honorifics: {
     /** Share of messages using the formal honorific. */
     ningRate: number
@@ -350,22 +433,86 @@ export interface NarrativeProfile {
       dominant: string | null
     }[]
   }
-  /** Share of messages that mark action order explicitly. */
-  sequenceMarkerRate: number
-  /** Short snippets taken from the talker's own messages, used as examples. */
-  snippets: {
-    amount: string | null
-    date: string | null
-    delegating: string | null
+  /** interpersonal: per-recipient register differences. */
+  registers: RegisterProfile[]
+
+  /** textual: share of discourse units per unit kind. */
+  unitRates: {
+    kind: UnitKind
+    label: string
+    count: number
+    rate: number
+  }[]
+  /** textual: unit separation and field arrangement. */
+  layout: {
+    /** Share of unit boundaries separated by a blank line. */
+    blankSeparatedRate: number
+    /** Average number of units per message. */
+    unitsPerMessage: number
+    /** Average number of field pairs per field unit. */
+    fieldsPerUnit: number
+    /** Field labels actually used. */
+    labels: string[]
+    /** Share of field units that carry exactly one label/value pair. */
+    fieldPerLineRate: number
+    /** Share of field units that carry several pairs on one line. */
+    fieldSerialRate: number
+    /** How many field units decided the arrangement. */
+    base: number
   }
-  /** Request prefixes used in the sample, most frequent first. */
-  requestVerbs: { prefix: string; count: number; rate: number }[]
-  /** Closing phrases used in the sample, most frequent first. */
-  closings: { text: string; count: number; rate: number }[]
-  /** How concrete fields are laid out. */
-  dataLayout: DataLayoutProfile
-  /** Block structure of the messages. */
-  blocks: BlockStructureProfile
+  /** textual: observed transitions between adjacent behaviours. */
+  transitions: Transition[]
+
+  /** Drafting recipes derived from the sample's own messages. */
+  recipes: Recipe[]
+  /** Verbatim messages of the talker, grouped by situation. */
+  examples: StyleExample[]
+  /** Things this talker does not do. */
+  prohibitions: Prohibition[]
+  /** Dimensions this sample cannot support. */
+  uncertainties: string[]
+  /** Punctuation and emoji habits. */
+  tone: ToneStats
+  /**
+   * Verbatim excerpts from the talker's own messages, one per feature (the
+   * excerpt of a rule MUST be the excerpt of the feature that rule is about).
+   */
+  snippets: {
+    /** A clause carrying an amount. */
+    amount: string | null
+    /** A clause carrying a date. */
+    date: string | null
+    /** A clause carrying a relative day word. */
+    relativeDate: string | null
+    /** A clause carrying an absolute date. */
+    absoluteDate: string | null
+    /** A clause carrying a short month/day date. */
+    dateShort: string | null
+    /** A clause carrying a full year/month/day date. */
+    dateIso: string | null
+    /** A clause carrying a Chinese month/day date. */
+    dateChinese: string | null
+    /** A request that fronts a mitigation marker. */
+    mitigated: string | null
+    /** A direct request (imperative). */
+    imperative: string | null
+    /** A conditional request. */
+    conditional: string | null
+    /** A field unit that carries exactly one label/value pair. */
+    fieldPerLine: string | null
+    /** A field unit that carries several label/value pairs. */
+    fieldSerial: string | null
+    /** A clause whose value comes before the action verb. */
+    valuePreposed: string | null
+    /** A clause whose value comes after the action verb. */
+    valuePostposed: string | null
+    /** A reason the talker gives for himself. */
+    selfReason: string | null
+    /** A reason relayed from a third party. */
+    relayedReason: string | null
+    /** A request carrying unrelated self-description. */
+    selfDisclosure: string | null
+  }
   /** False when the sample is too small or too flat to describe. */
   sufficient: boolean
   /** Why the dimension was suppressed (only when sufficient is false). */
@@ -373,12 +520,11 @@ export interface NarrativeProfile {
 }
 
 /**
- * Split one message into logical segments.
+ * Split one message into clauses.
  *
  * Chinese business writing separates sentences with 。！？；, clauses with
- * ，, and list items with 、 — so all three are treated as segment borders.
- * An ASCII comma inside a number does not split a segment, and a
- * hard line break always ends a segment.
+ * ，, and list items with 、 — the enumeration comma is kept inside the
+ * clause so that a serial field list stays one unit.
  */
 export function splitSegments(text: string): string[] {
   const out: string[] = []
@@ -393,47 +539,106 @@ export function splitSegments(text: string): string[] {
   return out
 }
 
-function scoreRole(segment: string): NarrativeRole | null {
-  // A short standalone courtesy phrase is a closing, not a request.
-  if (
-    ROLE_PATTERNS.closing.some((p) => p.test(segment)) &&
-    segment.length <= 12
-  ) {
-    return 'closing'
-  }
-  let best: NarrativeRole | null = null
-  let bestScore = 0
-  for (const role of ROLE_PRIORITY) {
-    let score = 0
-    for (const pattern of ROLE_PATTERNS[role]) {
-      if (pattern.test(segment)) score++
-    }
-    // An explicit request prefix marks the segment as a request first.
-    if (role === 'request' && REQUEST_PREFIX_RE.test(segment)) score += 2
-    if (score > bestScore) {
-      best = role
-      bestScore = score
-    }
-  }
-  return best
-}
-
-/** Concrete data kinds present in a single message. */
+/** Concrete data kinds present in a single text. */
 export function detectConcreteData(text: string): string[] {
   return DATA_PATTERNS.filter((p) => p.re.test(text)).map((p) => p.kind)
 }
 
 /**
- * A bare "qing" that follows an auxiliary verb, or that opens a fixed phrase
- * ("hui qing tongshi...", "cai qing dedao..."), is the verb "invite / be able
- * to ask", not a politeness prefix. Such matches must not be counted as
- * request prefixes.
+ * The structural form of a request clause.
+ *
+ * `mitigation-preposed` fronts a cost/politeness marker in front of the verb
+ * phrase; `qing-vp` and `yao-vp` are direct constructions; `bare-vp` is an
+ * unprefixed imperative; `conditional-query` hands the decision back.
+ */
+export function requestForm(clause: string): RequestForm | null {
+  if (ACK_RE.test(clause)) return null
+  if (MITIGATION_RE.test(clause)) return 'mitigation-preposed'
+  if (QING_RE.test(clause)) return 'qing-vp'
+  if (CONDITIONAL_RE.test(clause)) return 'conditional-query'
+  if (/^(?:再|要|得|必須|需|需要)/.test(clause) && ACTION_RE.test(clause))
+    return 'yao-vp'
+  if (ACTION_START_RE.test(clause) && !SUBJECT_START_RE.test(clause))
+    return 'bare-vp'
+  return null
+}
+
+/** Where a request sits on the politeness strategy ladder. */
+export function politenessStrategy(
+  form: RequestForm | null,
+): PolitenessStrategy | null {
+  if (!form) return null
+  if (form === 'mitigation-preposed') return 'negative-politeness'
+  if (form === 'conditional-query') return 'off-record'
+  return 'bald-on-record'
+}
+
+/** The speech act performed by one clause. */
+export function speechAct(clause: string): SpeechAct {
+  if (THANKS_RE.test(clause) && clause.length <= 16) return 'thanks'
+  const form = requestForm(clause)
+  if (form === 'conditional-query') return 'question'
+  if (form) return 'request'
+  if (/[嗎呢]\s*$/.test(clause)) return 'question'
+  if (CONFIRM_RE.test(clause)) return 'confirmation'
+  if (REASON_MARKER_RE.test(clause)) return 'explanation'
+  return 'statement'
+}
+
+/**
+ * Parse the request frame of a clause: prefix + action + time / condition.
+ *
+ * Returns null when the clause carries no request prefix.
+ */
+export function parseRequestFrame(segment: string): RequestFrame | null {
+  const re = new RegExp(
+    `(?:再|又)?(?:要)?(?:麻煩|拜託|幫忙)(?:您|妳|你)?|${QING_RE.source}`,
+    'g',
+  )
+  let match = re.exec(segment)
+  while (match && !isPolitenessPrefix(segment, match.index, match[0])) {
+    match = re.exec(segment)
+  }
+  if (!match) return null
+  const prefix = match[0]
+  const rest = segment.slice(match.index + prefix.length)
+  const timeMatch =
+    /\d{1,4}\s*[-/]\s*\d{1,2}|今天|明天|後天|大後天|昨天|早上|下午|晚上|週[一二三四五六日天]|星期[一二三四五六日天]|禮拜[一二三四五六日天]|下週[一二三四五六日天]|月底|月初|年底|今年|週末/.exec(
+      rest,
+    )
+  const seqMatch = /先|再|後|然後|才/.exec(rest)
+  let action = rest
+  if (timeMatch) action = action.replace(timeMatch[0], ' ')
+  if (seqMatch) action = action.replace(seqMatch[0], ' ')
+  action = action.trim().replace(/\s+/g, ' ').slice(0, 16)
+  const hasValue = detectConcreteData(segment).length > 0
+  const relayed = RELAYED_RE.test(segment)
+  return {
+    prefix,
+    family: prefix,
+    time: timeMatch ? timeMatch[0] : null,
+    sequence: seqMatch ? seqMatch[0] : null,
+    action,
+    condition:
+      /三聯式|含稅|統編|抬頭|品名|單號|序號|細目|明細|地址|收件|簽名|用印|頁|格式|附件|數量|規格|日期|金額|數字|\d+\s*(?:元|號|頁)|\d{4,}/.test(
+        rest,
+      ),
+    specified: hasValue && !relayed,
+    relayed,
+    reason: REASON_MARKER_RE.test(segment),
+    raw: segment,
+  }
+}
+
+/**
+ * A bare "qing" that follows an auxiliary verb, or that opens a fixed
+ * phrase, is the verb "invite / be able to ask", not a politeness prefix.
  */
 const AUX_BEFORE_QING_RE = /[會要能可才得願想不]$/
 const FIXED_AFTER_QING_RE = /^(?:得到|不到|假|購|於)/
 /**
- * "qing" followed by the agent of the action ("qing tongshi kaili...") is the
- * verb "invite someone to do", not a politeness prefix.
+ * "qing" followed by the agent of the action is the verb "invite someone to
+ * do", not a politeness prefix.
  */
 const AGENT_AFTER_QING_RE =
   /^(?:同事|朋友|大家|各位|廠商|院方|對方|客戶|貴方|貴公司|窗口|承辦|承作)/
@@ -451,44 +656,7 @@ function isPolitenessPrefix(
   return true
 }
 
-/**
- * Parse the request frame of a clause: prefix + action + time / condition.
- *
- * Returns null when the clause carries no request prefix.
- */
-export function parseRequestFrame(segment: string): RequestFrame | null {
-  const re = new RegExp(REQUEST_PREFIX_RE.source, 'g')
-  let match = re.exec(segment)
-  while (match && !isPolitenessPrefix(segment, match.index, match[0])) {
-    match = re.exec(segment)
-  }
-  if (!match) return null
-  const prefix = match[0]
-  const familyMatch = REQUEST_FAMILY_RE.exec(prefix)
-  const rest = segment.slice(match.index + prefix.length)
-  const timeMatch = TIME_RE.exec(rest)
-  const seqMatch = SEQ_RE.exec(rest)
-  let action = rest
-  if (timeMatch) action = action.replace(timeMatch[0], ' ')
-  if (seqMatch) action = action.replace(seqMatch[0], ' ')
-  action = action.trim().replace(/\s+/g, ' ').slice(0, 16)
-  const hasValue = detectConcreteData(segment).length > 0
-  const relayed = RELAYED_RE.test(segment)
-  return {
-    prefix,
-    family: familyMatch ? familyMatch[0] : prefix,
-    time: timeMatch ? timeMatch[0] : null,
-    sequence: seqMatch ? seqMatch[0] : null,
-    action,
-    condition: CONDITION_TOKEN_RE.test(rest),
-    specified: hasValue && !relayed,
-    relayed,
-    reason: REASON_RE.test(segment),
-    raw: segment,
-  }
-}
-
-/** Count honorifics, ignoring a greeting. */
+/** Count honorifics inside a text. */
 function countHonorifics(text: string): {
   ning: number
   nei: number
@@ -500,471 +668,504 @@ function countHonorifics(text: string): {
   return { ning, nei, ni }
 }
 
-/** One field block: a run of consecutive label/value lines. */
-interface FieldBlock {
-  /** Number of lines in the block. */
-  lines: number
-  /** Whether a blank line separates the block from the prose. */
-  separated: boolean
+/** One clause of one message. */
+interface Clause {
+  /** The clause text. */
+  text: string
+  /** The speech act it performs. */
+  act: SpeechAct
+  /** The request form, when the clause is a request. */
+  form: RequestForm | null
+  /** Where the request sits on the politeness ladder. */
+  strategy: PolitenessStrategy | null
+  /** Whether the clause contains an action verb. */
+  hasAction: boolean
+  /** Concrete data kinds in the clause. */
+  values: string[]
+  /** Whether the value comes before the action, after it, or neither. */
+  valueOrder: 'preposed' | 'postposed' | null
+  /** Whether the clause carries a deadline. */
+  deadline: boolean
+  /** Whether the clause carries any time expression. */
+  dated: boolean
+  /** Whether the clause states a reason. */
+  reason: boolean
+  /** How the subject is handled. */
+  subject: 'explicit-start' | 'explicit-late' | 'omitted' | null
+  /** Where the subordinate clause sits. */
+  subordinate: 'preposed' | 'postposed' | 'none' | null
+  /** Sentence-final mood particle. */
+  mood: string | null
+  /** Whether the clause hands the decision back. */
+  conditional: boolean
+  /** Whether the clause relays a third party's requirement. */
+  relayed: boolean
+  /** Whether the clause describes the talker's own situation. */
+  selfState: boolean
 }
 
-/**
- * Analyze the block structure of one message.
- *
- * A field block is a run of consecutive label/value lines; prose paragraphs
- * are the remaining lines, grouped by blank lines and field blocks.
- */
-function analyzeBlocks(text: string): {
-  blocks: FieldBlock[]
+/** One discourse unit of one message. */
+interface Unit {
+  /** The unit text. */
+  text: string
+  /** The unit kind. */
+  kind: UnitKind
+  /** How many label/value pairs the unit carries. */
+  fieldCount: number
+  /** Whether the unit enumerates several fields on one line. */
+  serial: boolean
+  /** The field labels of the unit. */
   labels: string[]
-  multiline: boolean
-  proseLines: number
-  proseSentences: number
-  proseParagraphs: number
-  blankBoundaries: number
-  proseClauses: number
-  semicolonClauses: number
-  colonParagraphs: number
-  colonSerialParagraphs: number
-  listMarkers: number
-} {
-  const lines = text.split('\n')
-  const blocks: FieldBlock[] = []
-  const labels: string[] = []
-  let current: string[] = []
-  let paragraph: string[] = []
-  let proseLines = 0
-  let proseSentences = 0
-  let proseParagraphs = 0
-  let blankBoundaries = 0
-  let proseClauses = 0
-  let semicolonClauses = 0
-  let colonParagraphs = 0
-  let colonSerialParagraphs = 0
-  let listMarkers = 0
-  let pendingBlank = false
-
-  const flushParagraph = () => {
-    if (paragraph.length === 0) return
-    proseParagraphs++
-    const joined = paragraph.join('\n')
-    const clauses = joined.split('；').length
-    proseClauses += clauses
-    semicolonClauses += clauses - 1
-    if (COLON_RE.test(joined)) colonParagraphs++
-    // A colon introduces a list whose items are separated by enumeration
-    // commas: the field values stay on one line instead of one per line.
-    if (COLON_RE.test(joined) && (joined.match(/、/g) ?? []).length >= 2) {
-      colonSerialParagraphs++
-    }
-    paragraph = []
-  }
-
-  const flushBlock = (index: number) => {
-    if (current.length === 0) return
-    const beforeIndex = index - current.length - 1
-    const beforeBlank =
-      beforeIndex < 0 ? true : lines[beforeIndex].trim() === ''
-    const afterBlank =
-      index + 1 >= lines.length ? true : lines[index + 1].trim() === ''
-    blocks.push({
-      lines: current.length,
-      separated: beforeBlank || afterBlank,
-    })
-    current = []
-  }
-
-  lines.forEach((line, index) => {
-    if (LIST_MARKER_RE.test(line)) listMarkers++
-    const labelMatch = /[。！？!?]/.test(line)
-      ? null
-      : LABELLED_LINE_RE.exec(line)
-    if (labelMatch) {
-      flushParagraph()
-      pendingBlank = false
-      current.push(line)
-      labels.push(labelMatch[1])
-      return
-    }
-    flushBlock(index)
-    if (!line.trim()) {
-      if (paragraph.length > 0) {
-        flushParagraph()
-        pendingBlank = true
-      }
-      return
-    }
-    if (pendingBlank && paragraph.length === 0 && proseParagraphs > 0) {
-      blankBoundaries++
-    }
-    pendingBlank = false
-    paragraph.push(line)
-    proseLines++
-    proseSentences += (line.match(/[。！？!?]/g) ?? []).length
-  })
-  flushBlock(lines.length)
-  flushParagraph()
-
-  return {
-    blocks,
-    labels,
-    multiline: lines.length > 1,
-    proseLines,
-    proseSentences,
-    proseParagraphs,
-    blankBoundaries,
-    proseClauses,
-    semicolonClauses,
-    colonParagraphs,
-    colonSerialParagraphs,
-    listMarkers,
-  }
+  /** Whether a blank line precedes the unit. */
+  blankBefore: boolean
 }
 
-interface MessageNarrative {
-  /** Roles of the message segments, in order. */
-  roles: NarrativeRole[]
-  /** Distinct roles of the message, in order of first appearance. */
-  onset: NarrativeRole[]
-  /** Concrete data kinds found in the message. */
-  dataKinds: string[]
-  /** Whether the message asks the recipient to do something. */
-  hasRequest: boolean
-  /** Whether the request leaves the decision to the recipient. */
-  delegating: boolean
-  /** Request frames parsed from the message. */
-  frames: RequestFrame[]
-  /** Instruction clauses (an action plus a value or a request prefix). */
-  instructions: {
-    total: number
-    specified: number
-    relayed: number
-    withValue: number
-    withReason: number
-  }
-  /** Whether the message marks action order explicitly. */
-  sequenceOrdered: boolean
-  /** Honorifics used in the message. */
-  honorifics: { ning: number; nei: number; ni: number }
-  /** Date wording used in the message. */
-  dates: { relative: boolean; absolute: boolean }
-  /** Field labels written as label/value lines. */
-  labeledFields: string[]
-  /** Whether concrete data is carried inside one paragraph. */
-  inlineFields: boolean
-  /** Whether the message uses line breaks. */
-  multiline: boolean
-  /** Absolute-date format used in the message. */
-  dateFormat: 'iso' | 'short' | 'chinese' | 'none'
-  /** Amount format used in the message. */
-  amountFormat: 'with-tax' | 'breakdown' | 'plain' | 'none'
-  /** Field blocks found in the message. */
-  blocks: FieldBlock[]
-  /** Prose paragraphs and their boundaries. */
-  paragraphs: {
-    count: number
-    blankBoundaries: number
-    clauses: number
-    semicolonClauses: number
-    colonParagraphs: number
-    colonSerialParagraphs: number
-  }
-  /** Whether prose paragraphs are separated by a blank line. */
-  paragraphsSeparated: boolean
-  /** Ordered list markers used in the message. */
-  listMarkers: number
-  /** Closing phrases used in the message. */
-  closings: string[]
-  /** Request prefixes used in the message. */
-  requestPrefixes: string[]
-  /** Prose lines and their sentence terminators. */
-  proseLines: number
-  proseSentences: number
-  /** Short snippets taken from this message, used as examples. */
-  snippets: {
-    amount: string | null
-    date: string | null
-    delegating: string | null
-  }
+/** Structural facts of one message. */
+export interface MessageNarrative {
+  /** The raw message text. */
+  text: string
+  /** The clauses of the message. */
+  clauses: Clause[]
+  /** The discourse units of the message. */
+  units: Unit[]
+  /** The speech acts in order. */
+  acts: SpeechAct[]
+  /** The unit kinds in order. */
+  unitKinds: UnitKind[]
 }
 
-/** Analyze one message. */
-export function analyzeMessage(text: string): MessageNarrative {
-  const segments = splitSegments(text)
-  const roles: NarrativeRole[] = []
-  const frames: RequestFrame[] = []
-  const instructions = {
-    total: 0,
-    specified: 0,
-    relayed: 0,
-    withValue: 0,
-    withReason: 0,
+/** Emoji code point, used for the emoji habit rate. */
+const EMOJI_RE =
+  /(?:[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FE0F}])/u
+
+/** Find the index of the first action verb in a clause. */
+function actionIndex(clause: string): number {
+  const match = ACTION_RE.exec(clause)
+  return match ? match.index : -1
+}
+
+/** Find the index of the first concrete value in a clause. */
+function valueIndex(clause: string): number {
+  let best = -1
+  for (const pattern of DATA_PATTERNS) {
+    const match = pattern.re.exec(clause)
+    if (match && (best === -1 || match.index < best)) best = match.index
   }
-  for (const segment of segments) {
-    const role = scoreRole(segment)
-    if (role) roles.push(role)
-    const isCourtesy =
-      ROLE_PATTERNS.closing.some((p) => p.test(segment)) && segment.length <= 12
-    if (!isCourtesy) {
-      const frame = parseRequestFrame(segment)
-      if (frame) frames.push(frame)
+  return best
+}
+
+/** Analyze one clause. */
+function analyzeClause(text: string): Clause {
+  const act = speechAct(text)
+  const form = requestForm(text)
+  const values = detectConcreteData(text)
+  const action = actionIndex(text)
+  const value = valueIndex(text)
+  let valueOrder: Clause['valueOrder'] = null
+  if (action >= 0 && value >= 0) {
+    valueOrder = value < action ? 'preposed' : 'postposed'
+  }
+  const isRequest = act === 'request'
+  let subject: Clause['subject'] = null
+  if (isRequest) {
+    if (SUBJECT_START_RE.test(text)) subject = 'explicit-start'
+    else if (SUBJECT_RE.test(text)) subject = 'explicit-late'
+    else subject = 'omitted'
+  }
+  let subordinate: Clause['subordinate'] = null
+  if (REASON_MARKER_RE.test(text)) {
+    if (SUBORDINATOR_RE.test(text)) subordinate = 'preposed'
+    else if (/(?:因為|所以|由於)[^。]{0,20}$/.test(text))
+      subordinate = 'postposed'
+    else subordinate = 'none'
+  }
+  let mood: string | null = null
+  for (const particle of MOOD_PARTICLES) {
+    if (text.endsWith(particle)) {
+      mood = particle
+      break
     }
-    // An instruction is executable: an action plus either a concrete value
-    // or an explicit request prefix.
-    const hasAction = ACTION_RE.test(segment)
-    const hasValue = detectConcreteData(segment).length > 0
-    if (hasAction && (hasValue || REQUEST_PREFIX_RE.test(segment))) {
-      const relayed = RELAYED_RE.test(segment)
-      instructions.total++
-      if (hasValue) instructions.withValue++
-      if (relayed) instructions.relayed++
-      else if (hasValue) instructions.specified++
-      if (REASON_RE.test(segment)) instructions.withReason++
-    }
   }
-  const onset: NarrativeRole[] = []
-  for (const role of roles) {
-    if (!onset.includes(role)) onset.push(role)
-  }
-  const dataKinds = detectConcreteData(text)
-  const structure = analyzeBlocks(text)
-  let dateFormat: MessageNarrative['dateFormat'] = 'none'
-  if (ISO_DATE_RE.test(text)) dateFormat = 'iso'
-  else if (CHINESE_DATE_RE.test(text)) dateFormat = 'chinese'
-  else if (SHORT_DATE_RE.test(text)) dateFormat = 'short'
-  let amountFormat: MessageNarrative['amountFormat'] = 'none'
-  if (AMOUNT_BREAKDOWN_RE.test(text)) amountFormat = 'breakdown'
-  else if (dataKinds.includes('amount')) amountFormat = 'with-tax'
   return {
-    roles,
-    onset,
-    dataKinds,
-    hasRequest: roles.includes('request'),
-    delegating: DELEGATING_RE.test(text),
-    frames,
-    instructions,
-    sequenceOrdered: SEQUENCE_PAIR_RE.test(text),
-    honorifics: countHonorifics(text),
-    dates: {
-      relative: RELATIVE_DATE_RE.test(text),
-      absolute: ABSOLUTE_DATE_RE.test(text),
-    },
-    labeledFields: structure.labels,
-    inlineFields: dataKinds.length >= 2 && !structure.multiline,
-    multiline: structure.multiline,
-    dateFormat,
-    amountFormat,
-    blocks: structure.blocks,
-    paragraphs: {
-      count: structure.proseParagraphs,
-      blankBoundaries: structure.blankBoundaries,
-      clauses: structure.proseClauses,
-      semicolonClauses: structure.semicolonClauses,
-      colonParagraphs: structure.colonParagraphs,
-      colonSerialParagraphs: structure.colonSerialParagraphs,
-    },
-    paragraphsSeparated: structure.blankBoundaries > 0,
-    listMarkers: structure.listMarkers,
-    closings: segments
-      .filter(
-        (segment) =>
-          ROLE_PATTERNS.closing.some((p) => p.test(segment)) &&
-          segment.length <= 12,
-      )
-      .map((segment) => segment.replace(/[。！!，,]/g, '')),
-    requestPrefixes: frames.map((frame) => frame.prefix),
-    proseLines: structure.proseLines,
-    proseSentences: structure.proseSentences,
-    snippets: {
-      amount:
-        segments.find((segment) =>
-          DATA_PATTERNS.some((p) => p.kind === 'amount' && p.re.test(segment)),
-        ) ?? null,
-      date:
-        segments.find((segment) =>
-          DATA_PATTERNS.some((p) => p.kind === 'date' && p.re.test(segment)),
-        ) ?? null,
-      delegating:
-        segments.find((segment) => DELEGATING_RE.test(segment)) ?? null,
-    },
+    text,
+    act,
+    form,
+    strategy: politenessStrategy(form),
+    hasAction: action >= 0,
+    values,
+    valueOrder,
+    deadline:
+      RELATIVE_DATE_RE.test(text) ||
+      ABSOLUTE_DATE_RE.test(text) ||
+      /期限|截止|最晚|日前/.test(text),
+    dated: RELATIVE_DATE_RE.test(text) || ABSOLUTE_DATE_RE.test(text),
+    reason: REASON_MARKER_RE.test(text),
+    subject,
+    subordinate,
+    mood,
+    conditional: CONDITIONAL_RE.test(text),
+    relayed: RELAYED_RE.test(text),
+    selfState:
+      SELF_STATE_RE.test(text) &&
+      action < 0 &&
+      detectConcreteData(text).length === 0,
   }
 }
 
 /**
- * Build the dominant role ordering.
- *
- * A generic rhetorical skeleton (context -> delivery -> request -> condition
- * -> reason -> deadline -> closing) is used as the backbone, restricted to the
- * roles the sample actually contains. Sample evidence can override that
- * backbone, but only when it is decisive: a role must precede another one at
- * least twice as often as the reverse, and at least twice in absolute terms.
+ * Strip a leading list marker, so that a numbered line is analyzed as the
+ * command it is rather than as a numbered statement.
  */
-function dominantOrdering(messages: MessageNarrative[]): {
-  order: NarrativeRole[]
-  concordance: number
-} {
-  const present = new Set(messages.flatMap((m) => m.roles))
-  const before = new Map<string, number>()
-  const key = (a: NarrativeRole, b: NarrativeRole) => `${a}>${b}`
-  for (const message of messages) {
-    for (let i = 0; i < message.roles.length; i++) {
-      for (let j = i + 1; j < message.roles.length; j++) {
-        const a = message.roles[i]
-        const b = message.roles[j]
-        if (a === b) continue
-        const k = key(a, b)
-        before.set(k, (before.get(k) ?? 0) + 1)
-      }
-    }
-  }
-  const edges = new Map<NarrativeRole, Set<NarrativeRole>>()
-  for (const role of present) edges.set(role, new Set())
-  // Backbone: the canonical skeleton over the roles present in the sample.
-  const backbone = ROLE_CANONICAL.filter((role) => present.has(role))
-  for (let i = 0; i < backbone.length - 1; i++) {
-    edges.get(backbone[i])?.add(backbone[i + 1])
-  }
-  // Decisive overrides from the sample itself.
-  for (const a of present) {
-    for (const b of present) {
-      if (a === b) continue
-      const forward = before.get(key(a, b)) ?? 0
-      const backward = before.get(key(b, a)) ?? 0
-      if (forward >= 2 && forward >= backward * 2) {
-        edges.get(a)?.add(b)
-      }
-    }
-  }
-  // Kahn's algorithm; ties fall back to the canonical skeleton.
-  const remaining = new Set(present)
-  const order: NarrativeRole[] = []
-  while (remaining.size > 0) {
-    const candidates = [...remaining].filter(
-      (role) =>
-        ![...remaining].some(
-          (other) => other !== role && (edges.get(other)?.has(role) ?? false),
-        ),
-    )
-    const next = candidates.sort(
-      (a, b) => ROLE_CANONICAL.indexOf(a) - ROLE_CANONICAL.indexOf(b),
-    )[0]
-    const picked =
-      next ??
-      [...remaining].sort(
-        (a, b) => ROLE_CANONICAL.indexOf(a) - ROLE_CANONICAL.indexOf(b),
-      )[0]
-    if (!picked) break
-    order.push(picked)
-    remaining.delete(picked)
-  }
-  // Concordance: messages whose own order agrees with the dominant order.
-  const position = new Map(order.map((role, index) => [role, index]))
-  let agree = 0
-  let eligible = 0
-  for (const message of messages) {
-    if (message.onset.length < 2) continue
-    eligible++
-    const expected = [...message.onset].sort(
-      (a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0),
-    )
-    if (expected.join('>') === message.onset.join('>')) agree++
-  }
-  return { order, concordance: eligible ? agree / eligible : 0 }
+function stripListMarker(clause: string): string {
+  return clause.replace(/^\s*(?:\d+[.、)]|[-*•])\s*/, '').trim()
 }
 
-/** Summarize the request frames of the sample. */
-function summarizeFrames(
-  frames: RequestFrame[],
-  instructions: {
-    total: number
-    specified: number
-    relayed: number
-    withValue: number
-    withReason: number
-  },
-): NonNullable<NarrativeProfile['requestFrame']> | undefined {
-  if (frames.length === 0 && instructions.total === 0) return undefined
-  const prefixCounts = new Map<string, number>()
-  for (const frame of frames) {
-    prefixCounts.set(frame.prefix, (prefixCounts.get(frame.prefix) ?? 0) + 1)
-  }
-  const prefixEntry = [...prefixCounts.entries()].sort((a, b) => b[1] - a[1])[0]
-  const prefix = prefixEntry ? prefixEntry[0] : ''
-  const prefixRate =
-    prefixEntry && frames.length ? prefixEntry[1] / frames.length : 0
-  const withTime = frames.filter((f) => f.time).length
-  const withCondition = frames.filter((f) => f.condition).length
-  const withSequence = frames.filter((f) => f.sequence).length
-  const timeRate = frames.length ? withTime / frames.length : 0
-  const conditionRate = frames.length ? withCondition / frames.length : 0
-  const sequenceRate = frames.length ? withSequence / frames.length : 0
-  const parts = prefix ? [prefix, '動作'] : ['動作']
-  if (timeRate >= 0.3 && conditionRate >= 0.3) parts.push('時程／條件')
-  else if (timeRate >= 0.3) parts.push('時程')
-  else if (conditionRate >= 0.3) parts.push('條件')
-  const template = parts.join(' ＋ ')
-  // Prefer an example that carries the template's own adjuncts, then one
-  // that uses the dominant prefix.
-  const candidates = [...frames].sort((a, b) => {
-    const score = (f: RequestFrame) =>
-      (f.prefix === prefix ? 2 : 0) +
-      (f.time ? 1 : 0) +
-      (f.condition ? 1 : 0) +
-      (f.sequence ? 1 : 0)
-    return score(b) - score(a) || a.raw.length - b.raw.length
-  })
-  const example = candidates[0]?.raw ?? ''
+/** Analyze one message into clauses and discourse units. */
+export function analyzeMessage(text: string): MessageNarrative {
+  const clauseTexts = splitSegments(text).map(stripListMarker)
+  const clauses = clauseTexts.map((clause) => analyzeClause(clause))
 
-  // Directive style: a directly executable value versus a relayed condition.
-  // Only instructions that carry a value or a relayed condition decide the
-  // style; plain instructions stay out of the comparison.
-  const decisionBase = instructions.specified + instructions.relayed
-  const directiveRate = decisionBase ? instructions.specified / decisionBase : 0
-  const relayedRate = decisionBase ? instructions.relayed / decisionBase : 0
-  const valueRate = instructions.total
-    ? instructions.withValue / instructions.total
-    : 0
-  const reasonRate = instructions.total
-    ? instructions.withReason / instructions.total
-    : 0
-  const style: 'directive' | 'relayed' | 'plain' =
-    decisionBase > 0 && directiveRate >= 0.4 && directiveRate > relayedRate
-      ? 'directive'
-      : decisionBase > 0 && relayedRate >= 0.4 && relayedRate > directiveRate
-        ? 'relayed'
-        : 'plain'
-  const styleExample =
-    style === 'directive'
-      ? (frames.find((f) => f.specified)?.raw ?? example)
-      : style === 'relayed'
-        ? (frames.find((f) => f.relayed)?.raw ?? example)
-        : example
+  const lines = text.split('\n')
+  const units: Unit[] = []
+  let blankBefore = false
+  lines.forEach((line) => {
+    if (!line.trim()) {
+      blankBefore = true
+      return
+    }
+    const pairs = [...line.matchAll(FIELD_PAIR_RE)]
+    const single = LABELLED_LINE_RE.exec(line)
+    const labels = pairs.map((pair) => pair[1])
+    // One label with an enumerated value is a serial arrangement too.
+    const serial = pairs.length > 1 || (pairs.length === 1 && /、/.test(line))
+    let kind: UnitKind = 'narrative'
+    if (LIST_MARKER_RE.test(line)) kind = 'list'
+    else if (pairs.length > 0) kind = 'field'
+    else {
+      const lineClauses = splitSegments(line)
+        .map(stripListMarker)
+        .map((clause) => analyzeClause(clause))
+      if (lineClauses.some((clause) => clause.act === 'thanks')) kind = 'thanks'
+      else if (lineClauses.some((clause) => clause.act === 'request'))
+        kind = 'request'
+    }
+    units.push({
+      text: line,
+      kind,
+      fieldCount: pairs.length,
+      serial,
+      labels: single?.[1] ? [single[1]] : labels,
+      blankBefore,
+    })
+    blankBefore = false
+  })
 
   return {
-    sampleSize: frames.length,
-    prefix,
-    prefixRate: Math.round(prefixRate * 100) / 100,
-    timeRate: Math.round(timeRate * 100) / 100,
-    conditionRate: Math.round(conditionRate * 100) / 100,
-    sequenceRate: Math.round(sequenceRate * 100) / 100,
-    template,
-    example: example.length > 32 ? `${example.slice(0, 31)}…` : example,
-    directiveRate: Math.round(directiveRate * 100) / 100,
-    relayedRate: Math.round(relayedRate * 100) / 100,
-    valueRate: Math.round(valueRate * 100) / 100,
-    reasonRate: Math.round(reasonRate * 100) / 100,
-    style,
-    styleExample:
-      styleExample.length > 32 ? `${styleExample.slice(0, 31)}…` : styleExample,
+    text,
+    clauses,
+    units,
+    acts: clauses.map((clause) => clause.act),
+    unitKinds: units.map((unit) => unit.kind),
   }
+}
+
+/** Measure the talker's punctuation and emoji habits. */
+function analyzeTone(messages: MessageNarrative[]): ToneStats {
+  const total = messages.length
+  const count = (test: (text: string) => boolean) =>
+    total ? messages.filter((m) => test(m.text)).length / total : 0
+  const round = (rate: number) => Math.round(rate * 100) / 100
+  return {
+    emojiRate: round(count((text) => EMOJI_RE.test(text))),
+    questionRate: round(count((text) => /[？?]/.test(text))),
+    exclamationRate: round(count((text) => /[！!]/.test(text))),
+    tildeRate: round(count((text) => /[~～]/.test(text))),
+    quoteMarkRate: round(count((text) => /[「」『』"]/.test(text))),
+    ellipsisRate: round(count((text) => /\.\.\.|…/.test(text))),
+  }
+}
+
+/** Truncate an excerpt taken from the talker's own message. */
+function excerpt(text: string, max = 40): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
+
+/** One situation a recipe can be derived from. */
+interface RecipeDefinition {
+  /** Stable identifier. */
+  id: string
+  /** Chinese title of the situation. */
+  title: string
+  /** Whether a message belongs to this situation. */
+  match: (message: MessageNarrative) => boolean
 }
 
 /**
- * Analyze the narrative structure of a set of the talker's own messages.
+ * The situations a recipe can be derived from. Each definition is a generic
+ * shape; the recipe itself is always built from the talker's own messages,
+ * never from a template.
+ */
+const RECIPE_DEFINITIONS: RecipeDefinition[] = [
+  {
+    id: 'confirm-deliverable',
+    title: '請求對方確認已交付物',
+    match: (message) =>
+      message.acts.includes('request') &&
+      /附上|做了一份|做了一版|整理好|產出|備妥|寫好|送件/.test(message.text),
+  },
+  {
+    id: 'request-with-values',
+    title: '請求開立或寄送並附上具體資料',
+    match: (message) =>
+      message.acts.includes('request') &&
+      message.units.some((unit) => unit.kind === 'field'),
+  },
+  {
+    id: 'status-update',
+    title: '告知已完成或已交付事項',
+    match: (message) =>
+      !message.acts.includes('request') &&
+      /附上|做了一份|整理好|產出|備妥|寫好|送件|跑完了|跑完/.test(message.text),
+  },
+]
+
+/**
+ * Build the drafting recipes from the sample.
+ *
+ * A recipe is a set of units that recur inside the talker's own messages of
+ * one situation. Every step carries the share of that situation's messages it
+ * appears in, plus a verbatim excerpt when one is available.
+ */
+function buildRecipes(
+  messages: MessageNarrative[],
+  sampleSize: number,
+): Recipe[] {
+  const recipes: Recipe[] = []
+  for (const definition of RECIPE_DEFINITIONS) {
+    const group = messages.filter((message) => definition.match(message))
+    if (group.length === 0) continue
+    const carriers = new Map<string, { count: number; position: number }>()
+    group.forEach((message) => {
+      const seen = new Set<string>()
+      message.units.forEach((unit, index) => {
+        if (seen.has(unit.kind)) return
+        seen.add(unit.kind)
+        const entry = carriers.get(unit.kind) ?? { count: 0, position: index }
+        entry.count++
+        carriers.set(unit.kind, entry)
+      })
+    })
+    const steps: (RecipeStep & { position: number })[] = []
+    for (const [kind, entry] of carriers) {
+      const rate = entry.count / group.length
+      if (rate < 0.4) continue
+      const quote =
+        group
+          .flatMap((message) => message.units)
+          .find((unit) => unit.kind === kind)?.text ?? null
+      steps.push({
+        description: UNIT_KIND_LABELS[kind as UnitKind],
+        rate: Math.round(rate * 100) / 100,
+        quote: quote ? excerpt(quote.trim()) : null,
+        position: entry.position,
+      })
+    }
+    if (steps.length === 0) continue
+    steps.sort((a, b) => a.position - b.position || b.rate - a.rate)
+    recipes.push({
+      id: definition.id,
+      title: definition.title,
+      sampleSize: group.length,
+      rate: sampleSize
+        ? Math.round((group.length / sampleSize) * 100) / 100
+        : 0,
+      steps: steps.map(({ position: _position, ...step }) => step),
+    })
+  }
+  return recipes
+}
+
+/** Collect the talker's own messages as examples, grouped by situation. */
+function buildExamples(
+  messages: MessageNarrative[],
+  recipes: Recipe[],
+): StyleExample[] {
+  const examples: StyleExample[] = []
+  for (const recipe of recipes) {
+    const definition = RECIPE_DEFINITIONS.find(
+      (candidate) => candidate.id === recipe.id,
+    )
+    if (!definition) continue
+    const group = messages.filter((message) => definition.match(message))
+    for (const message of group.slice(0, 2)) {
+      const text =
+        message.text.length > MAX_EXAMPLE_CHARS
+          ? `${message.text.slice(0, MAX_EXAMPLE_CHARS - 1)}…`
+          : message.text
+      examples.push({ situation: recipe.title, text })
+    }
+  }
+  return examples.slice(0, 5)
+}
+
+/**
+ * Derive the things this talker does NOT do.
+ *
+ * Every prohibition is backed by a rate measured on the sample; nothing is
+ * prohibited because a template says so.
+ */
+function buildProhibitions(profile: {
+  absentActs: SpeechAct[]
+  strategyRates: {
+    strategy: PolitenessStrategy
+    rate: number
+  }[]
+  unitRates: { kind: UnitKind; rate: number }[]
+  layout: NarrativeProfile['layout']
+  mitigationMoves: NarrativeProfile['mitigationMoves']
+  reasonSource: NarrativeProfile['reasonSource']
+  selfDisclosure: NarrativeProfile['selfDisclosure']
+  sampleSize: number
+}): Prohibition[] {
+  const prohibitions: Prohibition[] = []
+  const pct = (rate: number) => `${Math.round(rate * 100)}%`
+  for (const act of profile.absentActs) {
+    prohibitions.push({
+      text: `勿自行加入${SPEECH_ACT_LABELS[act]}的段落`,
+      evidence: `樣本中該言語行為出現率${pct(0)}`,
+    })
+  }
+  const strategyRate = (strategy: PolitenessStrategy) =>
+    profile.strategyRates.find((entry) => entry.strategy === strategy)?.rate ??
+    0
+  const mitigated = strategyRate('negative-politeness')
+  const direct = strategyRate('bald-on-record')
+  const offRecord = strategyRate('off-record')
+  if (mitigated >= 0.5 && direct < 0.3) {
+    prohibitions.push({
+      text: '勿自行把迂迴請求改成直接祈使',
+      evidence: `迂迴請求約${pct(mitigated)},直接祈使約${pct(direct)}`,
+    })
+  }
+  if (direct >= 0.5 && mitigated < 0.3) {
+    prohibitions.push({
+      text: '勿自行把直接祈使改成迂迴請求',
+      evidence: `直接祈使約${pct(direct)},迂迴請求約${pct(mitigated)}`,
+    })
+  }
+  if (offRecord >= 0.5) {
+    prohibitions.push({
+      text: '勿自行把條件式請求改成單向命令',
+      evidence: `條件式約${pct(offRecord)}`,
+    })
+  }
+  const unitRate = (kind: UnitKind) =>
+    profile.unitRates.find((entry) => entry.kind === kind)?.rate ?? 0
+  if (profile.layout.fieldPerLineRate >= 0.5) {
+    prohibitions.push({
+      text: '勿自行把欄位併成同一行的串列',
+      evidence: `欄位單位中逐列呈現約${pct(profile.layout.fieldPerLineRate)}`,
+    })
+  }
+  if (profile.layout.fieldSerialRate >= 0.5) {
+    prohibitions.push({
+      text: '勿自行把欄位拆成逐列清單',
+      evidence: `欄位單位中同列串列約${pct(profile.layout.fieldSerialRate)}`,
+    })
+  }
+  if (unitRate('list') >= 0.5) {
+    prohibitions.push({
+      text: '勿自行改寫成段落式長文',
+      evidence: `條列單位佔全部單位約${pct(unitRate('list'))}`,
+    })
+  }
+  if (unitRate('list') < 0.1 && profile.sampleSize >= 3) {
+    prohibitions.push({
+      text: '勿自行使用條列編號',
+      evidence: `條列單位佔全部單位約${pct(unitRate('list'))}`,
+    })
+  }
+  const moves = profile.mitigationMoves
+  if (moves.base > 0) {
+    if (moves.reason < 0.2) {
+      prohibitions.push({
+        text: '勿自行替請求補上理由',
+        evidence: `僅約${pct(moves.reason)}的請求附帶理由`,
+      })
+    }
+    if (moves.deadline < 0.2) {
+      prohibitions.push({
+        text: '勿自行替請求補上期限',
+        evidence: `僅約${pct(moves.deadline)}的請求附帶期限`,
+      })
+    }
+    if (moves.delegation < 0.2) {
+      prohibitions.push({
+        text: '勿自行把判斷權交給對方',
+        evidence: `僅約${pct(moves.delegation)}的請求交由對方判斷`,
+      })
+    }
+  }
+  if (profile.reasonSource.base > 0 && profile.reasonSource.relayed < 0.2) {
+    prohibitions.push({
+      text: '勿自行轉述第三方條件代替直接給值',
+      evidence: `轉述理由約${pct(profile.reasonSource.relayed)}`,
+    })
+  }
+  if (profile.selfDisclosure.base > 0 && profile.selfDisclosure.rate <= 0.2) {
+    prohibitions.push({
+      text: '勿自行夾帶與請求無關的自身狀態',
+      evidence: `僅約${pct(profile.selfDisclosure.rate)}的請求夾帶自身狀態`,
+    })
+  }
+  return prohibitions
+}
+
+/**
+ * List what this sample cannot support.
+ *
+ * Anything not observed is reported as "not seen" rather than assumed absent.
+ */
+function buildUncertainties(profile: {
+  sampleSize: number
+  datedMessages: number
+  amountMessages: number
+  requestClauses: number
+  recipes: Recipe[]
+}): string[] {
+  const uncertainties: string[] = []
+  if (profile.sampleSize < 5) {
+    uncertainties.push(`樣本僅${profile.sampleSize}則,各項比例的估計不穩定`)
+  }
+  if (profile.datedMessages === 0) {
+    uncertainties.push(
+      `樣本0/${profile.sampleSize}則出現日期寫法,不足以描述期限位置`,
+    )
+  }
+  if (profile.amountMessages === 0) {
+    uncertainties.push(
+      `樣本0/${profile.sampleSize}則出現金額寫法,不足以描述金額偏好`,
+    )
+  }
+  if (profile.requestClauses === 0) {
+    uncertainties.push('樣本未見請求,不足以描述請求結構與互動策略')
+  }
+  for (const recipe of profile.recipes) {
+    if (recipe.sampleSize < 2) {
+      uncertainties.push(
+        `情境骨架「${recipe.title}」僅${recipe.sampleSize}則樣本支持,比例不穩定`,
+      )
+    }
+  }
+  return uncertainties
+}
+
+/**
+ * Analyze the structural style of a set of the talker's own messages.
  *
  * @param texts - The user's sent message texts (sticker messages excluded).
- * @param chatIds - Optional conversation id per text, for per-chat honorific
- *   density.
+ * @param chatIds - Optional conversation id per text, for per-recipient
+ *   register differences.
  */
 export function analyzeNarrative(
   texts: string[],
@@ -972,73 +1173,52 @@ export function analyzeNarrative(
 ): NarrativeProfile {
   const sampleSize = texts.length
   const messages = texts.map((text) => analyzeMessage(text))
-  const totalSegments = texts.reduce(
-    (sum, text) => sum + splitSegments(text).length,
-    0,
-  )
-  const avgSegments = sampleSize
-    ? Math.round((totalSegments / sampleSize) * 10) / 10
+  const clauses = messages.flatMap((message) => message.clauses)
+  const clauseCount = clauses.length
+
+  // --- ideational: content and information structure ---
+  const valuedClauses = clauses.filter((clause) => clause.valueOrder)
+  const valuePosition = {
+    preposed: valuedClauses.filter((clause) => clause.valueOrder === 'preposed')
+      .length,
+    postposed: valuedClauses.filter(
+      (clause) => clause.valueOrder === 'postposed',
+    ).length,
+    base: valuedClauses.length,
+  }
+  const topicFirstRate = sampleSize
+    ? Math.round(
+        (messages.filter(
+          (message) =>
+            message.clauses[0] !== undefined &&
+            SUBJECT_START_RE.test(message.clauses[0].text),
+        ).length /
+          sampleSize) *
+          100,
+      ) / 100
     : 0
-
-  const roleCounts = new Map<NarrativeRole, number>()
-  for (const message of messages) {
-    for (const role of new Set(message.roles)) {
-      roleCounts.set(role, (roleCounts.get(role) ?? 0) + 1)
-    }
-  }
-  const roleRates: Partial<Record<NarrativeRole, number>> = {}
-  for (const [role, count] of roleCounts) {
-    roleRates[role] = sampleSize
-      ? Math.round((count / sampleSize) * 100) / 100
-      : 0
-  }
-
   const dataKinds = [
-    ...new Set(messages.flatMap((message) => message.dataKinds)),
+    ...new Set(messages.flatMap((message) => detectConcreteData(message.text))),
   ]
-  const withData = messages.filter((m) => m.dataKinds.length > 0).length
-  const withRequest = messages.filter((m) => m.hasRequest)
-  const delegating = withRequest.filter((m) => m.delegating).length
-
-  const { order, concordance } = dominantOrdering(messages)
-  const distinctSubstantive = SUBSTANTIVE_ROLES.filter((role) =>
-    roleCounts.has(role),
+  const withData = messages.filter(
+    (m) => detectConcreteData(m.text).length > 0,
   ).length
-
-  let sufficient = true
-  let insufficientReason: string | undefined
-  if (sampleSize < MIN_MESSAGES) {
-    sufficient = false
-    insufficientReason = `僅${sampleSize}則訊息,不足以推論段落順序`
-  } else if (totalSegments < MIN_SEGMENTS) {
-    sufficient = false
-    insufficientReason = `僅${totalSegments}個邏輯段落,不足以推論段落順序`
-  } else if (distinctSubstantive < 2) {
-    sufficient = false
-    insufficientReason = '樣本多為寒暄或單一功能訊息,未見多段式敘事'
-  }
-
-  // Request frames and instruction style.
-  const frames = messages.flatMap((message) => message.frames)
-  const instructionTotals = messages.reduce(
-    (acc, message) => ({
-      total: acc.total + message.instructions.total,
-      specified: acc.specified + message.instructions.specified,
-      relayed: acc.relayed + message.instructions.relayed,
-      withValue: acc.withValue + message.instructions.withValue,
-      withReason: acc.withReason + message.instructions.withReason,
-    }),
-    { total: 0, specified: 0, relayed: 0, withValue: 0, withReason: 0 },
+  const dated = messages.filter(
+    (m) => RELATIVE_DATE_RE.test(m.text) || ABSOLUTE_DATE_RE.test(m.text),
   )
-  const requestFrame = summarizeFrames(frames, instructionTotals)
-
-  // Date wording.
-  const dated = messages.filter((m) => m.dates.relative || m.dates.absolute)
   const relativeRate = dated.length
-    ? dated.filter((m) => m.dates.relative).length / dated.length
+    ? Math.round(
+        (dated.filter((m) => RELATIVE_DATE_RE.test(m.text)).length /
+          dated.length) *
+          100,
+      ) / 100
     : 0
   const absoluteRate = dated.length
-    ? dated.filter((m) => m.dates.absolute).length / dated.length
+    ? Math.round(
+        (dated.filter((m) => ABSOLUTE_DATE_RE.test(m.text)).length /
+          dated.length) *
+          100,
+      ) / 100
     : 0
   let preferred: NarrativeProfile['dateStyle']['preferred'] = 'none'
   if (dated.length > 0) {
@@ -1046,23 +1226,111 @@ export function analyzeNarrative(
     else if (absoluteRate - relativeRate >= 0.15) preferred = 'absolute'
     else preferred = 'mixed'
   }
+  const dateFormatCounts = { iso: 0, short: 0, chinese: 0 }
+  const amountFormatCounts = { 'with-tax': 0, breakdown: 0, plain: 0 }
+  for (const message of messages) {
+    if (ISO_DATE_RE.test(message.text)) dateFormatCounts.iso++
+    else if (CHINESE_DATE_RE.test(message.text)) dateFormatCounts.chinese++
+    else if (SHORT_DATE_RE.test(message.text)) dateFormatCounts.short++
+    if (AMOUNT_BREAKDOWN_RE.test(message.text)) amountFormatCounts.breakdown++
+    else if (detectConcreteData(message.text).includes('amount'))
+      amountFormatCounts['with-tax']++
+    else if (/\d[\d,]*\s*(?:元|塊)/.test(message.text))
+      amountFormatCounts.plain++
+  }
 
-  // Honorifics, globally and per conversation.
-  const honorificMessages = messages.filter(
-    (m) => m.honorifics.ning + m.honorifics.nei + m.honorifics.ni > 0,
+  // --- interpersonal: speech acts and relational strategy ---
+  const actCounts = new Map<SpeechAct, number>()
+  for (const clause of clauses) {
+    actCounts.set(clause.act, (actCounts.get(clause.act) ?? 0) + 1)
+  }
+  const actRates = [...actCounts.entries()]
+    .map(([act, count]) => ({
+      act,
+      label: SPEECH_ACT_LABELS[act],
+      count,
+      rate: clauseCount ? Math.round((count / clauseCount) * 100) / 100 : 0,
+    }))
+    .sort((a, b) => b.rate - a.rate || b.count - a.count)
+  const absentActs = (Object.keys(SPEECH_ACT_LABELS) as SpeechAct[]).filter(
+    (act) => !actCounts.has(act),
   )
-  const ningRate = sampleSize
-    ? honorificMessages.filter((m) => m.honorifics.ning > 0).length / sampleSize
-    : 0
-  const neiRate = sampleSize
-    ? honorificMessages.filter((m) => m.honorifics.nei > 0).length / sampleSize
-    : 0
-  const niRate = sampleSize
-    ? honorificMessages.filter((m) => m.honorifics.ni > 0).length / sampleSize
-    : 0
-  const ningTotal = messages.reduce((sum, m) => sum + m.honorifics.ning, 0)
-  const neiTotal = messages.reduce((sum, m) => sum + m.honorifics.nei, 0)
-  const niTotal = messages.reduce((sum, m) => sum + m.honorifics.ni, 0)
+
+  const requestClauses = clauses.filter((clause) => clause.act === 'request')
+  const strategyCounts = new Map<PolitenessStrategy, number>()
+  for (const clause of requestClauses) {
+    if (!clause.strategy) continue
+    strategyCounts.set(
+      clause.strategy,
+      (strategyCounts.get(clause.strategy) ?? 0) + 1,
+    )
+  }
+  const strategyRates = [...strategyCounts.entries()]
+    .map(([strategy, count]) => ({
+      strategy,
+      label: POLITENESS_LABELS[strategy],
+      count,
+      rate: requestClauses.length
+        ? Math.round((count / requestClauses.length) * 100) / 100
+        : 0,
+    }))
+    .sort((a, b) => b.rate - a.rate)
+  const mitigationMoves = {
+    reason: requestClauses.length
+      ? Math.round(
+          (requestClauses.filter((clause) => clause.reason).length /
+            requestClauses.length) *
+            100,
+        ) / 100
+      : 0,
+    deadline: requestClauses.length
+      ? Math.round(
+          (requestClauses.filter((clause) => clause.deadline).length /
+            requestClauses.length) *
+            100,
+        ) / 100
+      : 0,
+    delegation: requestClauses.length
+      ? Math.round(
+          (requestClauses.filter((clause) => clause.conditional).length /
+            requestClauses.length) *
+            100,
+        ) / 100
+      : 0,
+    base: requestClauses.length,
+  }
+  const reasonClauses = clauses.filter((clause) => clause.reason)
+  const relayedReasons = reasonClauses.filter((clause) =>
+    THIRD_PARTY_RE.test(clause.text),
+  ).length
+  const reasonSource = {
+    self: reasonClauses.length - relayedReasons,
+    relayed: relayedReasons,
+    base: reasonClauses.length,
+  }
+  const disclosureClauses = requestClauses.filter((clause) => clause.selfState)
+  const selfDisclosure = {
+    rate: requestClauses.length
+      ? Math.round((disclosureClauses.length / requestClauses.length) * 100) /
+        100
+      : 0,
+    base: requestClauses.length,
+    example: disclosureClauses[0]?.text ?? null,
+  }
+
+  // Honorifics (identification dimension).
+  const ningTotal = messages.reduce(
+    (sum, m) => sum + countHonorifics(m.text).ning,
+    0,
+  )
+  const neiTotal = messages.reduce(
+    (sum, m) => sum + countHonorifics(m.text).nei,
+    0,
+  )
+  const niTotal = messages.reduce(
+    (sum, m) => sum + countHonorifics(m.text).ni,
+    0,
+  )
   const totalHonorifics = ningTotal + neiTotal + niTotal
   const honorificRanking: [string, number][] = [
     ['您', ningTotal],
@@ -1073,14 +1341,43 @@ export function analyzeNarrative(
     totalHonorifics === 0
       ? null
       : honorificRanking.sort((a, b) => b[1] - a[1])[0][0]
+  const honorificMessages = messages.filter(
+    (m) =>
+      countHonorifics(m.text).ning +
+        countHonorifics(m.text).nei +
+        countHonorifics(m.text).ni >
+      0,
+  )
+  const ningRate = sampleSize
+    ? Math.round(
+        (honorificMessages.filter((m) => m.text.includes('您')).length /
+          sampleSize) *
+          100,
+      ) / 100
+    : 0
+  const neiRate = sampleSize
+    ? Math.round(
+        (honorificMessages.filter((m) => m.text.includes('妳')).length /
+          sampleSize) *
+          100,
+      ) / 100
+    : 0
+  const niRate = sampleSize
+    ? Math.round(
+        (honorificMessages.filter((m) => m.text.includes('你')).length /
+          sampleSize) *
+          100,
+      ) / 100
+    : 0
   const perChat = new Map<string, { ning: number; nei: number; ni: number }>()
   messages.forEach((message, index) => {
     const chatId = chatIds?.[index]
     if (!chatId) return
     const entry = perChat.get(chatId) ?? { ning: 0, nei: 0, ni: 0 }
-    entry.ning += message.honorifics.ning
-    entry.nei += message.honorifics.nei
-    entry.ni += message.honorifics.ni
+    const counts = countHonorifics(message.text)
+    entry.ning += counts.ning
+    entry.nei += counts.nei
+    entry.ni += counts.ni
     perChat.set(chatId, entry)
   })
   const perChatHonorifics = [...perChat.entries()].map(([chatId, entry]) => {
@@ -1088,18 +1385,22 @@ export function analyzeNarrative(
       (_, index) => chatIds?.[index] === chatId,
     )
     const withHonorific = chatMessages.filter(
-      (m) => m.honorifics.ning + m.honorifics.nei + m.honorifics.ni > 0,
+      (m) =>
+        countHonorifics(m.text).ning +
+          countHonorifics(m.text).nei +
+          countHonorifics(m.text).ni >
+        0,
     ).length
     const ning = withHonorific
       ? Math.round(
-          (chatMessages.filter((m) => m.honorifics.ning > 0).length /
+          (chatMessages.filter((m) => m.text.includes('您')).length /
             withHonorific) *
             100,
         ) / 100
       : 0
     const nei = withHonorific
       ? Math.round(
-          (chatMessages.filter((m) => m.honorifics.nei > 0).length /
+          (chatMessages.filter((m) => m.text.includes('妳')).length /
             withHonorific) *
             100,
         ) / 100
@@ -1115,201 +1416,275 @@ export function analyzeNarrative(
     return { chatId, ningRate: ning, neiRate: nei, dominant: chatDominant }
   })
 
-  const sequenceMarkerRate = sampleSize
-    ? messages.filter((m) => m.sequenceOrdered).length / sampleSize
-    : 0
-
-  // Data layout: one field per line versus one dense paragraph.
-  const labeledMessages = messages.filter((m) => m.labeledFields.length > 0)
-  const labeledFieldTotal = messages.reduce(
-    (sum, message) => sum + message.labeledFields.length,
-    0,
-  )
-  const inlineFieldMessages = messages.filter((m) => m.inlineFields).length
-  const multilineMessages = messages.filter((m) => m.multiline).length
-  const dateFormatCounts = { iso: 0, short: 0, chinese: 0 }
-  const amountFormatCounts = { 'with-tax': 0, breakdown: 0, plain: 0 }
-  for (const message of messages) {
-    if (message.dateFormat !== 'none') dateFormatCounts[message.dateFormat]++
-    if (message.amountFormat !== 'none')
-      amountFormatCounts[message.amountFormat]++
-  }
-  const dateFormat = dominantFormat(
-    dateFormatCounts,
-  ) as DataLayoutProfile['dateFormat']
-  const amountFormat = dominantFormat(
-    amountFormatCounts,
-  ) as DataLayoutProfile['amountFormat']
-  const labels = [
-    ...new Set(messages.flatMap((message) => message.labeledFields)),
-  ]
-  const dataLayout: DataLayoutProfile = {
-    labeledLineRate: sampleSize
-      ? Math.round((labeledMessages.length / sampleSize) * 100) / 100
-      : 0,
-    labeledFieldsPerMessage: sampleSize
-      ? Math.round((labeledFieldTotal / sampleSize) * 10) / 10
-      : 0,
-    inlineFieldRate: sampleSize
-      ? Math.round((inlineFieldMessages / sampleSize) * 100) / 100
-      : 0,
-    multilineRate: sampleSize
-      ? Math.round((multilineMessages / sampleSize) * 100) / 100
-      : 0,
-    dateFormat,
-    amountFormat,
-    labels,
+  // Per-recipient register differences (tenor).
+  const registers: RegisterProfile[] = []
+  if (chatIds) {
+    const chatIdsSeen = [...new Set(chatIds.filter(Boolean))]
+    for (const chatId of chatIdsSeen) {
+      const chatMessages = messages.filter(
+        (_, index) => chatIds[index] === chatId,
+      )
+      const chatRequests = chatMessages.flatMap((message) =>
+        message.clauses.filter((clause) => clause.act === 'request'),
+      )
+      const mitigated = chatRequests.filter(
+        (clause) => clause.strategy === 'negative-politeness',
+      ).length
+      const chatCounts = chatMessages.reduce(
+        (acc, message) => {
+          const counts = countHonorifics(message.text)
+          acc.ning += counts.ning
+          acc.nei += counts.nei
+          acc.ni += counts.ni
+          return acc
+        },
+        { ning: 0, nei: 0, ni: 0 },
+      )
+      const chatTotal = chatCounts.ning + chatCounts.nei + chatCounts.ni
+      const ranking: [string, number][] = [
+        ['您', chatCounts.ning],
+        ['妳', chatCounts.nei],
+        ['你', chatCounts.ni],
+      ]
+      registers.push({
+        chatId,
+        messageCount: chatMessages.length,
+        requestBase: chatRequests.length,
+        mitigationRate: chatRequests.length
+          ? Math.round((mitigated / chatRequests.length) * 100) / 100
+          : 0,
+        honorific:
+          chatTotal === 0 ? null : ranking.sort((a, b) => b[1] - a[1])[0][0],
+      })
+    }
   }
 
-  // Block structure: prose paragraphs versus runs of field lines.
-  const allBlocks = messages.flatMap((message) => message.blocks)
-  const separatedBlocks = allBlocks.filter((block) => block.separated).length
-  const totalProseLines = messages.reduce(
-    (sum, message) => sum + message.proseLines,
-    0,
-  )
-  const totalProseSentences = messages.reduce(
-    (sum, message) => sum + message.proseSentences,
-    0,
-  )
-  const paragraphCount = messages.reduce(
-    (sum, message) => sum + message.paragraphs.count,
-    0,
-  )
-  const paragraphBlankBoundaries = messages.reduce(
-    (sum, message) => sum + message.paragraphs.blankBoundaries,
-    0,
-  )
-  const proseClauseTotal = messages.reduce(
-    (sum, message) => sum + message.paragraphs.clauses,
-    0,
-  )
-  const semicolonClauseTotal = messages.reduce(
-    (sum, message) => sum + message.paragraphs.semicolonClauses,
-    0,
-  )
-  const colonParagraphTotal = messages.reduce(
-    (sum, message) => sum + message.paragraphs.colonParagraphs,
-    0,
-  )
-  const colonSerialTotal = messages.reduce(
-    (sum, message) => sum + message.paragraphs.colonSerialParagraphs,
-    0,
-  )
-  const listMarkerMessages = messages.filter((m) => m.listMarkers > 0).length
-  const blocks: BlockStructureProfile = {
-    paragraphBlankLineRate: paragraphCount
-      ? Math.round((paragraphBlankBoundaries / paragraphCount) * 100) / 100
+  // --- textual: unit division and cohesion ---
+  const units = messages.flatMap((message) => message.units)
+  const unitCounts = new Map<UnitKind, number>()
+  for (const unit of units) {
+    unitCounts.set(unit.kind, (unitCounts.get(unit.kind) ?? 0) + 1)
+  }
+  const unitRates = [...unitCounts.entries()]
+    .map(([kind, count]) => ({
+      kind,
+      label: UNIT_KIND_LABELS[kind],
+      count,
+      rate: units.length ? Math.round((count / units.length) * 100) / 100 : 0,
+    }))
+    .sort((a, b) => b.rate - a.rate)
+  const fieldUnits = units.filter((unit) => unit.kind === 'field')
+  const perLineUnits = fieldUnits.filter((unit) => !unit.serial).length
+  const serialUnits = fieldUnits.filter((unit) => unit.serial).length
+  const boundaries = Math.max(0, units.length - messages.length)
+  const blankSeparated = units.filter(
+    (unit) => unit.blankBefore && unit.kind !== 'narrative',
+  ).length
+  const layout = {
+    blankSeparatedRate: boundaries
+      ? Math.round((blankSeparated / boundaries) * 100) / 100
       : 0,
-    semicolonClauseRate: proseClauseTotal
-      ? Math.round((semicolonClauseTotal / proseClauseTotal) * 100) / 100
+    unitsPerMessage: sampleSize
+      ? Math.round((units.length / sampleSize) * 10) / 10
       : 0,
-    colonFieldSerialRate: colonParagraphTotal
-      ? Math.round((colonSerialTotal / colonParagraphTotal) * 100) / 100
-      : 0,
-    listMarkerRate: sampleSize
-      ? Math.round((listMarkerMessages / sampleSize) * 100) / 100
-      : 0,
-    fieldBlockRate: sampleSize
+    fieldsPerUnit: fieldUnits.length
       ? Math.round(
-          (messages.filter((m) => m.blocks.length > 0).length / sampleSize) *
-            100,
-        ) / 100
-      : 0,
-    blocksPerMessage: sampleSize
-      ? Math.round((allBlocks.length / sampleSize) * 10) / 10
-      : 0,
-    avgLinesPerBlock: allBlocks.length
-      ? Math.round(
-          (allBlocks.reduce((sum, block) => sum + block.lines, 0) /
-            allBlocks.length) *
+          (fieldUnits.reduce((sum, unit) => sum + unit.fieldCount, 0) /
+            fieldUnits.length) *
             10,
         ) / 10
       : 0,
-    blankLineSeparatedRate: allBlocks.length
-      ? Math.round((separatedBlocks / allBlocks.length) * 100) / 100
+    labels: [...new Set(units.flatMap((unit) => unit.labels))],
+    fieldPerLineRate: fieldUnits.length
+      ? Math.round((perLineUnits / fieldUnits.length) * 100) / 100
       : 0,
-    proseSentenceRatio: totalProseLines
-      ? Math.round((totalProseSentences / totalProseLines) * 100) / 100
+    fieldSerialRate: fieldUnits.length
+      ? Math.round((serialUnits / fieldUnits.length) * 100) / 100
       : 0,
+    base: fieldUnits.length,
   }
 
-  const prefixCounter = new Map<string, number>()
-  for (const message of messages) {
-    for (const prefix of message.requestPrefixes) {
-      prefixCounter.set(prefix, (prefixCounter.get(prefix) ?? 0) + 1)
+  // Observed transitions between adjacent behaviours.
+  const transitions: Transition[] = []
+  for (const scope of ['act', 'unit'] as const) {
+    const counter = new Map<string, number>()
+    let total = 0
+    for (const message of messages) {
+      const sequence = scope === 'act' ? message.acts : message.unitKinds
+      for (let i = 0; i < sequence.length - 1; i++) {
+        const key = `${sequence[i]}>${sequence[i + 1]}`
+        counter.set(key, (counter.get(key) ?? 0) + 1)
+        total++
+      }
+    }
+    for (const [key, count] of [...counter.entries()].sort(
+      (a, b) => b[1] - a[1],
+    )) {
+      const [from, to] = key.split('>')
+      transitions.push({
+        scope,
+        from:
+          SPEECH_ACT_LABELS[from as SpeechAct] ??
+          UNIT_KIND_LABELS[from as UnitKind],
+        to:
+          SPEECH_ACT_LABELS[to as SpeechAct] ??
+          UNIT_KIND_LABELS[to as UnitKind],
+        count,
+        rate: total ? Math.round((count / total) * 100) / 100 : 0,
+      })
     }
   }
-  const requestVerbs = [...prefixCounter.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([prefix, count]) => ({
-      prefix,
-      count,
-      rate: sampleSize ? Math.round((count / sampleSize) * 100) / 100 : 0,
-    }))
-  const closingCounter = new Map<string, number>()
-  for (const message of messages) {
-    for (const closing of message.closings) {
-      closingCounter.set(closing, (closingCounter.get(closing) ?? 0) + 1)
-    }
-  }
-  const closings = [...closingCounter.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([text, count]) => ({
-      text,
-      count,
-      rate: sampleSize ? Math.round((count / sampleSize) * 100) / 100 : 0,
-    }))
 
-  const profile: NarrativeProfile = {
+  const recipes = buildRecipes(messages, sampleSize)
+  const examples = buildExamples(messages, recipes)
+
+  // Sample sufficiency: enough messages AND at least one observable
+  // structural feature. A sample may be fully sufficient with numbered
+  // commands and no narrative prose at all.
+  const observableFeatures =
+    clauses.filter(
+      (clause) =>
+        clause.act === 'request' ||
+        clause.act === 'question' ||
+        clause.act === 'confirmation' ||
+        clause.act === 'explanation',
+    ).length +
+    messages.filter((message) =>
+      message.units.some(
+        (unit) => unit.kind === 'field' || unit.kind === 'list',
+      ),
+    ).length +
+    clauses.filter((clause) => /\d/.test(clause.text)).length
+  let sufficient = true
+  let insufficientReason: string | undefined
+  if (sampleSize < MIN_MESSAGES) {
+    sufficient = false
+    insufficientReason = `僅${sampleSize}則訊息,不足以描述個人風格`
+  } else if (clauseCount < MIN_CLAUSES) {
+    sufficient = false
+    insufficientReason = `僅${clauseCount}則子句,不足以描述個人風格`
+  } else if (observableFeatures === 0) {
+    sufficient = false
+    insufficientReason = '樣本多為寒暄或單一功能訊息,未見可觀測的結構特徵'
+  }
+
+  const prohibitions = buildProhibitions({
+    absentActs,
+    strategyRates,
+    unitRates,
+    layout,
+    mitigationMoves,
+    reasonSource,
+    selfDisclosure,
+    sampleSize,
+  })
+  const uncertainties = buildUncertainties({
+    sampleSize,
+    datedMessages: dated.length,
+    amountMessages: messages.filter((m) =>
+      detectConcreteData(m.text).includes('amount'),
+    ).length,
+    requestClauses: requestClauses.length,
+    recipes,
+  })
+
+  const findClause = (predicate: (clause: Clause) => boolean) =>
+    clauses.find(predicate)?.text ?? null
+  const findUnit = (predicate: (unit: Unit) => boolean) =>
+    units.find(predicate)?.text.trim() ?? null
+
+  return {
     heuristic: true,
     sampleSize,
-    segmentCount: totalSegments,
-    avgSegmentsPerMessage: avgSegments,
-    roleRates,
-    dominantOrder: order,
-    orderConcordance: Math.round(concordance * 100) / 100,
+    clauseCount,
+    valuePosition,
+    topicFirstRate,
+    dateStyle: { relativeRate, absoluteRate, preferred },
+    dateFormat: dominantFormat(
+      dateFormatCounts,
+    ) as NarrativeProfile['dateFormat'],
+    amountFormat: dominantFormat(
+      amountFormatCounts,
+    ) as NarrativeProfile['amountFormat'],
     concreteDataRate: sampleSize
       ? Math.round((withData / sampleSize) * 100) / 100
       : 0,
     concreteDataKinds: dataKinds,
-    requestRate: sampleSize
-      ? Math.round((withRequest.length / sampleSize) * 100) / 100
-      : 0,
-    delegatingRequestRate: withRequest.length
-      ? Math.round((delegating / withRequest.length) * 100) / 100
-      : 0,
-    dateStyle: {
-      relativeRate: Math.round(relativeRate * 100) / 100,
-      absoluteRate: Math.round(absoluteRate * 100) / 100,
-      preferred,
-    },
+    actRates,
+    strategyRates,
+    requestBase: requestClauses.length,
+    mitigationMoves,
+    reasonSource,
+    selfDisclosure,
     honorifics: {
-      ningRate: Math.round(ningRate * 100) / 100,
-      neiRate: Math.round(neiRate * 100) / 100,
-      niRate: Math.round(niRate * 100) / 100,
+      ningRate,
+      neiRate,
+      niRate,
       dominant: dominantHonorific,
       perChat: perChatHonorifics,
     },
-    sequenceMarkerRate: Math.round(sequenceMarkerRate * 100) / 100,
+    registers,
+    unitRates,
+    layout,
+    transitions,
+    recipes,
+    examples,
+    prohibitions,
+    uncertainties,
+    tone: analyzeTone(messages),
     snippets: {
-      amount: messages.find((m) => m.snippets.amount)?.snippets.amount ?? null,
-      date: messages.find((m) => m.snippets.date)?.snippets.date ?? null,
-      delegating:
-        messages.find((m) => m.snippets.delegating)?.snippets.delegating ??
+      amount: findClause((clause) => clause.values.includes('amount')) ?? null,
+      date: findClause((clause) => clause.dated) ?? null,
+      relativeDate:
+        findClause(
+          (clause) => clause.dated && RELATIVE_DATE_RE.test(clause.text),
+        ) ?? null,
+      absoluteDate:
+        findClause(
+          (clause) => clause.dated && ABSOLUTE_DATE_RE.test(clause.text),
+        ) ?? null,
+      dateShort:
+        findClause((clause) => SHORT_DATE_RE.test(clause.text)) ?? null,
+      dateIso: findClause((clause) => ISO_DATE_RE.test(clause.text)) ?? null,
+      dateChinese:
+        findClause((clause) => CHINESE_DATE_RE.test(clause.text)) ?? null,
+      mitigated:
+        findClause((clause) => clause.form === 'mitigation-preposed') ?? null,
+      imperative:
+        findClause(
+          (clause) =>
+            clause.form === 'qing-vp' ||
+            clause.form === 'yao-vp' ||
+            clause.form === 'bare-vp',
+        ) ?? null,
+      conditional:
+        findClause((clause) => clause.form === 'conditional-query') ?? null,
+      fieldPerLine:
+        findUnit(
+          (unit) =>
+            unit.kind === 'field' && !unit.serial && !/、/.test(unit.text),
+        ) ?? null,
+      fieldSerial:
+        findUnit((unit) => unit.kind === 'field' && unit.serial) ?? null,
+      valuePreposed:
+        findClause((clause) => clause.valueOrder === 'preposed') ?? null,
+      valuePostposed:
+        findClause((clause) => clause.valueOrder === 'postposed') ?? null,
+      selfReason:
+        findClause(
+          (clause) => clause.reason && !THIRD_PARTY_RE.test(clause.text),
+        ) ?? null,
+      relayedReason:
+        findClause(
+          (clause) => clause.reason && THIRD_PARTY_RE.test(clause.text),
+        ) ?? null,
+      selfDisclosure:
+        findClause((clause) => clause.act === 'request' && clause.selfState) ??
         null,
     },
-    requestVerbs,
-    closings,
-    dataLayout,
-    blocks,
     sufficient,
+    ...(insufficientReason ? { insufficientReason } : {}),
   }
-  if (insufficientReason) profile.insufficientReason = insufficientReason
-  if (requestFrame) profile.requestFrame = requestFrame
-  return profile
 }
 
 /**
@@ -1322,240 +1697,300 @@ function dominantFormat(counts: Record<string, number>): string {
   return entries[0][0]
 }
 
-function densityLabel(rate: number): '高' | '中' | '低' {
-  if (rate >= 0.4) return '高'
-  if (rate >= 0.15) return '中'
-  return '低'
-}
-
 /**
- * Turn the narrative profile into guidance lines.
+ * Turn the structural profile into guidance lines.
  *
- * Every line describes THIS talker (derived from the sample) and quotes the
- * talker's own wording, so a drafting agent can imitate the habit instead of
- * a generic rule.
+ * The output has five blocks: a discrete attribute table, executable style
+ * instructions grouped by the three metafunctions, the talker's own verbatim
+ * messages, prohibitions / unobserved items, and uncertainty.
+ *
+ * Every instruction is an executable natural-language constraint backed by a
+ * rate or by the talker's own wording. No fixed element chain and no default
+ * template is ever emitted.
  */
 export function narrativeGuideLines(profile: NarrativeProfile): string[] {
   const lines: string[] = []
+  const pct = (rate: number) => `${Math.round(rate * 100)}%`
+  const sample = `樣本${profile.sampleSize}則`
+
   if (!profile.sufficient) {
     lines.push(
-      `敘事結構(啟發式近似):資料不足(${profile.insufficientReason ?? '樣本不足'}),暫不推論訊息的段落順序`,
+      `屬性表(ideational):資料不足(${profile.insufficientReason ?? '樣本不足'},${sample}),此對話者少用多段敘事,以下僅列樣本中可觀察到的少數屬性`,
     )
   } else {
-    const order = profile.dominantOrder
-    if (order.length > 0) {
-      const rendered = order
-        .map((role, index) =>
-          index === 0
-            ? `先${NARRATIVE_ROLE_LABELS[role]}`
-            : NARRATIVE_ROLE_LABELS[role],
+    // Block 1a: ideational attributes.
+    const value = profile.valuePosition
+    const valueText = value.base
+      ? `具體值位置前置(背景先行)率${pct(value.preposed / value.base)}、後置(事後補述)率${pct(
+          value.postposed / value.base,
+        )}`
+      : '樣本未見同時含行動與具體值的子句,無法判定值的位置'
+    const dateText =
+      profile.dateStyle.preferred === 'relative'
+        ? `日期用語以相對日為主(${pct(profile.dateStyle.relativeRate)})`
+        : profile.dateStyle.preferred === 'absolute'
+          ? `日期用語以完整日期為主(${pct(profile.dateStyle.absoluteRate)})`
+          : profile.dateStyle.preferred === 'mixed'
+            ? `日期用語相對日${pct(profile.dateStyle.relativeRate)}與完整日期${pct(
+                profile.dateStyle.absoluteRate,
+              )}並用`
+            : '日期用語無樣本'
+    lines.push(
+      `屬性表(ideational):訊息平均單位數${profile.layout.unitsPerMessage};${valueText};主題句(句首先說明對象)率${pct(profile.topicFirstRate)};含具體資料的訊息率${pct(profile.concreteDataRate)};${dateText};日期格式=${profile.dateFormat};金額格式=${profile.amountFormat}`,
+    )
+
+    // Block 1b: interpersonal attributes.
+    const actText = profile.actRates
+      .filter((entry) => entry.rate > 0)
+      .map((entry) => `${entry.label}${pct(entry.rate)}`)
+      .join('、')
+    const strategyText = profile.strategyRates.length
+      ? profile.strategyRates
+          .map((entry) => `${entry.label}${pct(entry.rate)}`)
+          .join('、')
+      : '樣本未見請求'
+    const moves = profile.mitigationMoves
+    const reasonAttribute =
+      profile.reasonSource.base >= 2
+        ? `理由來源自陳${pct(profile.reasonSource.self / profile.reasonSource.base)}、轉述第三方${pct(profile.reasonSource.relayed / profile.reasonSource.base)}`
+        : '理由來源:樣本不足,無法判定自陳或轉述'
+    lines.push(
+      `屬性表(interpersonal):言語行為分佈=${actText};請求的禮貌策略位置=${strategyText}(n=${profile.requestBase});降低 imposition 的動作附理由${pct(moves.reason)}、附期限${pct(moves.deadline)}、交由對方判斷${pct(moves.delegation)};${reasonAttribute};請求夾帶無關自身狀態率${pct(profile.selfDisclosure.rate)}`,
+    )
+
+    // Block 1c: textual attributes.
+    const unitText = profile.unitRates
+      .filter((entry) => entry.rate > 0)
+      .map((entry) => `${entry.label}${pct(entry.rate)}`)
+      .join('、')
+    const fieldText =
+      profile.layout.base === 0
+        ? '樣本未見欄位單位'
+        : `欄位逐列率${pct(profile.layout.fieldPerLineRate)}、串列率${pct(profile.layout.fieldSerialRate)}`
+    lines.push(
+      `屬性表(textual):單位分佈=${unitText};單位間空行分隔率${pct(profile.layout.blankSeparatedRate)};${fieldText}(n=${profile.layout.base})`,
+    )
+  }
+
+  // Block 2: executable style instructions, grouped by metafunction.
+  if (profile.sufficient) {
+    const value = profile.valuePosition
+    if (value.base > 0) {
+      const preposed = value.preposed >= value.postposed
+      const example = preposed
+        ? profile.snippets.valuePreposed
+        : profile.snippets.valuePostposed
+      lines.push(
+        `風格指令(ideational):${preposed ? '把期限、地址等背景資訊放在行動動詞之前' : '把行動放在前、具體值在後補述'}(本對話者${pct(
+          (preposed ? value.preposed : value.postposed) / value.base,
+        )}如此${example ? `,例:〈${example}〉` : ''})`,
+      )
+    }
+    const dateFormatExample =
+      profile.dateFormat === 'short'
+        ? profile.snippets.dateShort
+        : profile.dateFormat === 'iso'
+          ? profile.snippets.dateIso
+          : profile.dateFormat === 'chinese'
+            ? profile.snippets.dateChinese
+            : null
+    if (profile.dateFormat !== 'none' && dateFormatExample) {
+      lines.push(
+        `風格指令(ideational):日期以${
+          profile.dateFormat === 'short'
+            ? '短式月/日'
+            : profile.dateFormat === 'iso'
+              ? '完整年/月/日'
+              : '中文月日'
+        }寫法呈現,例:〈${dateFormatExample}〉`,
+      )
+    }
+    const wordingExample =
+      profile.dateStyle.preferred === 'relative'
+        ? profile.snippets.relativeDate
+        : profile.dateStyle.preferred === 'absolute'
+          ? profile.snippets.absoluteDate
+          : null
+    if (wordingExample) {
+      lines.push(
+        `風格指令(ideational):日期用語以${
+          profile.dateStyle.preferred === 'relative' ? '相對日' : '完整日期'
+        }為主,例:〈${wordingExample}〉`,
+      )
+    }
+
+    const mitigated = profile.strategyRates.find(
+      (entry) => entry.strategy === 'negative-politeness',
+    )
+    const direct = profile.strategyRates.find(
+      (entry) => entry.strategy === 'bald-on-record',
+    )
+    const offRecord = profile.strategyRates.find(
+      (entry) => entry.strategy === 'off-record',
+    )
+    if (mitigated && mitigated.rate >= 0.3) {
+      lines.push(
+        `風格指令(interpersonal):提出請求時在動詞短語前加迂迴標記以降低 imposition,並在必要時附期限;本對話者${pct(mitigated.rate)}的請求如此${
+          profile.snippets.mitigated
+            ? `,例:〈${profile.snippets.mitigated}〉`
+            : ''
+        }`,
+      )
+    }
+    if (direct && direct.rate >= 0.3) {
+      lines.push(
+        `風格指令(interpersonal):提出請求時直接以動詞短語或「請」起句、不加迂迴標記;本對話者${pct(direct.rate)}的請求如此${
+          profile.snippets.imperative
+            ? `,例:〈${profile.snippets.imperative}〉`
+            : ''
+        }`,
+      )
+    }
+    if (offRecord && offRecord.rate >= 0.3) {
+      lines.push(
+        `風格指令(interpersonal):需要對方自行判斷時,以條件式問句提出請求;本對話者${pct(offRecord.rate)}的請求如此${
+          profile.snippets.conditional
+            ? `,例:〈${profile.snippets.conditional}〉`
+            : ''
+        }`,
+      )
+    }
+    const moves = profile.mitigationMoves
+    if (moves.base > 0) {
+      const moveText: string[] = []
+      if (moves.reason >= 0.3) moveText.push(`附理由${pct(moves.reason)}`)
+      if (moves.deadline >= 0.3) moveText.push(`附期限${pct(moves.deadline)}`)
+      if (moves.delegation >= 0.3)
+        moveText.push(`交由對方判斷${pct(moves.delegation)}`)
+      if (moveText.length > 0) {
+        lines.push(
+          `風格指令(interpersonal):降低 imposition 的動作以${moveText.join('、')}為主(均為請求中的比例)`,
         )
-        .join(' → ')
-      lines.push(
-        `敘事結構(啟發式近似):此對話者的常見順序為 ${rendered};起草時依此順序分段,不要把現況、請求與條件混在同一句`,
-      )
+      }
     }
-    if (profile.avgSegmentsPerMessage >= 2) {
+    if (profile.reasonSource.base >= 2) {
+      const self = profile.reasonSource.self >= profile.reasonSource.relayed
+      const example = self
+        ? profile.snippets.selfReason
+        : profile.snippets.relayedReason
       lines.push(
-        `敘事結構(啟發式近似):此對話者以多段式訊息為主(平均每則${profile.avgSegmentsPerMessage}段),一段講一件事`,
-      )
-    }
-  }
-
-  // Request frame — reported whenever at least one frame was seen, even when
-  // the overall sample is too small for a full narrative description.
-  const frame = profile.requestFrame
-  if (frame) {
-    if (frame.sampleSize > 0) {
-      const habit = frame.sampleSize >= 2 ? '多以' : '曾以'
-      const sequenceNote =
-        frame.sequenceRate >= 0.4 ? ';並以『先／再』標示動作次序' : ''
-      lines.push(
-        `請求骨架(啟發式近似):此對話者的請求${habit}『${frame.template}』起句(樣本摘錄:${frame.example})${sequenceNote}`,
-      )
-    }
-    // Directive style: an executable value versus a relayed condition.
-    const valueNote =
-      frame.valueRate >= 0.4 ? ',多含明確日期／金額／編號等可執行值' : ''
-    if (frame.style === 'directive') {
-      lines.push(
-        `指示方式(啟發式近似):此對話者偏向直接給出具體值(約${Math.round(frame.directiveRate * 100)}%${valueNote},樣本摘錄:${frame.styleExample}),較少轉述第三方條件`,
-      )
-    } else if (frame.style === 'relayed') {
-      lines.push(
-        `指示方式(啟發式近似):此對話者偏向轉述條件或理由(約${Math.round(frame.relayedRate * 100)}%,樣本摘錄:${frame.styleExample}),較少直接給出可執行值`,
-      )
-    }
-  }
-
-  // Data layout: one field per line versus one dense paragraph.
-  const layout = profile.dataLayout
-  if (layout.labeledLineRate >= 0.4) {
-    const labelText = layout.labels.length
-      ? layout.labels
-          .slice(0, 4)
-          .map((label) => `${label}：…`)
-          .join('／')
-      : '標籤：…'
-    lines.push(
-      `列舉版面(啟發式近似):此對話者常把具體欄位以『標籤：值』逐行列出(約${Math.round(layout.labeledLineRate * 100)}%的訊息如此,例如${labelText}),方便對方閱讀與複製`,
-    )
-  } else if (layout.inlineFieldRate >= 0.4) {
-    lines.push(
-      `列舉版面(啟發式近似):此對話者常把具體欄位併在同一段(約${Math.round(layout.inlineFieldRate * 100)}%的訊息如此),而非逐行列出`,
-    )
-  }
-
-  // Paragraph structure: blank-line separation, semicolon clauses, colon
-  // fields, list markers.
-  const blocks = profile.blocks
-  if (blocks.paragraphBlankLineRate >= 0.3) {
-    lines.push(
-      `段落結構(啟發式近似):此對話者的段落之間多以空行分隔(約${Math.round(blocks.paragraphBlankLineRate * 100)}%的段落邊界),段內以『；』分項的比例約${Math.round(blocks.semicolonClauseRate * 100)}%`,
-    )
-  }
-  if (blocks.semicolonClauseRate >= 0.2) {
-    const semicolonLine = `段內分項(啟發式近似):此對話者常以『；』在同一段內分項(約${Math.round(blocks.semicolonClauseRate * 100)}%的敘述分句)`
-    const markerLine =
-      blocks.listMarkerRate <= 0.1 ? ';且幾乎不使用條列編號' : ''
-    lines.push(semicolonLine + markerLine)
-  } else if (blocks.listMarkerRate <= 0.1 && profile.sampleSize >= 3) {
-    lines.push(
-      `條列編號(啟發式近似):此對話者幾乎不使用條列編號(樣本中約${Math.round(blocks.listMarkerRate * 100)}%含編號列示)`,
-    )
-  }
-  if (blocks.colonFieldSerialRate >= 0.3) {
-    lines.push(
-      `冒號欄位(啟發式近似):此對話者常以冒號帶出欄位並在同段內以頓號串列(約${Math.round(blocks.colonFieldSerialRate * 100)}%的含冒號段落)`,
-    )
-  }
-
-  // Request verb families and closing habits.
-  if (profile.requestVerbs.length > 0) {
-    const verbText = profile.requestVerbs
-      .filter((entry) => entry.rate >= 0.1)
-      .map((entry) => `『${entry.prefix}』約${Math.round(entry.rate * 100)}%`)
-      .join('、')
-    if (verbText) {
-      lines.push(`請求動詞(啟發式近似):此對話者的請求動詞以${verbText}為主`)
-    }
-  }
-  if (profile.closings.length > 0) {
-    const closingText = profile.closings
-      .filter((entry) => entry.rate >= 0.1)
-      .map((entry) => `『${entry.text}』約${Math.round(entry.rate * 100)}%`)
-      .join('、')
-    if (closingText) {
-      lines.push(`收尾語型(啟發式近似):此對話者常以${closingText}收尾`)
-    }
-  }
-
-  // Block structure: prose paragraphs versus field blocks.
-  if (blocks.fieldBlockRate >= 0.3 && blocks.avgLinesPerBlock >= 1) {
-    lines.push(
-      `區塊結構(啟發式近似):此對話者常把欄位項目集中成塊列示(約${Math.round(blocks.fieldBlockRate * 100)}%的訊息含欄位塊,平均每則${blocks.blocksPerMessage}塊、每塊約${blocks.avgLinesPerBlock}行),塊與本文以空行分隔的比例約${Math.round(blocks.blankLineSeparatedRate * 100)}%`,
-    )
-  }
-  if (blocks.proseSentenceRatio > 0 && layout.multilineRate >= 0.2) {
-    if (blocks.proseSentenceRatio >= 0.7) {
-      lines.push(
-        `敘述行文(啟發式近似):此對話者的本文每行一句、句中不拆行(平均每行約${blocks.proseSentenceRatio}個句號),段落之間以空行分隔的比例約${Math.round(blocks.paragraphBlankLineRate * 100)}%`,
+        `風格指令(interpersonal):理由以${
+          self ? '自己的理由直接說明' : '轉述第三方的要求'
+        }為主(自陳${pct(
+          profile.reasonSource.self / profile.reasonSource.base,
+        )}、轉述${pct(profile.reasonSource.relayed / profile.reasonSource.base)}${
+          example ? `,例:〈${example}〉` : ''
+        })`,
       )
     } else {
       lines.push(
-        `敘述行文(啟發式近似):此對話者的敘述句會跨行(平均每行約${blocks.proseSentenceRatio}個句號),起草時可讓一句寫完`,
+        `風格指令(interpersonal):理由來源資料不足(樣本${profile.reasonSource.base}則理由可判),起草時勿自行加入理由或轉述第三方要求`,
+      )
+    }
+    if (profile.selfDisclosure.base > 0) {
+      lines.push(
+        `風格指令(interpersonal):${
+          profile.selfDisclosure.rate >= 0.3
+            ? `敘述自己的處境時可帶入現況(${pct(profile.selfDisclosure.rate)}的請求如此${
+                profile.snippets.selfDisclosure
+                  ? `,例:〈${profile.snippets.selfDisclosure}〉`
+                  : ''
+              })`
+            : `不夾帶與請求無關的自身狀態(僅約${pct(profile.selfDisclosure.rate)}的請求如此)`
+        }`,
+      )
+    }
+    if (profile.registers.length > 1) {
+      const registerText = profile.registers
+        .map(
+          (register) =>
+            `${register.chatId}:迂迴率${pct(register.mitigationRate)}${
+              register.honorific ? `、稱呼「${register.honorific}」` : ''
+            }`,
+        )
+        .join(';')
+      lines.push(
+        `風格指令(interpersonal):對不同對象調整迂迴度與稱呼(${registerText})`,
+      )
+    }
+
+    const unitText = profile.unitRates
+      .filter((entry) => entry.rate > 0)
+      .map((entry) => `${entry.label}${pct(entry.rate)}`)
+      .join('、')
+    lines.push(
+      `風格指令(textual):訊息切分为${unitText};單位之間${
+        profile.layout.blankSeparatedRate >= 0.3
+          ? '多以空行分隔'
+          : '多不以空行分隔'
+      }(空行分隔率${pct(profile.layout.blankSeparatedRate)})`,
+    )
+    if (profile.layout.base > 0) {
+      const perLine =
+        profile.layout.fieldPerLineRate >= profile.layout.fieldSerialRate
+      const fieldExample = perLine
+        ? profile.snippets.fieldPerLine
+        : profile.snippets.fieldSerial
+      lines.push(
+        `風格指令(textual):具體欄位${
+          perLine ? '以單一標籤逐列成行' : '以多個標籤在同一行串列'
+        }(逐列率${pct(profile.layout.fieldPerLineRate)}、串列率${pct(
+          profile.layout.fieldSerialRate,
+        )})${fieldExample ? `,例:〈${fieldExample}〉` : ''}`,
+      )
+    }
+    const unitTransitions = profile.transitions
+      .filter((transition) => transition.scope === 'unit')
+      .slice(0, 3)
+    if (unitTransitions.length > 0) {
+      const text = unitTransitions
+        .map(
+          (transition) =>
+            `「${transition.from}→${transition.to}」${pct(transition.rate)}(${transition.count}次)`,
+        )
+        .join('、')
+      lines.push(
+        `風格指令(textual):單位銜接以${text}的關聯最常見;這是觀察到的走法,不是固定骨架`,
       )
     }
   }
 
-  const dateExample = profile.snippets.date
-  if (layout.dateFormat === 'short') {
-    lines.push(
-      `日期寫法(啟發式近似):此對話者以短式月/日為主${dateExample ? `(樣本:${dateExample})` : ''},不用完整年月日`,
-    )
-  } else if (layout.dateFormat === 'iso') {
-    lines.push(
-      `日期寫法(啟發式近似):此對話者以完整年/月/日為主${dateExample ? `(樣本:${dateExample})` : ''}`,
-    )
-  } else if (layout.dateFormat === 'chinese') {
-    lines.push(
-      `日期寫法(啟發式近似):此對話者以中文月日為主${dateExample ? `(樣本:${dateExample})` : ''}`,
-    )
-  }
-  const amountExample = profile.snippets.amount
-  if (layout.amountFormat === 'with-tax') {
-    lines.push(
-      `金額寫法(啟發式近似):此對話者直接寫含稅總額${amountExample ? `(樣本:${amountExample})` : ''},不拆列稅額明細`,
-    )
-  } else if (layout.amountFormat === 'breakdown') {
-    lines.push(
-      `金額寫法(啟發式近似):此對話者會拆列金額明細${amountExample ? `(樣本:${amountExample})` : ''}`,
-    )
-  }
-
-  // Date wording.
-  const dates = profile.dateStyle
-  if (dates.preferred === 'relative') {
-    lines.push(
-      `日期用語(啟發式近似):此對話者的時程用語以相對日為主(今天／星期幾／下週幾),約${Math.round(dates.relativeRate * 100)}%含相對日,少用完整日期`,
-    )
-  } else if (dates.preferred === 'absolute') {
-    lines.push(
-      `日期用語(啟發式近似):此對話者的時程用語以絕對日期為主(YYYY/MM/DD),約${Math.round(dates.absoluteRate * 100)}%含絕對日期`,
-    )
-  } else if (dates.preferred === 'mixed') {
-    lines.push(
-      `日期用語(啟發式近似):此對話者相對日與絕對日期並用(相對日約${Math.round(dates.relativeRate * 100)}%、絕對日期約${Math.round(dates.absoluteRate * 100)}%)`,
-    )
-  }
-
-  // Honorific habits.
-  const honorifics = profile.honorifics
-  if (honorifics.dominant) {
-    const parts = [`『您』約${Math.round(honorifics.ningRate * 100)}%`]
-    if (honorifics.neiRate > 0)
-      parts.push(`『妳』約${Math.round(honorifics.neiRate * 100)}%`)
-    lines.push(
-      `敬語(啟發式近似):此對話者以『${honorifics.dominant}』為主(${parts.join('、')}),對不同對象沿用其稱呼習慣`,
-    )
-  }
-
-  // Explicit action ordering.
-  if (profile.sequenceMarkerRate >= 0.2) {
-    lines.push(
-      '順序標記(啟發式近似):此對話者常在同一則訊息內以『先…再…』標示動作先後',
-    )
-  }
-
-  if (!profile.sufficient) return lines
-
-  // Concrete data density.
-  const density = densityLabel(profile.concreteDataRate)
-  const kindLabels = DATA_PATTERNS.filter((p) =>
-    profile.concreteDataKinds.includes(p.kind),
-  ).map((p) => p.label)
-  if (density === '低') {
-    lines.push(
-      `具體資料密度(啟發式近似):此對話者的訊息少含實體資料(約${Math.round(profile.concreteDataRate * 100)}%含日期／金額／編號／地址)`,
-    )
-  } else {
-    lines.push(
-      `具體資料密度(啟發式近似):此對話者的訊息常含實體資料(約${Math.round(profile.concreteDataRate * 100)}%含${kindLabels.join('、') || '具體資料'}),起草時同樣填入具體數值、日期、編號與地址`,
-    )
-  }
-
-  // Request style.
-  if (profile.requestRate > 0) {
-    const delegatingExample = profile.snippets.delegating
-    if (profile.delegatingRequestRate >= 0.2) {
-      lines.push(
-        `請求明確性(啟發式近似):此對話者常把判斷權交給對方並附帶預設動作(約${Math.round(profile.delegatingRequestRate * 100)}%${delegatingExample ? `(樣本:${delegatingExample})` : ''}),起草時保留這種條件式請求`,
-      )
-    } else {
-      lines.push(
-        `請求明確性(啟發式近似):此對話者多為直接指示(把判斷權交給對方者約${Math.round(profile.delegatingRequestRate * 100)}%)`,
-      )
+  // Block 3: the talker's own words, grouped by situation.
+  if (profile.examples.length > 0) {
+    for (const example of profile.examples) {
+      lines.push(`本人原句(情境「${example.situation}」):〈${example.text}〉`)
     }
+  } else if (profile.sufficient) {
+    lines.push(
+      `本人原句:${sample}中未見可歸納的常見情境,勿套用其他人的起草骨架`,
+    )
+  }
+
+  // Block 4: prohibitions and unobserved items.
+  if (profile.prohibitions.length > 0) {
+    lines.push(
+      `禁令／未觀測(啟發式近似):${profile.prohibitions
+        .map(
+          (prohibition) => `${prohibition.text}(依據:${prohibition.evidence})`,
+        )
+        .join(';')}`,
+    )
+  }
+
+  // Identification-only dimension (stylometry): not a mimicry instruction.
+  if (profile.honorifics.dominant) {
+    lines.push(
+      `鑑別用途(功能詞偏好,非模仿規範):稱呼以「${profile.honorifics.dominant}」為主(您${pct(
+        profile.honorifics.ningRate,
+      )}、妳${pct(profile.honorifics.neiRate)}、你${pct(
+        profile.honorifics.niRate,
+      )});此維度用於辨識作者,不作為模仿規範`,
+    )
+  }
+
+  // Block 5: uncertainty.
+  if (profile.uncertainties.length > 0) {
+    lines.push(`不確定性(啟發式近似):${profile.uncertainties.join(';')}`)
   }
   return lines
 }
