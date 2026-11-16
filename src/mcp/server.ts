@@ -23,6 +23,7 @@ import { clientCapabilitiesOf } from './client-capabilities.js'
 import {
   handleAcceptInvitation,
   handleAddFriend,
+  handleAddPersonaFact,
   handleBlockContact,
   handleCancelReaction,
   handleCollectMessages,
@@ -35,6 +36,7 @@ import {
   handleGetInsight,
   handleGetMessageImage,
   handleGetMessageMedia,
+  handleGetPersonaGraph,
   handleGetScopePolicy,
   handleGetStyleProfile,
   handleGetUnreadDigest,
@@ -182,7 +184,9 @@ export function createBuildServer(
         name === 'include_chats' ||
         name === 'list_excluded_chats' ||
         name === 'get_scope_policy' ||
-        name === 'get_style_profile'
+        name === 'get_style_profile' ||
+        name === 'get_persona_graph' ||
+        name === 'add_persona_fact'
       if (!noSessionExempt) {
         // Three distinct "no session" stories, and the user gets sent looking in
         // the wrong place if we conflate them: LINE revoked this device's token
@@ -485,6 +489,20 @@ export function createBuildServer(
             return await handleGetStyleProfile(
               service,
               (args ?? {}) as { chatId?: string },
+            )
+          case 'get_persona_graph':
+            return await handleGetPersonaGraph(
+              (args ?? {}) as { limit?: number },
+            )
+          case 'add_persona_fact':
+            return await handleAddPersonaFact(
+              (args ?? {}) as {
+                subjectName: string
+                subjectMid?: string
+                term: string
+                category?: string
+                evidence: string
+              },
             )
           default:
             return toolError(`Unknown tool: ${name}`)

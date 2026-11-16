@@ -4,6 +4,8 @@
     "src/mcp/server.ts",
     "src/mcp/integrator.ts",
     "src/cli/login.ts",
+    "src/cli/persona-graph.ts",
+    "src/cli/persona-fact.ts",
     "src/cli/query.ts",
     "src/cli/work-item.ts",
     "src/version.ts",

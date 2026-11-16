@@ -162,6 +162,16 @@ switch (cmd) {
       process.exit(1);
     }
   }
+  case 'persona-graph': {
+    const { cliPersonaGraph } = await load('cli/persona-graph');
+    const code = await cliPersonaGraph(args.slice(1));
+    process.exit(code);
+  }
+  case 'persona-fact': {
+    const { cliPersonaFact } = await load('cli/persona-fact');
+    const code = await cliPersonaFact(args.slice(1));
+    process.exit(code);
+  }
   case 'ambient-observe': {
     const { scanAmbientObservations } = await load('ambient/ambient-observer');
     const since = args[1] ? Number(args[1]) : undefined;

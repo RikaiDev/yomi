@@ -208,6 +208,27 @@ export function getDb(): Database {
       updatedAt INTEGER
     );
   `)
+  // Facts about people that the owner stated OUTSIDE the indexed LINE
+  // conversations — in a chat with an assistant, in a command, or in a note.
+  // The persona graph can only find roles that were written down somewhere;
+  // when the owner tells a role to the assistant rather than to the person,
+  // this table is the only place it can live. Every row keeps the owner's own
+  // wording as evidence, exactly like a role read from a message.
+  handle.exec(`
+    CREATE TABLE IF NOT EXISTS persona_facts (
+      id INTEGER PRIMARY KEY,
+      subjectMid TEXT,
+      subjectName TEXT NOT NULL,
+      term TEXT NOT NULL,
+      category TEXT NOT NULL,
+      evidence TEXT NOT NULL,
+      createdAt INTEGER NOT NULL
+    );
+  `)
+  handle.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS persona_facts_subject_term
+    ON persona_facts (subjectName, term);
+  `)
   db = handle
   return handle
 }
@@ -666,6 +687,97 @@ export function getMessagesWithVectors(
  *
  * @param state - Capture cursor to persist.
  */
+/**
+ * A fact about a person, as stated by the account owner.
+ */
+export interface PersonaFactRecord {
+  /** The person's LINE MID, when it is known. */
+  subjectMid: string | null
+  /** The person's name, as the owner wrote it. */
+  subjectName: string
+  /** The role word, e.g. "wife" or "finance". */
+  term: string
+  /** The role category the term belongs to. */
+  category: string
+  /** The owner's own sentence, verbatim. */
+  evidence: string
+}
+
+/**
+ * Store a stated fact about a person.
+ *
+ * The row is unique on (subjectName, term), so restating a fact updates the
+ * evidence rather than piling up duplicates.
+ *
+ * @param fact - The fact to store.
+ * @returns The row id of the stored fact.
+ */
+export function upsertPersonaFact(fact: PersonaFactRecord): number {
+  const now = Date.now()
+  const handle = getDb()
+  handle
+    .prepare(
+      `INSERT INTO persona_facts (subjectMid, subjectName, term, category, evidence, createdAt)
+     VALUES ($subjectMid, $subjectName, $term, $category, $evidence, $createdAt)
+     ON CONFLICT(subjectName, term) DO UPDATE SET
+       subjectMid = excluded.subjectMid,
+       category = excluded.category,
+       evidence = excluded.evidence,
+       createdAt = excluded.createdAt`,
+    )
+    .run({
+      $subjectMid: fact.subjectMid,
+      $subjectName: fact.subjectName,
+      $term: fact.term,
+      $category: fact.category,
+      $evidence: fact.evidence,
+      $createdAt: now,
+    })
+  const row = handle
+    .prepare<{ id: number }>(
+      'SELECT id FROM persona_facts WHERE subjectName = $subjectName AND term = $term',
+    )
+    .get({ $subjectName: fact.subjectName, $term: fact.term })
+  return row?.id ?? 0
+}
+
+/**
+ * Read every stated fact about people.
+ *
+ * @returns The stored facts, newest first.
+ */
+export function listPersonaFacts(): PersonaFactRecord[] {
+  return getDb()
+    .prepare<PersonaFactRecord>(
+      `SELECT subjectMid, subjectName, term, category, evidence
+       FROM persona_facts
+       ORDER BY createdAt DESC;`,
+    )
+    .all()
+}
+
+/**
+ * Remove a stated fact about a person.
+ *
+ * @param subjectName - The person's name, as it was stored.
+ * @param term - The role word, as it was stored.
+ * @returns The number of rows removed.
+ */
+export function deletePersonaFact(subjectName: string, term: string): number {
+  const handle = getDb()
+  const before = handle
+    .prepare<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM persona_facts WHERE subjectName = $subjectName AND term = $term',
+    )
+    .get({ $subjectName: subjectName, $term: term })
+  handle
+    .prepare(
+      'DELETE FROM persona_facts WHERE subjectName = $subjectName AND term = $term',
+    )
+    .run({ $subjectName: subjectName, $term: term })
+  return Number(before?.count ?? 0)
+}
+
 export function saveCaptureState(state: {
   revision: number
   globalRevision: number

@@ -936,4 +936,54 @@ export const TOOLS: Tool[] = [
     },
     name: 'get_style_profile',
   },
+  {
+    description:
+      'Return a persona graph of the people in your conversations: the roles you stated for them, how you address them, how you behave with them, and how they write. Reads the local index only. Roles carry the sentence that stated them.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        limit: {
+          type: 'number',
+          description:
+            'Optional: cap on how many indexed messages are read (default 20000).',
+        },
+      },
+    },
+    name: 'get_persona_graph',
+  },
+  {
+    description:
+      'Record a fact about a person that you stated outside LINE — for example "Yijun is my wife and our finance person". The persona graph can only report roles that were written down somewhere; this stores your own sentence as the evidence, so the graph can report the role later. Stored locally in the search index.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        subjectName: {
+          type: 'string',
+          description:
+            'The person\'s name, as you write it (e.g. "Yijun"). Used to match the fact to a person in the graph.',
+        },
+        subjectMid: {
+          type: 'string',
+          description:
+            "Optional: the person's LINE MID, when you know it. More reliable than the name.",
+        },
+        term: {
+          type: 'string',
+          description: 'The role word (e.g. "wife", "finance", "pharmacist").',
+        },
+        category: {
+          type: 'string',
+          description:
+            'Optional: role category — family, household, workplace, professional, or client. Defaults to family when the term is a known family word.',
+        },
+        evidence: {
+          type: 'string',
+          description:
+            'Your own sentence, verbatim, that states the role. This is the evidence the graph will quote.',
+        },
+      },
+      required: ['subjectName', 'term', 'evidence'],
+    },
+    name: 'add_persona_fact',
+  },
 ]
