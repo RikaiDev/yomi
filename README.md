@@ -440,14 +440,73 @@ Approve the device on your phone (see [Logging in](#logging-in)), and:
 
 > *"Summarize my unread LINE and tell me who's waiting on a reply."*
 
+### Version 0.7.0 — the MCP contract is snake_case (breaking change)
+
+`0.7.0` changes the **public MCP contract** from camelCase to snake_case. Tool
+names were already snake_case, but **argument keys** and **result keys** were
+not; now they are.
+
+```bash
+npm install -g @rikaidev/yomi@0.7.0   # or pin it in a client config
+npx @rikaidev/yomi@0.7.0 login
+```
+
+What a client sees:
+
+| | 0.6.x | 0.7.0 |
+| --- | --- | --- |
+| Tool names | `get_chat_messages` | `get_chat_messages` (unchanged) |
+| Argument keys | `chatId`, `messageId`, `replyToMessageId` | `chat_id`, `message_id`, `reply_to_message_id` |
+| Result keys | `chatId`, `purgedMessages` | `chat_id`, `purged_messages` |
+| Error text | `chatId is required.` | `chat_id is required.` |
+
+**What breaks:** a client that sends `chatId` in a tool call, or reads `chatId`
+out of a tool result, needs updating. Models pick the argument spelling up
+from the tool schema at call time, so most agent setups need no change — the
+breakage lands on code that calls Yomi's tools directly.
+
+**What does not break:** the server still *accepts* camelCase argument keys on
+input, so an un-updated client that still sends `chatId` keeps working. The
+server converts them at the boundary and answers in snake_case either way.
+Response keys are the hard break: there is no camelCase spelling left in
+results to read.
+
+#### What was verified, and how
+
+Checked against the **published npm tarball** of `0.7.0`, installed into a
+clean throwaway project (`npm install @rikaidev/yomi@0.7.0`) rather than a repo
+checkout:
+
+- `npm view @rikaidev/yomi versions` lists `0.7.0`; the installed package
+  reports `0.7.0`.
+- The installed server starts and serves **49 tools** in all three protocol
+  shapes — the pinned stateless `2026-07-28` connection, the same with MCP Apps
+  metadata, and the legacy `initialize` connection — and `get_scope_policy`
+  returns the policy text on each. This is the same probe the publish workflow
+  runs against the tarball (`scripts/smoke-mcp.mjs`).
+- Across all 49 tools, **114 argument keys** are exposed and **every one is
+  snake_case** — no camelCase spelling remains in any `inputSchema`.
+- Result keys are snake_case: `exclude_chats` answers `purged_messages`, and
+  `list_excluded_chats` answers `[{"chat_id": …}]`. Under `0.6.19` the same two
+  calls answer `purgedMessages` and `[{"chatId": …}]` — the difference is the
+  break, measured on both packages rather than asserted.
+- A camelCase argument is still accepted on `0.7.0` (`exclude_chats` with
+  `chatIds` and with `chat_ids` both exclude the chat), confirming the input
+  tolerance described above.
+
+The `0.6.19` comparison came from a second clean install of that exact version;
+both installs ran with `YOMI_DATA_DIR` redirected and `YOMI_NO_KEYCHAIN=1`, so
+neither probe could touch a real LINE session.
+
 ---
 
 ## What you can do
 
-Yomi exposes **20 tools** over MCP (the ones worth naming; see the tables). Large
-read results use token-efficient [TOON](https://github.com/toon-format/toon);
-small status and write results use compact JSON. Errors remain plain text and media
-uses native MCP image/audio/resource content.
+Yomi exposes **49 tools** over MCP (the ones worth naming are in the tables
+below). Large read results use token-efficient
+[TOON](https://github.com/toon-format/toon); small status and write results use
+compact JSON. Errors remain plain text and media uses native MCP
+image/audio/resource content.
 "Honest error" below means an explicit failure naming the problem (e.g.
 `missing_decrypt_material`) — Yomi never fabricates a fallback, a placeholder, or a
 fake success.
@@ -709,6 +768,11 @@ So a new tool declares `chat_id` in its schema, a handler still reads
 convert inside a handler, and don't copy a camelCase spelling from an internal
 type into a schema. The full rationale is in `docs/adr/0002-mcp-contract-naming.md`
 (local only — `docs/` is git-ignored in this repo).
+
+This convention became the published contract in `0.7.0`; see
+[Version 0.7.0 — the MCP contract is snake_case](#version-070--the-mcp-contract-is-snake_case-breaking-change)
+for what changed for clients and what was verified against the published
+tarball.
 
 ---
 
