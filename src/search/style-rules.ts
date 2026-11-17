@@ -19,7 +19,7 @@
  * means. The judgement — "do not name our company to the vendor" — is the
  * model's to write, and it belongs in a style rule, not here.
  */
-import { getDb } from './store.js'
+import { getDb, type StyleRuleHandle } from './store.js'
 
 /** One of the owner's own messages, quoted verbatim, with its situation. */
 export interface StyleEvidenceQuote {
@@ -226,8 +226,12 @@ function maximalGrams(
   return kept
 }
 
-function chatRows(chatId: string, limit = 300): ChatMessageRow[] {
-  return getDb()
+function chatRows(
+  chatId: string,
+  limit = 300,
+  handle: StyleRuleHandle = getDb(),
+): ChatMessageRow[] {
+  return handle
     .prepare<ChatMessageRow>(
       `SELECT chatId, chatName, fromMid, fromName, text, createdTime, contentType
        FROM messages
@@ -251,8 +255,12 @@ export function getStyleEvidence(
   userMid: string,
   chatId?: string,
   limit = 60,
+  handle: StyleRuleHandle = getDb(),
 ): StyleEvidenceQuote[] {
-  const handle = getDb()
+  // The conversation branch keeps both sides, because a quote needs the
+  // message it answered. The all-conversations branch filters to the owner
+  // in SQL: taking the newest N rows overall and then dropping the ones the
+  // owner did not write returns almost nothing.
   const rows = chatId
     ? handle
         .prepare<ChatMessageRow>(
@@ -267,34 +275,97 @@ export function getStyleEvidence(
         .prepare<ChatMessageRow>(
           `SELECT chatId, chatName, fromMid, fromName, text, createdTime, contentType
            FROM messages
+           WHERE fromMid = $userMid
            ORDER BY createdTime DESC NULLS LAST
-           LIMIT $limit;`,
+           LIMIT 400;`,
         )
-        .all({ $limit: limit })
+        .all({ $userMid: userMid })
   const quotes: StyleEvidenceQuote[] = []
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]
+  const counterpartNames = new Map<string, string | null>()
+  for (const row of rows) {
     if (row.fromMid !== userMid) continue
     if (!row.text) continue
     if (row.contentType === 7) continue
-    const previous = rows[i - 1]
+    // The situation is the message this one answered. In the
+    // all-conversations branch the counterpart's messages are not in the
+    // result set, so they are looked up per quote instead.
+    const previous = chatId
+      ? rows[rows.indexOf(row) - 1]
+      : previousCounterpartMessage(row.chatId, userMid, row.createdTime, handle)
     const situation =
       previous && previous.fromMid !== userMid && previous.text
         ? previous.text.length > 160
           ? `${previous.text.slice(0, 160)}…`
           : previous.text
         : null
-    const counterpart = rows.find((r) => r.fromMid !== userMid)
+    if (!counterpartNames.has(row.chatId)) {
+      counterpartNames.set(
+        row.chatId,
+        counterpartNameOf(row.chatId, userMid, rows, handle),
+      )
+    }
     quotes.push({
       chatId: row.chatId,
       chatName: row.chatName,
       createdTime: row.createdTime,
       text: row.text,
       situation,
-      counterpartName: counterpart?.fromName ?? null,
+      counterpartName: counterpartNames.get(row.chatId) ?? null,
     })
   }
   return quotes.reverse().slice(0, limit)
+}
+
+/**
+ * The other side's message immediately before one of the owner's.
+ *
+ * @param chatId - The conversation.
+ * @param userMid - The owner's LINE MID.
+ * @param before - The owner's message time.
+ * @returns The counterpart's message, when there was one.
+ */
+function previousCounterpartMessage(
+  chatId: string,
+  userMid: string,
+  before: number | null,
+  handle: StyleRuleHandle = getDb(),
+): ChatMessageRow | undefined {
+  return handle
+    .prepare<ChatMessageRow>(
+      `SELECT chatId, chatName, fromMid, fromName, text, createdTime, contentType
+       FROM messages
+       WHERE chatId = $chatId AND fromMid != $userMid AND createdTime < $before
+       ORDER BY createdTime DESC
+       LIMIT 1;`,
+    )
+    .get({ $chatId: chatId, $userMid: userMid, $before: before ?? 0 })
+}
+
+/**
+ * The other side's display name in a conversation.
+ *
+ * @param chatId - The conversation.
+ * @param userMid - The owner's LINE MID.
+ * @param rows - Rows already read, when there are any.
+ * @returns The counterpart's name, when the conversation has one.
+ */
+function counterpartNameOf(
+  chatId: string,
+  userMid: string,
+  rows: ChatMessageRow[],
+  handle: StyleRuleHandle = getDb(),
+): string | null {
+  const fromRows = rows.find((r) => r.fromMid !== userMid)?.fromName
+  if (fromRows) return fromRows
+  return (
+    handle
+      .prepare<{ fromName: string | null }>(
+        `SELECT fromName FROM messages
+         WHERE chatId = $chatId AND fromMid != $userMid
+         LIMIT 1;`,
+      )
+      .get({ $chatId: chatId, $userMid: userMid })?.fromName ?? null
+  )
 }
 
 /**
@@ -360,21 +431,27 @@ export function extractVocabulary(
 export function getChatVocabulary(
   userMid: string,
   chatId?: string,
+  chats = 5,
+  handle: StyleRuleHandle = getDb(),
 ): ChatVocabulary[] {
-  const handle = getDb()
+  // Without a target conversation, only the most recent ones are worth
+  // carrying: every conversation adds its whole vocabulary to the payload,
+  // and the caller almost always cares about the one they are writing to.
   const chatIds = chatId
     ? [chatId]
     : handle
-        .prepare<{ chatId: string }>(
-          `SELECT DISTINCT chatId FROM messages
-           WHERE fromMid = $userMid OR chatId IN (SELECT chatId FROM messages WHERE fromMid = $userMid)
-           LIMIT 40;`,
+        .prepare<{ chatId: string; lastAt: number | null }>(
+          `SELECT chatId, MAX(createdTime) AS lastAt FROM messages
+           WHERE chatId IN (SELECT chatId FROM messages WHERE fromMid = $userMid)
+           GROUP BY chatId
+           ORDER BY lastAt DESC NULLS LAST
+           LIMIT $chats;`,
         )
-        .all({ $userMid: userMid })
+        .all({ $userMid: userMid, $chats: chats })
         .map((r) => r.chatId)
   const out: ChatVocabulary[] = []
   for (const id of chatIds) {
-    const rows = chatRows(id)
+    const rows = chatRows(id, 300, handle)
     const ownerTexts: string[] = []
     const theirTexts: string[] = []
     let chatName: string | null = null

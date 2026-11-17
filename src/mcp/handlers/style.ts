@@ -87,6 +87,9 @@ export async function handleGetStyleProfile(
       measured: card,
       rules: splitRules(rules),
       vocabulary,
+      vocabulary_note: args.chatId
+        ? 'vocabulary 只涵蓋指定的這一段對話。'
+        : 'vocabulary 涵蓋最近 5 段對話；要精準對象請帶 chat_id 重讀。',
     })
   } catch (error: any) {
     return toolError(
