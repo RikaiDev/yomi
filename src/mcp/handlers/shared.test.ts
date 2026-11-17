@@ -4,8 +4,13 @@ import { jsonText, toonResult, toonText } from './shared.js'
 test('jsonText keeps small machine-facing payloads compact and valid', () => {
   const value = { sent: true, messageId: '123', read: false }
   const text = jsonText(value)
-  expect(text).toBe('{"sent":true,"messageId":"123","read":false}')
-  expect(JSON.parse(text)).toEqual(value)
+  // The MCP contract is snake_case; camelCase keys are converted on the way out.
+  expect(text).toBe('{"sent":true,"message_id":"123","read":false}')
+  expect(JSON.parse(text)).toEqual({
+    sent: true,
+    message_id: '123',
+    read: false,
+  })
 })
 
 test('toonText compresses repetitive read rows and toonResult wraps it', () => {

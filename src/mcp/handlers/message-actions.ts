@@ -19,7 +19,7 @@ export async function handleReactMessage(
   args: { messageId: string; reactionType?: number },
 ) {
   if (!args.messageId) {
-    return toolError('messageId is required.')
+    return toolError('message_id is required.')
   }
   const result = await service.reactToMessage(args.messageId, args.reactionType)
   log.info('react_message.done', {
@@ -45,7 +45,7 @@ export async function handleUnsendMessage(
   args: { messageId: string; confirm?: boolean },
 ) {
   if (!args.messageId) {
-    return toolError('messageId is required.')
+    return toolError('message_id is required.')
   }
   if (args.confirm !== true) {
     return toolError(
@@ -70,7 +70,7 @@ export async function handleCancelReaction(
   args: { messageId: string },
 ) {
   if (!args.messageId) {
-    return toolError('messageId is required.')
+    return toolError('message_id is required.')
   }
   const result = await service.cancelReaction(args.messageId)
   log.info('cancel_reaction.done', { messageId: args.messageId })

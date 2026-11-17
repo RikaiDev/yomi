@@ -20,7 +20,7 @@ export async function handleGetMessageImage(
   args: { chatId: string; messageId: string; preview?: boolean },
 ) {
   if (!args.chatId || !args.messageId) {
-    return toolError('chatId and messageId are required.')
+    return toolError('chat_id and message_id are required.')
   }
   try {
     const { bytes, mimeType } = await fetchLineMessageImage(
@@ -59,7 +59,7 @@ export async function handleGetMessageMedia(
   args: { chatId: string; messageId: string; preview?: boolean },
 ) {
   if (!args.chatId || !args.messageId) {
-    return toolError('chatId and messageId are required.')
+    return toolError('chat_id and message_id are required.')
   }
   try {
     const { bytes, contentType, fileName, mimeType } =

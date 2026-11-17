@@ -42,7 +42,7 @@ describe('handleUnsendMessage', () => {
     })
 
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('messageId is required')
+    expect(result.content[0].text).toContain('message_id is required')
     expect(unsendCalls.length).toBe(0)
   })
 
@@ -80,7 +80,7 @@ describe('handleUnsendMessage', () => {
     expect(unsendCalls).toEqual(['12345678'])
     const payload = JSON.parse(result.content[0].text)
     expect(payload.unsent).toBe(true)
-    expect(payload.messageId).toBe('12345678')
+    expect(payload.message_id).toBe('12345678')
   })
 })
 
@@ -90,7 +90,7 @@ describe('handleReactMessage', () => {
     const result = await handleReactMessage(service, { messageId: '' })
 
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('messageId is required')
+    expect(result.content[0].text).toContain('message_id is required')
     expect(reactCalls.length).toBe(0)
   })
 
@@ -104,7 +104,7 @@ describe('handleReactMessage', () => {
     expect(result.isError).toBeUndefined()
     expect(reactCalls).toEqual([{ messageId: '12345678', reactionType: 3 }])
     const payload = JSON.parse(result.content[0].text)
-    expect(payload.reactionType).toBe(3)
+    expect(payload.reaction_type).toBe(3)
   })
 })
 
@@ -114,7 +114,7 @@ describe('handleCancelReaction', () => {
     const result = await handleCancelReaction(service, { messageId: '' })
 
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('messageId is required')
+    expect(result.content[0].text).toContain('message_id is required')
     expect(cancelCalls.length).toBe(0)
   })
 

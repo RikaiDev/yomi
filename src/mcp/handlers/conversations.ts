@@ -256,7 +256,7 @@ export async function handleGetChatMessages(
   },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   if (isSquareChatMid(args.chatId)) {
     const squareMessages = await service.client.getSquareChatMessages(
@@ -385,7 +385,7 @@ export async function handleMarkRead(
   args: { chatId: string; messageId?: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const result = await service.markChatRead(args.chatId, args.messageId)
   log.info('mark_read.done', { chatId: args.chatId, marked: result.marked })

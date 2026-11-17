@@ -63,7 +63,7 @@ async function listExcludedChatsWithNames(
  */
 export async function handleExcludeChats(args: { chatIds?: string[] }) {
   if (!args.chatIds || args.chatIds.length === 0) {
-    return toolError('chatIds is required and must be a non-empty array.')
+    return toolError('chat_ids is required and must be a non-empty array.')
   }
   const excluded = addExcludedChatIds(args.chatIds)
   const purgedMessages = deleteMessagesForChats(args.chatIds)
@@ -88,7 +88,7 @@ export async function handleExcludeChats(args: { chatIds?: string[] }) {
  */
 export async function handleIncludeChats(args: { chatIds?: string[] }) {
   if (!args.chatIds || args.chatIds.length === 0) {
-    return toolError('chatIds is required and must be a non-empty array.')
+    return toolError('chat_ids is required and must be a non-empty array.')
   }
   const included = removeExcludedChatIds(args.chatIds)
   return {

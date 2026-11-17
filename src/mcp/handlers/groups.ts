@@ -17,7 +17,7 @@ export async function handleRenameGroup(
   args: { chatId: string; name: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   if (!args.name) {
     return toolError('name is required.')
@@ -40,7 +40,7 @@ export async function handleInviteMember(
   args: { chatId: string; mids: string[] },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   if (!Array.isArray(args.mids) || args.mids.length === 0) {
     return toolError('mids must be a non-empty array of member MIDs.')
@@ -67,7 +67,7 @@ export async function handleKickMember(
   args: { chatId: string; mids: string[] },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   if (!Array.isArray(args.mids) || args.mids.length === 0) {
     return toolError('mids must be a non-empty array of member MIDs.')
@@ -93,7 +93,7 @@ export async function handleLeaveGroup(
   args: { chatId: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const result = await service.leaveGroup(args.chatId)
   log.info('leave_group.done', { chatId: args.chatId })
@@ -141,7 +141,7 @@ export async function handleAcceptInvitation(
   args: { chatId: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const result = await service.acceptInvitation(args.chatId)
   log.info('accept_invitation.done', { chatId: args.chatId })

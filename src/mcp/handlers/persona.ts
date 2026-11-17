@@ -54,7 +54,7 @@ export async function handleAddPersonaFact(args: {
     const evidence = args?.evidence?.trim()
     if (!subjectName || !term || !evidence) {
       return toolError(
-        'subjectName, term and evidence are all required — the evidence is the sentence you based the name on.',
+        'subject_name, term and evidence are all required — the evidence is the sentence you based the name on.',
       )
     }
     const category = args?.category?.trim() || 'other'

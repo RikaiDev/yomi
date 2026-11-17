@@ -111,7 +111,7 @@ export async function handleGetGroupMembers(
   args: { chatId: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const chats = await service.client.getChats([args.chatId], true)
   const chat = Array.isArray(chats) ? chats[0] : chats

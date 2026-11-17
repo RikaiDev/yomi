@@ -22,7 +22,7 @@ export async function handlePreviewSticker(
   args: { packageId: string; stickerId?: string; limit?: number },
 ) {
   if (!args?.packageId) {
-    return toolError('packageId is required.')
+    return toolError('package_id is required.')
   }
   let ids: string[]
   if (args.stickerId) {

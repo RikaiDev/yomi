@@ -1,10 +1,14 @@
 import { encode } from '@toon-format/toon'
+import { toSnakeCaseKeys } from '../case-convention.js'
 
 /**
  * Shared helpers for the Yomi MCP handler modules — the always-fresh
  * session-required error, a plain-text tool error builder, and compact JSON /
  * TOON result wrappers. Split out of the former handlers.ts so every domain file
  * under src/mcp/handlers/ can import these without a circular dependency.
+ *
+ * Result payloads leave this module in snake_case: the MCP contract is
+ * snake_case, while the code behind it stays camelCase.
  */
 
 // Yomi logs in on its own (via the `login`/`login_complete` tools, or
@@ -91,12 +95,12 @@ export function toolError(message: string) {
 
 /** Encode a small machine-friendly payload without pretty-print whitespace. */
 export function jsonText(value: unknown): string {
-  return JSON.stringify(value)
+  return JSON.stringify(toSnakeCaseKeys(value))
 }
 
 /** Encode a large, repetitive read payload for token-efficient model consumption. */
 export function toonText(value: unknown): string {
-  return encode(value)
+  return encode(toSnakeCaseKeys(value))
 }
 
 /** Wrap a small plain result object as a compact JSON MCP tool result. */

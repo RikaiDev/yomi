@@ -59,11 +59,11 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'Fetch messages from one LINE conversation. Text is E2EE-decrypted when keys are available; each message has fromName (resolved sender), a mediaType flag (image/video/audio/file) plus messageId for get_message_media, and `mentions` (LINE\'s raw contentMetadata.MENTION, or null — a literal "@name" in `text` is not itself a mention). Without `before`, returns the most recent `count`. With `before` (id/deliveredTime of the oldest message already seen), returns one older page — repeat to page further back.',
+      'Fetch messages from one LINE conversation. Text is E2EE-decrypted when keys are available; each message has fromName (resolved sender), a mediaType flag (image/video/audio/file) plus message_id for get_message_media, and `mentions` (LINE\'s raw contentMetadata.MENTION, or null — a literal "@name" in `text` is not itself a mention). Without `before`, returns the most recent `count`. With `before` (id/delivered_time of the oldest message already seen), returns one older page — repeat to page further back.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID, as returned by list_conversations.',
@@ -75,20 +75,20 @@ export const TOOLS: Tool[] = [
         before: {
           type: 'object',
           description:
-            'Cursor to fetch messages older than this point. Use the id and/or deliveredTime of the oldest message already seen.',
+            'Cursor to fetch messages older than this point. Use the id and/or delivered_time of the oldest message already seen.',
           properties: {
-            messageId: {
+            message_id: {
               type: 'string',
               description: 'LINE message id of the cursor message.',
             },
-            deliveredTime: {
+            delivered_time: {
               type: 'number',
-              description: 'deliveredTime of the cursor message.',
+              description: 'delivered_time of the cursor message.',
             },
           },
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'get_chat_messages',
   },
@@ -98,12 +98,12 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID the message belongs to. Required to locate E2EE key material.',
         },
-        messageId: {
+        message_id: {
           type: 'string',
           description: 'LINE message id, as returned by get_chat_messages.',
         },
@@ -113,7 +113,7 @@ export const TOOLS: Tool[] = [
             'Fetch the smaller preview object instead of the full-resolution original.',
         },
       },
-      required: ['chatId', 'messageId'],
+      required: ['chat_id', 'message_id'],
     },
     name: 'get_message_image',
   },
@@ -123,12 +123,12 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID the message belongs to. Required to locate E2EE key material.',
         },
-        messageId: {
+        message_id: {
           type: 'string',
           description: 'LINE message id, as returned by get_chat_messages.',
         },
@@ -138,13 +138,13 @@ export const TOOLS: Tool[] = [
             'Fetch the smaller preview object instead of the full-resolution original (images/video only).',
         },
       },
-      required: ['chatId', 'messageId'],
+      required: ['chat_id', 'message_id'],
     },
     name: 'get_message_media',
   },
   {
     description:
-      'Analyze conversations for ball-in-court ownership (who likely needs to act next). For each conversation returns ball=mine|theirs|team|none|unknown with heuristic reasons and confidence, the last relevant message, and unread count. Read-only (never marks read). Use to triage what needs my reply/action vs what I am waiting on; treat as evidence in groups or when messages are ambiguous/encrypted. Defaults to all non-excluded conversations; set unreadOnly/includeRead to focus unread, or chatId for one chat.',
+      'Analyze conversations for ball-in-court ownership (who likely needs to act next). For each conversation returns ball=mine|theirs|team|none|unknown with heuristic reasons and confidence, the last relevant message, and unread count. Read-only (never marks read). Use to triage what needs my reply/action vs what I am waiting on; treat as evidence in groups or when messages are ambiguous/encrypted. Defaults to all non-excluded conversations; set unread_only/include_read to focus unread, or chat_id for one chat.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -153,22 +153,22 @@ export const TOOLS: Tool[] = [
           description:
             'Maximum conversations to analyze, most recently active first (default: all).',
         },
-        perChat: {
+        per_chat: {
           type: 'number',
           description:
             'Recent messages inspected per conversation (default 20, min 5, max 50).',
         },
-        unreadOnly: {
+        unread_only: {
           type: 'boolean',
           description:
             'If true, analyze only conversations with unread messages.',
         },
-        includeRead: {
+        include_read: {
           type: 'boolean',
           description:
-            'If false, same as unreadOnly=true (backward-friendly); default analyzes all conversations.',
+            'If false, same as unread_only=true (backward-friendly); default analyzes all conversations.',
         },
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'Analyze a single chat MID instead of scanning conversations.',
@@ -183,7 +183,7 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        perChat: {
+        per_chat: {
           type: 'number',
           description:
             'Maximum recent messages to include per unread conversation (default 10).',
@@ -203,12 +203,12 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'Optional focus: restrict `relationships` and `pending` to this chat (as returned by list_conversations). Omit to scan all conversations.',
         },
-        sinceHours: {
+        since_hours: {
           type: 'number',
           description:
             'Lookback window in hours, measured back from the newest captured message (not wall-clock). Default 504 (21 days).',
@@ -223,7 +223,7 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
@@ -265,136 +265,136 @@ export const TOOLS: Tool[] = [
             'Optional message id (from get_chat_messages) this replies to — LINE renders a quoted reply. Omit for a normal message.',
         },
       },
-      required: ['chatId', 'text'],
+      required: ['chat_id', 'text'],
     },
     name: 'send_message',
   },
   {
     description:
-      'Sends an E2EE image to a LINE conversation immediately (encrypt → upload to OBS → send). Works for 1:1/group/room; fails honestly if the key cannot be resolved or the upload is rejected. One send per call. Provide exactly one of imagePath or imageBase64.',
+      'Sends an E2EE image to a LINE conversation immediately (encrypt → upload to OBS → send). Works for 1:1/group/room; fails honestly if the key cannot be resolved or the upload is rejected. One send per call. Provide exactly one of image_path or image_base64.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
         },
-        imagePath: {
+        image_path: {
           type: 'string',
           description:
-            'Local filesystem path to the image file. Mutually exclusive with imageBase64.',
+            'Local filesystem path to the image file. Mutually exclusive with image_base64.',
         },
-        imageBase64: {
+        image_base64: {
           type: 'string',
           description:
-            'Base64-encoded image bytes. Mutually exclusive with imagePath.',
+            'Base64-encoded image bytes. Mutually exclusive with image_path.',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'send_image',
   },
   {
     description:
-      'Sends an E2EE file attachment (any type — .docx, .pdf, .zip, …) to a LINE conversation immediately (same pipeline as send_image; the original filename is sealed end-to-end). Works for 1:1/group/room; fails honestly if the key cannot be resolved or the upload is rejected. One send per call. Provide exactly one of filePath or fileBase64; fileName is required with fileBase64 (and overrides the basename when given with filePath).',
+      'Sends an E2EE file attachment (any type — .docx, .pdf, .zip, …) to a LINE conversation immediately (same pipeline as send_image; the original filename is sealed end-to-end). Works for 1:1/group/room; fails honestly if the key cannot be resolved or the upload is rejected. One send per call. Provide exactly one of file_path or file_base64; file_name is required with file_base64 (and overrides the basename when given with file_path).',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
         },
-        filePath: {
+        file_path: {
           type: 'string',
           description:
-            'Local filesystem path to the file. Mutually exclusive with fileBase64.',
+            'Local filesystem path to the file. Mutually exclusive with file_base64.',
         },
-        fileBase64: {
+        file_base64: {
           type: 'string',
           description:
-            'Base64-encoded file bytes. Mutually exclusive with filePath; requires fileName.',
+            'Base64-encoded file bytes. Mutually exclusive with file_path; requires file_name.',
         },
-        fileName: {
+        file_name: {
           type: 'string',
           description:
-            'Original filename shown to the recipient (sealed E2EE). Required with fileBase64; optional with filePath (defaults to its basename).',
+            'Original filename shown to the recipient (sealed E2EE). Required with file_base64; optional with file_path (defaults to its basename).',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'send_file',
   },
   {
     description:
-      'Sends an E2EE audio message to a LINE conversation immediately (same pipeline as send_file). Provide exactly one of filePath or audioBase64; optional durationMs sets the recipient player length. Works for 1:1/group/room. One send per call.',
+      'Sends an E2EE audio message to a LINE conversation immediately (same pipeline as send_file). Provide exactly one of file_path or audio_base64; optional duration_ms sets the recipient player length. Works for 1:1/group/room. One send per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
         },
-        filePath: {
+        file_path: {
           type: 'string',
           description:
-            'Local filesystem path to the audio file. Mutually exclusive with audioBase64.',
+            'Local filesystem path to the audio file. Mutually exclusive with audio_base64.',
         },
-        audioBase64: {
+        audio_base64: {
           type: 'string',
           description:
-            'Base64-encoded audio bytes. Mutually exclusive with filePath.',
+            'Base64-encoded audio bytes. Mutually exclusive with file_path.',
         },
-        fileName: {
+        file_name: {
           type: 'string',
           description:
-            'Optional original filename (used for the upload name; defaults to the basename of filePath or audio.m4a).',
+            'Optional original filename (used for the upload name; defaults to the basename of file_path or audio.m4a).',
         },
-        durationMs: {
+        duration_ms: {
           type: 'number',
           description:
             'Optional audio duration in milliseconds, for the recipient player progress bar.',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'send_audio',
   },
   {
     description:
-      'Sends an E2EE video to a LINE conversation immediately (same pipeline as send_file; uses LINE chunked video encryption so it plays and integrity-verifies on official clients). Provide exactly one of filePath or videoBase64; optional durationMs sets the scrubber length. Works for 1:1/group/room. One send per call.',
+      'Sends an E2EE video to a LINE conversation immediately (same pipeline as send_file; uses LINE chunked video encryption so it plays and integrity-verifies on official clients). Provide exactly one of file_path or video_base64; optional duration_ms sets the scrubber length. Works for 1:1/group/room. One send per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
         },
-        filePath: {
+        file_path: {
           type: 'string',
           description:
-            'Local filesystem path to the video file. Mutually exclusive with videoBase64.',
+            'Local filesystem path to the video file. Mutually exclusive with video_base64.',
         },
-        videoBase64: {
+        video_base64: {
           type: 'string',
           description:
-            'Base64-encoded video bytes. Mutually exclusive with filePath.',
+            'Base64-encoded video bytes. Mutually exclusive with file_path.',
         },
-        fileName: {
+        file_name: {
           type: 'string',
           description:
-            'Optional original filename (used for the upload name; defaults to the basename of filePath or video.mp4).',
+            'Optional original filename (used for the upload name; defaults to the basename of file_path or video.mp4).',
         },
-        durationMs: {
+        duration_ms: {
           type: 'number',
           description:
             'Optional video duration in milliseconds, for the recipient player scrubber.',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'send_video',
   },
@@ -404,7 +404,7 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
@@ -426,52 +426,52 @@ export const TOOLS: Tool[] = [
           description: 'Optional address shown under the pin.',
         },
       },
-      required: ['chatId', 'latitude', 'longitude'],
+      required: ['chat_id', 'latitude', 'longitude'],
     },
     name: 'send_location',
   },
   {
     description:
-      'Shares a LINE contact card to a conversation immediately — the recipient sees a tappable card for `contactMid` (e.g. from find_contact or get_group_members). `displayName` is optional (resolved from the mid when omitted). Works for 1:1/group/room. One send per call.',
+      'Shares a LINE contact card to a conversation immediately — the recipient sees a tappable card for `contact_mid` (e.g. from find_contact or get_group_members). `display_name` is optional (resolved from the mid when omitted). Works for 1:1/group/room. One send per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
         },
-        contactMid: {
+        contact_mid: {
           type: 'string',
           description:
             'MID of the person whose contact card to share, as returned by find_contact or get_group_members.',
         },
-        displayName: {
+        display_name: {
           type: 'string',
           description:
-            'Optional display name for the card. Resolved from contactMid when omitted.',
+            'Optional display name for the card. Resolved from contact_mid when omitted.',
         },
       },
-      required: ['chatId', 'contactMid'],
+      required: ['chat_id', 'contact_mid'],
     },
     name: 'send_contact',
   },
   {
     description:
-      'Sends a LINE sticker to a conversation immediately, named by stickerId (STKID) + packageId (STKPKGID). Only OWNED stickers can be sent — get ids from search_stickers/list_stickers. Works for 1:1/group/room. One send per call.',
+      'Sends a LINE sticker to a conversation immediately, named by sticker_id (STKID) + package_id (STKPKGID). Only OWNED stickers can be sent — get ids from search_stickers/list_stickers. Works for 1:1/group/room. One send per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to send to, as returned by list_conversations.',
         },
-        stickerId: {
+        sticker_id: {
           type: 'string',
           description: 'LINE sticker id (STKID).',
         },
-        packageId: {
+        package_id: {
           type: 'string',
           description: 'LINE sticker package id (STKPKGID).',
         },
@@ -480,13 +480,13 @@ export const TOOLS: Tool[] = [
           description: 'Sticker version (STKVER). Defaults to "1".',
         },
       },
-      required: ['chatId', 'stickerId', 'packageId'],
+      required: ['chat_id', 'sticker_id', 'package_id'],
     },
     name: 'send_sticker',
   },
   {
     description:
-      "List the sticker packages this LINE account OWNS — the only stickers it can send. Returns each package's packageId (STKPKGID), title, and version (STKVER). Get individual sticker ids via search_stickers, then send_sticker. Read-only.",
+      "List the sticker packages this LINE account OWNS — the only stickers it can send. Returns each package's package_id (STKPKGID), title, and version (STKVER). Get individual sticker ids via search_stickers, then send_sticker. Read-only.",
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -527,15 +527,15 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'Show sticker preview images (MCP image content from the public sticker CDN) so you and the user can SEE them before sending. Give a packageId (from list_stickers/search_stickers) to preview its first stickers, or add a stickerId to preview just one. Each image is labeled with its stickerId + packageId for send_sticker. Read-only.',
+      'Show sticker preview images (MCP image content from the public sticker CDN) so you and the user can SEE them before sending. Give a package_id (from list_stickers/search_stickers) to preview its first stickers, or add a sticker_id to preview just one. Each image is labeled with its sticker_id + package_id for send_sticker. Read-only.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        packageId: {
+        package_id: {
           type: 'string',
           description: 'Sticker package id (STKPKGID) to preview.',
         },
-        stickerId: {
+        sticker_id: {
           type: 'string',
           description:
             'Optional specific sticker id (STKID) to preview just that sticker.',
@@ -543,31 +543,31 @@ export const TOOLS: Tool[] = [
         limit: {
           type: 'number',
           description:
-            'Max stickers to preview when no stickerId is given (default 8).',
+            'Max stickers to preview when no sticker_id is given (default 8).',
         },
       },
-      required: ['packageId'],
+      required: ['package_id'],
     },
     name: 'preview_sticker',
   },
   {
     description:
-      'Send a LINE read receipt (mark a conversation read up to `messageId`, or the latest when omitted) — a real action the other party can see. Use ONLY when the user explicitly wants to mark a chat read; reading (get_chat_messages, get_unread_digest) and background capture never mark read. Fails honestly if there is nothing to mark.',
+      'Send a LINE read receipt (mark a conversation read up to `message_id`, or the latest when omitted) — a real action the other party can see. Use ONLY when the user explicitly wants to mark a chat read; reading (get_chat_messages, get_unread_digest) and background capture never mark read. Fails honestly if there is nothing to mark.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE chat/group/room MID to mark read, as returned by list_conversations.',
         },
-        messageId: {
+        message_id: {
           type: 'string',
           description:
             'Optional message id to mark read up to. Omit to mark read up to the latest message.',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'mark_read',
   },
@@ -589,7 +589,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      "List the authenticated user's full LINE friend list as-is (mid + displayName). No ranking, no interaction-frequency ordering.",
+      "List the authenticated user's full LINE friend list as-is (mid + display_name). No ranking, no interaction-frequency ordering.",
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -598,34 +598,34 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'List the members of one LINE group (mid + displayName each). Resolves persistent groups (`c...`); ad-hoc rooms (`r...`) without a group record return an honest error, never a fabricated empty list.',
+      'List the members of one LINE group (mid + display_name each). Resolves persistent groups (`c...`); ad-hoc rooms (`r...`) without a group record return an honest error, never a fabricated empty list.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE group chat MID, as returned by list_conversations.',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'get_group_members',
   },
   {
     description:
-      'Renames a LINE group/chat immediately; the new name is visible to every member. Works on groups/rooms (chatId starting with `c`/`r`). One rename per call.',
+      'Renames a LINE group/chat immediately; the new name is visible to every member. Works on groups/rooms (chat_id starting with `c`/`r`). One rename per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE group/room MID to rename, as returned by list_conversations.',
         },
         name: { type: 'string', description: 'New group name.' },
       },
-      required: ['chatId', 'name'],
+      required: ['chat_id', 'name'],
     },
     name: 'rename_group',
   },
@@ -635,7 +635,7 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE group/room MID to invite into, as returned by list_conversations.',
@@ -646,7 +646,7 @@ export const TOOLS: Tool[] = [
           description: 'MIDs of the people to invite.',
         },
       },
-      required: ['chatId', 'mids'],
+      required: ['chat_id', 'mids'],
     },
     name: 'invite_member',
   },
@@ -656,7 +656,7 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE group/room MID to remove members from, as returned by list_conversations.',
@@ -667,7 +667,7 @@ export const TOOLS: Tool[] = [
           description: 'MIDs of the members to remove.',
         },
       },
-      required: ['chatId', 'mids'],
+      required: ['chat_id', 'mids'],
     },
     name: 'kick_member',
   },
@@ -677,19 +677,19 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE group/room MID to leave, as returned by list_conversations.',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'leave_group',
   },
   {
     description:
-      'Creates a new LINE group/room immediately with the given members (no message is sent). chatType 0 = group (invitees must accept before joining), 1 = room (members added directly); default 1. Provide `name` and `mids` (initial members, e.g. from find_contact). One create per call.',
+      'Creates a new LINE group/room immediately with the given members (no message is sent). chat_type 0 = group (invitees must accept before joining), 1 = room (members added directly); default 1. Provide `name` and `mids` (initial members, e.g. from find_contact). One create per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -699,7 +699,7 @@ export const TOOLS: Tool[] = [
           items: { type: 'string' },
           description: 'MIDs of the initial members to add.',
         },
-        chatType: {
+        chat_type: {
           type: 'number',
           description:
             'LINE chat type: 0 = group (invite-based), 1 = room (direct add). Default 1.',
@@ -757,38 +757,38 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'Accepts a group/chat invitation for your LINE account — you join the chat. Use for a group you were invited to (its chatId appears with invited status). One accept per call.',
+      'Accepts a group/chat invitation for your LINE account — you join the chat. Use for a group you were invited to (its chat_id appears with invited status). One accept per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'LINE group/room MID whose invitation to accept, as returned by list_conversations.',
         },
       },
-      required: ['chatId'],
+      required: ['chat_id'],
     },
     name: 'accept_invitation',
   },
   {
     description:
-      'Adds a reaction to a LINE message, visible to the conversation. reactionType: 2 = 👍 LIKE, 3 = ❤️ LOVE, 4 = 😆 LAUGH, 5 = 😮 SURPRISE, 6 = 😢 SAD, 7 = 😡 ANGRY (default 2). One reaction per call.',
+      'Adds a reaction to a LINE message, visible to the conversation. reaction_type: 2 = 👍 LIKE, 3 = ❤️ LOVE, 4 = 😆 LAUGH, 5 = 😮 SURPRISE, 6 = 😢 SAD, 7 = 😡 ANGRY (default 2). One reaction per call.',
     inputSchema: {
       type: 'object' as const,
       properties: {
-        messageId: {
+        message_id: {
           type: 'string',
           description:
             'LINE message id to react to, as returned by get_chat_messages.',
         },
-        reactionType: {
+        reaction_type: {
           type: 'number',
           description:
             'Predefined reaction: 2=👍LIKE, 3=❤️LOVE, 4=😆LAUGH, 5=😮SURPRISE, 6=😢SAD, 7=😡ANGRY. Default 2.',
         },
       },
-      required: ['messageId'],
+      required: ['message_id'],
     },
     name: 'react_message',
   },
@@ -798,13 +798,13 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        messageId: {
+        message_id: {
           type: 'string',
           description:
             'LINE message id whose reaction to remove, as returned by get_chat_messages.',
         },
       },
-      required: ['messageId'],
+      required: ['message_id'],
     },
     name: 'cancel_reaction',
   },
@@ -814,7 +814,7 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        messageId: {
+        message_id: {
           type: 'string',
           description:
             'LINE message id to retract (must be your own), as returned by get_chat_messages.',
@@ -825,23 +825,23 @@ export const TOOLS: Tool[] = [
             'Must be true to proceed. Retraction is irreversible; the call refuses unless this is explicitly true.',
         },
       },
-      required: ['messageId', 'confirm'],
+      required: ['message_id', 'confirm'],
     },
     name: 'unsend_message',
   },
   {
     description:
-      "Bulk-fetch recent messages from LINE conversations into Yomi's local cross-conversation search index (LINE has no native cross-chat search). Fetches up to `perChat` per chat (default 100) for `chatIds`, or all conversations when omitted, and best-effort embeds them for semantic search — re-running also repairs any messages still missing a vector. A background capture loop keeps the index current on its own, so call this only to force a reconcile or backfill specific chats. Undecryptable messages are skipped, not fabricated.",
+      "Bulk-fetch recent messages from LINE conversations into Yomi's local cross-conversation search index (LINE has no native cross-chat search). Fetches up to `per_chat` per chat (default 100) for `chat_ids`, or all conversations when omitted, and best-effort embeds them for semantic search — re-running also repairs any messages still missing a vector. A background capture loop keeps the index current on its own, so call this only to force a reconcile or backfill specific chats. Undecryptable messages are skipped, not fabricated.",
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatIds: {
+        chat_ids: {
           type: 'array',
           items: { type: 'string' },
           description:
             'LINE chat/group/room MIDs to collect from, as returned by list_conversations. Omit to collect from all conversations.',
         },
-        perChat: {
+        per_chat: {
           type: 'number',
           description:
             'Maximum recent messages to fetch per chat (default 100).',
@@ -876,14 +876,14 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatIds: {
+        chat_ids: {
           type: 'array',
           items: { type: 'string' },
           description:
             'LINE chat/group/room MIDs to exclude, as returned by list_conversations.',
         },
       },
-      required: ['chatIds'],
+      required: ['chat_ids'],
     },
     name: 'exclude_chats',
   },
@@ -893,19 +893,19 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatIds: {
+        chat_ids: {
           type: 'array',
           items: { type: 'string' },
           description: 'LINE chat/group/room MIDs to re-include.',
         },
       },
-      required: ['chatIds'],
+      required: ['chat_ids'],
     },
     name: 'include_chats',
   },
   {
     description:
-      "List the conversations currently on Yomi's privacy denylist. Returns `[{ chatId, name }]`; `name` is best-effort resolved when a live LINE session exists, otherwise null — never a fabricated placeholder. Local-index operation; works without a live LINE session.",
+      "List the conversations currently on Yomi's privacy denylist. Returns `[{ chat_id, name }]`; `name` is best-effort resolved when a live LINE session exists, otherwise null — never a fabricated placeholder. Local-index operation; works without a live LINE session.",
     inputSchema: {
       type: 'object' as const,
       properties: {},
@@ -923,11 +923,11 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      "Return a compact DIGITAL TWIN style card for the user from the local index (token-efficient): tone/phrasing guide, message segmentation/bursting (how to split into multiple short messages), emoji habits, sticker habits (when to use, with top stickerId/packageId to send via send_sticker), and a PERSONAL WRITING-STYLE read measured from the user's own sent messages: a discrete attribute table (ideational: where a concrete value sits relative to the action verb, how dates and amounts are written; interpersonal: speech-act distribution, the politeness-strategy position of requests (direct imperative vs. mitigation-fronted vs. conditional), the moves that reduce imposition, the source of reasons; textual: how messages are cut into units, field arrangement, and the transition relations between units) plus executable style instructions, the user's own verbatim sentences, what they do NOT do, and the items the sample cannot support. Every rule carries a rate or a verbatim excerpt of the user's own wording; the read is a heuristic approximation and is omitted when the sample is too small. Plus a few short examples. ALWAYS call before drafting/composing/sending any LINE reply or message — matching the user's voice and messaging behavior is Yomi's default. Pass chatId to get per-conversation nuances. Reads local index only (no network); needs collect_messages to have indexed user's sent messages.",
+      "Return a compact DIGITAL TWIN style card for the user from the local index (token-efficient): tone/phrasing guide, message segmentation/bursting (how to split into multiple short messages), emoji habits, sticker habits (when to use, with top sticker_id/package_id to send via send_sticker), and a PERSONAL WRITING-STYLE read measured from the user's own sent messages: a discrete attribute table (ideational: where a concrete value sits relative to the action verb, how dates and amounts are written; interpersonal: speech-act distribution, the politeness-strategy position of requests (direct imperative vs. mitigation-fronted vs. conditional), the moves that reduce imposition, the source of reasons; textual: how messages are cut into units, field arrangement, and the transition relations between units) plus executable style instructions, the user's own verbatim sentences, what they do NOT do, and the items the sample cannot support. Every rule carries a rate or a verbatim excerpt of the user's own wording; the read is a heuristic approximation and is omitted when the sample is too small. Plus a few short examples. ALWAYS call before drafting/composing/sending any LINE reply or message — matching the user's voice and messaging behavior is Yomi's default. Pass chat_id to get per-conversation nuances. Reads local index only (no network); needs collect_messages to have indexed user's sent messages.",
     inputSchema: {
       type: 'object' as const,
       properties: {
-        chatId: {
+        chat_id: {
           type: 'string',
           description:
             'Optional: target conversation MID to include per-chat style nuances (segmentation/sticker habits can differ per chat).',
@@ -957,12 +957,12 @@ export const TOOLS: Tool[] = [
     inputSchema: {
       type: 'object' as const,
       properties: {
-        subjectName: {
+        subject_name: {
           type: 'string',
           description:
             'The person\'s name, as it appears in the graph (e.g. "Lin Jialin"). Used to match the fact to a person.',
         },
-        subjectMid: {
+        subject_mid: {
           type: 'string',
           description:
             "Optional: the person's LINE MID, when the graph gave you one. More reliable than the name.",
@@ -997,7 +997,7 @@ export const TOOLS: Tool[] = [
           description: 'Optional: confidence in [0,1] (default 0.5).',
         },
       },
-      required: ['subjectName', 'term', 'evidence'],
+      required: ['subject_name', 'term', 'evidence'],
     },
     name: 'add_persona_fact',
   },

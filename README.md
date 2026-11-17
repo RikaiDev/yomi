@@ -682,6 +682,25 @@ Everything Yomi writes for humans goes to **stderr**; **stdout is reserved for t
 MCP JSON-RPC stream**. A stray `console.log` corrupts the protocol — don't add one on
 any path the server can reach.
 
+### Naming: two conventions, one boundary
+
+The MCP contract — tool names, tool arguments, tool result keys — is
+**snake_case** (`chat_id`, `message_id`, `file_path`). Everything behind the
+boundary — SQLite columns, TypeScript identifiers, handler signatures — is
+**camelCase** (`chatId`, `messageId`, `filePath`).
+
+The two meet in exactly one place, `src/mcp/case-convention.ts`: incoming
+arguments are converted snake → camel before dispatch, and outgoing payloads
+are converted camel → snake on the way out. Keys are rewritten; values, message
+text included, never are. MCP content-block fields (`type`, `data`, `mimeType`)
+belong to the protocol and are left alone.
+
+So a new tool declares `chat_id` in its schema, a handler still reads
+`args.chatId`, and a result still says `from_name` to the client. Don't
+convert inside a handler, and don't copy a camelCase spelling from an internal
+type into a schema. The full rationale is in `docs/adr/0002-mcp-contract-naming.md`
+(local only — `docs/` is git-ignored in this repo).
+
 ---
 
 ## Privacy

@@ -36,7 +36,7 @@ export async function handleSendMessage(
   },
 ) {
   if (!args.chatId || !args.text) {
-    return toolError('chatId and text are required.')
+    return toolError('chat_id and text are required.')
   }
   let contentMetadata: Record<string, string> | undefined
   if (args.mentions && args.mentions.length > 0) {
@@ -109,12 +109,12 @@ export async function handleSendImage(
   args: { chatId: string; imagePath?: string; imageBase64?: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const hasPath = Boolean(args.imagePath)
   const hasBase64 = Boolean(args.imageBase64)
   if (hasPath === hasBase64) {
-    return toolError('Provide exactly one of imagePath or imageBase64.')
+    return toolError('Provide exactly one of image_path or imageBase64.')
   }
 
   let imageBytes: Buffer
@@ -188,12 +188,12 @@ export async function handleSendFile(
   },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const hasPath = Boolean(args.filePath)
   const hasBase64 = Boolean(args.fileBase64)
   if (hasPath === hasBase64) {
-    return toolError('Provide exactly one of filePath or fileBase64.')
+    return toolError('Provide exactly one of file_path or fileBase64.')
   }
 
   let fileBytes: Buffer
@@ -209,7 +209,7 @@ export async function handleSendFile(
     fileName = args.fileName || path.basename(args.filePath)
   } else {
     if (!args.fileName) {
-      return toolError('fileName is required when sending fileBase64.')
+      return toolError('file_name is required when sending fileBase64.')
     }
     fileBytes = Buffer.from(args.fileBase64 as string, 'base64')
     fileName = args.fileName
@@ -272,10 +272,10 @@ export async function handleSendContact(
   args: { chatId: string; contactMid: string; displayName?: string },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   if (!args.contactMid) {
-    return toolError('contactMid is required.')
+    return toolError('contact_mid is required.')
   }
 
   let displayName = args.displayName ?? ''
@@ -342,10 +342,10 @@ export async function handleSendSticker(
   },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   if (!args.stickerId || !args.packageId) {
-    return toolError('stickerId and packageId are required.')
+    return toolError('sticker_id and package_id are required.')
   }
 
   const result = await service.sendSticker(
@@ -406,7 +406,7 @@ export async function handleSendLocation(
   },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   if (
     typeof args.latitude !== 'number' ||
@@ -475,12 +475,12 @@ export async function handleSendAudio(
   },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const hasPath = Boolean(args.filePath)
   const hasBase64 = Boolean(args.audioBase64)
   if (hasPath === hasBase64) {
-    return toolError('Provide exactly one of filePath or audioBase64.')
+    return toolError('Provide exactly one of file_path or audioBase64.')
   }
 
   let audioBytes: Buffer
@@ -561,12 +561,12 @@ export async function handleSendVideo(
   },
 ) {
   if (!args.chatId) {
-    return toolError('chatId is required.')
+    return toolError('chat_id is required.')
   }
   const hasPath = Boolean(args.filePath)
   const hasBase64 = Boolean(args.videoBase64)
   if (hasPath === hasBase64) {
-    return toolError('Provide exactly one of filePath or videoBase64.')
+    return toolError('Provide exactly one of file_path or videoBase64.')
   }
 
   let videoBytes: Buffer

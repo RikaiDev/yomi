@@ -3,6 +3,7 @@ import { computeInsights, type InsightPackage } from '../../insight/index.js'
 import type { LineProtocolService } from '../../line/core/service.js'
 import { getDefaultEmbedder } from '../../search/default-embedder.js'
 import { getExcludedChatIds } from '../../search/scope.js'
+import { toSnakeCaseKeys } from '../case-convention.js'
 import { createPhiAccumulator, maskInto, phiNote } from '../phi-guard.js'
 
 /**
@@ -62,14 +63,14 @@ export async function handleGetInsight(
   // JSON), and the projection drops fields the agent can derive or does not need
   // — long MIDs/pointers, and low-signal one-off conversations.
   const guide =
-    'A context network over your local LINE index, encoded as TOON — objects are `key: value`, uniform arrays are `name[count]{columns}:` then one comma-separated row per item. NOT verdicts. `connectors`: people across ≥2 of your chats (hubs; `isBridge` = removing them splits your contact graph). `relationships`: per-conversation engagement (`msgs` total, `yours` from you, `rhythmH` = your usual reply latency in hours) for conversations that matter. `open`: conversations whose latest message is not yours, most overdue vs that rhythm first (`overdueR`), with the last speaker (`from`) and a `preview`. Read each `preview` to judge — who it addresses (a group message may name someone else, who then owns it), open-request vs closing-acknowledgement, and nickname identities — then fetch the thread via get_chat_messages(chatId) only for the few worth it. `typicality` hints boilerplate shape but also buries polite requests, so never filter on it.'
+    'A context network over your local LINE index, encoded as TOON — objects are `key: value`, uniform arrays are `name[count]{columns}:` then one comma-separated row per item. NOT verdicts. `connectors`: people across ≥2 of your chats (hubs; `is_bridge` = removing them splits your contact graph). `relationships`: per-conversation engagement (`msgs` total, `yours` from you, `rhythm_h` = your usual reply latency in hours) for conversations that matter. `open`: conversations whose latest message is not yours, most overdue vs that rhythm first (`overdue_r`), with the last speaker (`from`) and a `preview`. Read each `preview` to judge — who it addresses (a group message may name someone else, who then owns it), open-request vs closing-acknowledgement, and nickname identities — then fetch the thread via get_chat_messages(chat_id) only for the few worth it. `typicality` hints boilerplate shape but also buries polite requests, so never filter on it.'
   const content: {
     type: 'text'
     text: string
   }[] = [
     {
       type: 'text',
-      text: `${guide}\n\n${encode(roundNumbers(project(masked)))}`,
+      text: `${guide}\n\n${encode(toSnakeCaseKeys(roundNumbers(project(masked))))}`,
     },
   ]
   const note = phiNote(acc)

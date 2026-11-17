@@ -19,6 +19,7 @@ import { getDefaultEmbedder } from '../search/default-embedder.js'
 import { createCliLogger } from '../util/log.js'
 import { checkForUpdate } from '../util/update-check.js'
 import { YOMI_VERSION } from '../version.js'
+import { toCamelCaseKeys } from './case-convention.js'
 import { clientCapabilitiesOf } from './client-capabilities.js'
 import {
   handleAcceptInvitation,
@@ -167,7 +168,11 @@ export function createBuildServer(
     })
 
     server.setRequestHandler('tools/call', async (request, ctx) => {
-      const { name, arguments: args } = request.params
+      const { name } = request.params
+      // The MCP contract is snake_case; the code behind the boundary speaks
+      // camelCase. Normalize the arguments once, here, so no handler has to
+      // know which convention the client used.
+      const args = toCamelCaseKeys(request.params.arguments ?? {})
 
       // `login` is the one tool allowed without an existing session — it is
       // how a session gets created. `search_messages` also runs without a
