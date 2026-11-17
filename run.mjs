@@ -10,41 +10,41 @@
  *   yomi version        Print version
  */
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Load the compiled `dist/` build when it exists (this is what the npm
-// tarball ships), and fall back to the TypeScript sources for a repo
-// checkout that has not been built yet.
+// Yomi runs from the compiled `dist/` build and only from `dist/`.
 //
-// The fallback CANNOT rescue an installed package: Node refuses to strip
-// types for files under node_modules (ERR_UNSUPPORTED_NODE_MODULES_TYPE_
-// STRIPPING), which is exactly how every 0.1.x release failed to start.
-// `files` in package.json must therefore always ship `dist/`.
+// The npm tarball, the MCPB bundle, and the desktop core bundle all ship
+// `dist/`; the TypeScript sources under `src/` are never executed directly.
+// A source fallback could not have rescued an installed package anyway —
+// Node refuses to strip types for files under node_modules
+// (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING), which is exactly how every
+// 0.1.x release failed to start — so it only ever let a checkout run code
+// that was never published and never gated by the release workflow.
+//
+// A repo checkout therefore needs `npm run build` before `node run.mjs`
+// works. To exercise the released product, install the published package
+// instead of building this repo:
+//
+//   npm install -g @rikaidev/yomi@<version>
+//
 const distUrl = new URL('./dist/', import.meta.url);
-const sourceRoot = fileURLToPath(new URL('./src/', import.meta.url));
+const distServerPath = fileURLToPath(new URL('mcp/server.js', distUrl));
 
-function newestMtime(directory) {
-  if (!existsSync(directory)) return 0;
-  let newest = 0;
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) newest = Math.max(newest, newestMtime(path));
-    else if (entry.name.endsWith('.ts')) newest = Math.max(newest, statSync(path).mtimeMs);
-  }
-  return newest;
+if (!existsSync(distServerPath)) {
+  console.error(
+    'yomi: dist/mcp/server.js is missing — this checkout has not been built.\n' +
+      'Build it with `npm run build`, or test the released product by installing it:\n' +
+      '  npm install -g @rikaidev/yomi@<version>',
+  );
+  process.exit(1);
 }
 
-const distServerPath = fileURLToPath(new URL('mcp/server.js', distUrl));
-const distMtime = existsSync(distServerPath) ? statSync(distServerPath).mtimeMs : 0;
-const inNodeModules = import.meta.url.includes('/node_modules/');
-const sourceIsNewer = !inNodeModules && existsSync(sourceRoot) && newestMtime(sourceRoot) > distMtime;
-const built = existsSync(distServerPath) && process.env.YOMI_DEV_SOURCE !== '1' && !sourceIsNewer;
-const base = built ? distUrl : new URL('./src/', import.meta.url);
-const ext = built ? '.js' : '.ts';
+const base = distUrl;
+const ext = '.js';
 
-/** Import a module by its path under src/, resolved to dist/ when built. */
+/** Import a module by its path under dist/. */
 const load = (path) => import(new URL(path + ext, base).href);
 
 const writeStdout = (text) =>

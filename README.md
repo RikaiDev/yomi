@@ -723,15 +723,24 @@ stated separately and guarded by a test):
 
 ```bash
 bun install                 # install dependencies (or npm install)
-bun run.mjs                 # run the stdio MCP server
-bun run.mjs login           # run the login flow in a terminal
-npm run build               # tsc --noEmit — type-check only (Yomi ships & runs from src/)
+npm run build               # compile src/ to dist/ (run.mjs only loads dist/)
+node run.mjs                # run the stdio MCP server
+node run.mjs login          # run the login flow in a terminal
 npm test                    # bun test
 ```
 
 The build only type-checks and compiles; this repo does not talk to live LINE
 servers as part of its own build. Connecting an MCP client and calling `login` is
 what actually starts a session.
+
+`run.mjs` loads the compiled `dist/` and nothing else — it never falls back to
+the TypeScript sources. A checkout without a build refuses to start, with a
+message telling you to run `npm run build`. To exercise the released product
+rather than your working tree, install the published package:
+
+```bash
+npm install -g @rikaidev/yomi@<version>
+```
 
 ```
 src/
