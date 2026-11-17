@@ -259,7 +259,7 @@ export const TOOLS: Tool[] = [
             required: ['mid', 'start', 'end'],
           },
         },
-        replyToMessageId: {
+        reply_to_message_id: {
           type: 'string',
           description:
             'Optional message id (from get_chat_messages) this replies to — LINE renders a quoted reply. Omit for a normal message.',
@@ -923,7 +923,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      "Return a compact DIGITAL TWIN style card for the user from the local index (token-efficient): tone/phrasing guide, message segmentation/bursting (how to split into multiple short messages), emoji habits, sticker habits (when to use, with top sticker_id/package_id to send via send_sticker), and a PERSONAL WRITING-STYLE read measured from the user's own sent messages: a discrete attribute table (ideational: where a concrete value sits relative to the action verb, how dates and amounts are written; interpersonal: speech-act distribution, the politeness-strategy position of requests (direct imperative vs. mitigation-fronted vs. conditional), the moves that reduce imposition, the source of reasons; textual: how messages are cut into units, field arrangement, and the transition relations between units) plus executable style instructions, the user's own verbatim sentences, what they do NOT do, and the items the sample cannot support. Every rule carries a rate or a verbatim excerpt of the user's own wording; the read is a heuristic approximation and is omitted when the sample is too small. Plus a few short examples. ALWAYS call before drafting/composing/sending any LINE reply or message — matching the user's voice and messaging behavior is Yomi's default. Pass chat_id to get per-conversation nuances. Reads local index only (no network); needs collect_messages to have indexed user's sent messages.",
+      "Return the user's style read as three layers, kept apart on purpose. `measured`: a compact DIGITAL TWIN card computed from the local index — tone/phrasing guide, message segmentation/bursting (how to split into multiple short messages), emoji habits, sticker habits (when to use, with top sticker_id/package_id to send via send_sticker), and a PERSONAL WRITING-STYLE read measured from the user's own sent messages: a discrete attribute table (ideational: where a concrete value sits relative to the action verb, how dates and amounts are written; interpersonal: speech-act distribution, the politeness-strategy position of requests (direct imperative vs. mitigation-fronted vs. conditional), the moves that reduce imposition, the source of reasons; textual: how messages are cut into units, field arrangement, and the transition relations between units), plus the user's own verbatim sentences, what they do NOT do, and the items the sample cannot support. These are MEASUREMENTS of a corpus, not instructions: the guide lines state what the sample shows, and the sample is a heuristic approximation. `rules`: writing rules a model wrote after reading the owner's own messages as evidence — each with the sentence it rests on, the situation it applies to, and the situation it does NOT apply to. When a rule and a measurement disagree, the rule wins. `vocabulary`: the conversation's terms split by who used them — `known_terms` the counterpart has used themselves, `unconfirmed_terms` only the owner has used, i.e. the things that can confuse someone who has never heard of them. ALWAYS call before drafting/composing/sending any LINE reply or message — matching the user's voice and messaging behavior is Yomi's default. Pass chat_id to get per-conversation nuances. Reads local index only (no network); needs collect_messages to have indexed user's sent messages.",
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -935,6 +935,104 @@ export const TOOLS: Tool[] = [
       },
     },
     name: 'get_style_profile',
+  },
+  {
+    description:
+      "Read the evidence a style rule needs: the owner's own sent messages, quoted verbatim, each with the message it answered, plus the conversation's vocabulary split by who used which term. Yomi does not write rules itself — it has no voice of its own and runs no model. It hands you the sentences, and you decide what they show; write your conclusion back with add_style_rule so the next read starts from it. Use this before add_style_rule, and use it instead of guessing a rule from the statistics in get_style_profile.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chat_id: {
+          type: 'string',
+          description:
+            'Optional: restrict to one conversation. Omit to read across conversations.',
+        },
+        limit: {
+          type: 'number',
+          description:
+            'Optional: how many quoted messages to return (default 60).',
+        },
+      },
+    },
+    name: 'get_style_evidence',
+  },
+  {
+    description:
+      "Record a writing rule the owner follows, as you read it from their own messages. Every rule keeps the owner's sentence it rests on (`evidence`), the situation it applies to (`applies_when`), and the situation it does not apply to (`does_not_apply_when`) — a rule without its limits is how a measured statistic turns into a false instruction. Record a rule with `chat_id` to scope it to that conversation, without it to make it global. When a new rule contradicts an older one, pass the older `rule_id` in `supersedes`: the old rule stays in the history as superseded rather than being overwritten.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        statement: {
+          type: 'string',
+          description:
+            'The rule itself, in your own words — what the owner does, not a statistic.',
+        },
+        evidence: {
+          type: 'string',
+          description:
+            "The owner's own sentence the rule was read from, copied verbatim.",
+        },
+        applies_when: {
+          type: 'string',
+          description: 'Optional: the situation the rule applies to.',
+        },
+        does_not_apply_when: {
+          type: 'string',
+          description: 'Optional: the situation the rule does NOT apply to.',
+        },
+        counter_example: {
+          type: 'string',
+          description:
+            "Optional: a case from the owner's own messages where the rule does not hold.",
+        },
+        chat_id: {
+          type: 'string',
+          description:
+            'Optional: scope the rule to one conversation. Omit for a global rule.',
+        },
+        rule_id: {
+          type: 'string',
+          description:
+            'Optional: a stable id for the rule. Re-using an id updates that rule in place.',
+        },
+        supersedes: {
+          type: 'string',
+          description:
+            'Optional: the rule_id this rule replaces. The older one is kept as superseded.',
+        },
+        origin: {
+          type: 'string',
+          description:
+            "Optional: 'stated' when the owner said the rule outright, 'derived' when you read it from their messages (default 'derived').",
+        },
+        confidence: {
+          type: 'number',
+          description:
+            'Optional: your confidence in the rule, from 0 to 1 (default 0.5).',
+        },
+      },
+    },
+    name: 'add_style_rule',
+  },
+  {
+    description:
+      'Read the style rules in force, optionally including the superseded ones so the history of what was believed is still readable. Rules come back in two groups: global, and scoped to a conversation.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        chat_id: {
+          type: 'string',
+          description:
+            'Optional: include the rules scoped to this conversation.',
+        },
+        include_superseded: {
+          type: 'boolean',
+          description:
+            'Optional: also return rules that a later rule replaced (default false).',
+        },
+      },
+    },
+    name: 'get_style_rules',
   },
   {
     description:

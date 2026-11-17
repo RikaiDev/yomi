@@ -469,6 +469,15 @@ fake success.
 | --- | --- |
 | `get_insight` | A compact *context network* over your local index — structure the agent reasons over, not a message dump. Returns `connectors` (people who appear across ≥2 of your chats, with the structural **bridges** whose removal would split your contact graph), `relationships` (per-conversation engagement and your typical reply **rhythm** there), and `open` (conversations whose latest message isn't yours, ranked by how **overdue** they are *relative to that rhythm*, each with a preview). It computes only structure and statistics: it deliberately does **not** decide who a message is addressed to, whether it's an open request or a closing acknowledgement, or a nickname's real identity — that is language the agent reads from each preview, dereferencing `get_chat_messages` only when a thread is worth judging. Encoded as [TOON](https://github.com/toon-format/toon), ≈¼ the tokens of the equivalent JSON. |
 
+### Voice (draft like the owner, in the owner's words)
+
+| Tool | Does |
+| --- | --- |
+| `get_style_profile` | The owner's voice, in three layers that are deliberately kept apart. `measured` — statistics over the indexed messages: tone, segmentation and bursting, emoji and sticker habits, and a writing-style attribute table. These are *measurements of a corpus*, not instructions. `rules` — writing rules a model wrote after reading the owner's own messages, each with the sentence it rests on, the situation it applies to, and the situation it does **not** apply to. When a rule and a measurement disagree, the rule wins. `vocabulary` — the conversation's terms split by who used them: `known_terms` the counterpart has used themselves, `unconfirmed_terms` only the owner has used, i.e. the things that can confuse someone who has never heard of them. |
+| `get_style_evidence` | The evidence a rule needs: the owner's own messages, quoted verbatim, each with the message it answered. Yomi writes no rules — it hands over the sentences. |
+| `add_style_rule` | Records a rule with its evidence, its applicability and its limits. A rule that replaces an older one keeps the older one as `superseded` rather than overwriting it. |
+| `get_style_rules` | The rules in force, optionally including the superseded ones so the history of what was believed stays readable. |
+
 ### Writing (these really send — not drafts)
 
 | Tool | Does |

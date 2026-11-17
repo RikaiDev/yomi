@@ -1772,7 +1772,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
         ? profile.snippets.valuePreposed
         : profile.snippets.valuePostposed
       lines.push(
-        `風格指令(ideational):${preposed ? '把期限、地址等背景資訊放在行動動詞之前' : '把行動放在前、具體值在後補述'}(本對話者${pct(
+        `量測觀察(ideational):${preposed ? '把期限、地址等背景資訊放在行動動詞之前' : '把行動放在前、具體值在後補述'}(本對話者${pct(
           (preposed ? value.preposed : value.postposed) / value.base,
         )}如此${example ? `,例:〈${example}〉` : ''})`,
       )
@@ -1787,7 +1787,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
             : null
     if (profile.dateFormat !== 'none' && dateFormatExample) {
       lines.push(
-        `風格指令(ideational):日期以${
+        `量測觀察(ideational):日期以${
           profile.dateFormat === 'short'
             ? '短式月/日'
             : profile.dateFormat === 'iso'
@@ -1804,7 +1804,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
           : null
     if (wordingExample) {
       lines.push(
-        `風格指令(ideational):日期用語以${
+        `量測觀察(ideational):日期用語以${
           profile.dateStyle.preferred === 'relative' ? '相對日' : '完整日期'
         }為主,例:〈${wordingExample}〉`,
       )
@@ -1821,7 +1821,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
     )
     if (mitigated && mitigated.rate >= 0.3) {
       lines.push(
-        `風格指令(interpersonal):提出請求時在動詞短語前加迂迴標記以降低 imposition,並在必要時附期限;本對話者${pct(mitigated.rate)}的請求如此${
+        `量測觀察(interpersonal):提出請求時在動詞短語前加迂迴標記以降低 imposition,並在必要時附期限;本對話者${pct(mitigated.rate)}的請求如此${
           profile.snippets.mitigated
             ? `,例:〈${profile.snippets.mitigated}〉`
             : ''
@@ -1830,7 +1830,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
     }
     if (direct && direct.rate >= 0.3) {
       lines.push(
-        `風格指令(interpersonal):提出請求時直接以動詞短語或「請」起句、不加迂迴標記;本對話者${pct(direct.rate)}的請求如此${
+        `量測觀察(interpersonal):提出請求時直接以動詞短語或「請」起句、不加迂迴標記;本對話者${pct(direct.rate)}的請求如此${
           profile.snippets.imperative
             ? `,例:〈${profile.snippets.imperative}〉`
             : ''
@@ -1839,7 +1839,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
     }
     if (offRecord && offRecord.rate >= 0.3) {
       lines.push(
-        `風格指令(interpersonal):需要對方自行判斷時,以條件式問句提出請求;本對話者${pct(offRecord.rate)}的請求如此${
+        `量測觀察(interpersonal):需要對方自行判斷時,以條件式問句提出請求;本對話者${pct(offRecord.rate)}的請求如此${
           profile.snippets.conditional
             ? `,例:〈${profile.snippets.conditional}〉`
             : ''
@@ -1855,7 +1855,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
         moveText.push(`交由對方判斷${pct(moves.delegation)}`)
       if (moveText.length > 0) {
         lines.push(
-          `風格指令(interpersonal):降低 imposition 的動作以${moveText.join('、')}為主(均為請求中的比例)`,
+          `量測觀察(interpersonal):降低 imposition 的動作以${moveText.join('、')}為主(均為請求中的比例)`,
         )
       }
     }
@@ -1865,7 +1865,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
         ? profile.snippets.selfReason
         : profile.snippets.relayedReason
       lines.push(
-        `風格指令(interpersonal):理由以${
+        `量測觀察(interpersonal):理由以${
           self ? '自己的理由直接說明' : '轉述第三方的要求'
         }為主(自陳${pct(
           profile.reasonSource.self / profile.reasonSource.base,
@@ -1875,12 +1875,12 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
       )
     } else {
       lines.push(
-        `風格指令(interpersonal):理由來源資料不足(樣本${profile.reasonSource.base}則理由可判),起草時勿自行加入理由或轉述第三方要求`,
+        `量測觀察(interpersonal):理由來源資料不足(樣本${profile.reasonSource.base}則理由可判),起草時勿自行加入理由或轉述第三方要求`,
       )
     }
     if (profile.selfDisclosure.base > 0) {
       lines.push(
-        `風格指令(interpersonal):${
+        `量測觀察(interpersonal):${
           profile.selfDisclosure.rate >= 0.3
             ? `敘述自己的處境時可帶入現況(${pct(profile.selfDisclosure.rate)}的請求如此${
                 profile.snippets.selfDisclosure
@@ -1901,7 +1901,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
         )
         .join(';')
       lines.push(
-        `風格指令(interpersonal):對不同對象調整迂迴度與稱呼(${registerText})`,
+        `量測觀察(interpersonal):對不同對象調整迂迴度與稱呼(${registerText})`,
       )
     }
 
@@ -1910,7 +1910,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
       .map((entry) => `${entry.label}${pct(entry.rate)}`)
       .join('、')
     lines.push(
-      `風格指令(textual):訊息切分为${unitText};單位之間${
+      `量測觀察(textual):訊息切分为${unitText};單位之間${
         profile.layout.blankSeparatedRate >= 0.3
           ? '多以空行分隔'
           : '多不以空行分隔'
@@ -1923,7 +1923,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
         ? profile.snippets.fieldPerLine
         : profile.snippets.fieldSerial
       lines.push(
-        `風格指令(textual):具體欄位${
+        `量測觀察(textual):具體欄位${
           perLine ? '以單一標籤逐列成行' : '以多個標籤在同一行串列'
         }(逐列率${pct(profile.layout.fieldPerLineRate)}、串列率${pct(
           profile.layout.fieldSerialRate,
@@ -1941,7 +1941,7 @@ export function narrativeGuideLines(profile: NarrativeProfile): string[] {
         )
         .join('、')
       lines.push(
-        `風格指令(textual):單位銜接以${text}的關聯最常見;這是觀察到的走法,不是固定骨架`,
+        `量測觀察(textual):單位銜接以${text}的關聯最常見;這是觀察到的走法,不是固定骨架`,
       )
     }
   }

@@ -25,6 +25,7 @@ import {
   handleAcceptInvitation,
   handleAddFriend,
   handleAddPersonaFact,
+  handleAddStyleRule,
   handleBlockContact,
   handleCancelReaction,
   handleCollectMessages,
@@ -40,7 +41,9 @@ import {
   handleGetPersonaEvidence,
   handleGetPersonaGraph,
   handleGetScopePolicy,
+  handleGetStyleEvidence,
   handleGetStyleProfile,
+  handleGetStyleRules,
   handleGetUnreadDigest,
   handleIncludeChats,
   handleInviteMember,
@@ -106,14 +109,27 @@ export function buildInstructions(updateNotice?: string | null): string {
     'errors remain plain text.\n\n' +
     'STYLE PROFILE (DIGITAL TWIN, default): before drafting, suggesting, or ' +
     'sending ANY LINE reply/message for the user, ALWAYS call ' +
-    '`get_style_profile` first (pass target `chatId` when known). The card is ' +
-    'token-efficient: follow `guide`/`signals`/`examples` for voice and ' +
-    'phrasing, `behavior.segmentation` to split into multiple short messages ' +
+    '`get_style_profile` first (pass target `chat_id` when known). It returns ' +
+    'three layers, and the order matters. `rules` are writing rules a model ' +
+    "wrote from the owner's own messages, each with the sentence it rests on " +
+    'and the situation it does NOT apply to — obey them, and treat `measured` ' +
+    'as statistics about a corpus rather than instructions: its `guide` lines ' +
+    'say what the sample shows, so do not turn a rate into a rule. When a rule ' +
+    'and a measurement disagree, the rule wins. `vocabulary` names the ' +
+    "conversation's terms split by who used them: `known_terms` the " +
+    'counterpart has used themselves, `unconfirmed_terms` only the owner has ' +
+    'used — never name a company, product or person to someone who has never ' +
+    'mentioned it in that conversation. Inside `measured`, follow ' +
+    '`guide`/`signals`/`examples` for voice and phrasing, ' +
+    '`behavior.segmentation` to split into multiple short messages ' +
     '(send sequentially to mimic bursts) instead of one block, and ' +
-    '`behavior.stickerUsage` + `topStickers` (stickerId/packageId) to add ' +
+    '`behavior.stickerUsage` + `topStickers` (sticker_id/package_id) to add ' +
     'stickers via `send_sticker` when the user would. Match per-chat nuances ' +
     'from `chat` when present. Never use generic/template/AI voice, never ' +
-    'fabricate style; if no samples, state it and ask to run `collect_messages`.\n\n' +
+    'fabricate style; if no samples, state it and ask to run `collect_messages`. ' +
+    'When a rule is missing, read the evidence with `get_style_evidence` and ' +
+    'write the rule back with `add_style_rule` — Yomi stores it, so the next ' +
+    'read starts from it.\n\n' +
     'PRIVACY DISCLOSURE (say ONCE per session) — the first time this session ' +
     'does a bulk read (collect_messages/search_messages/get_insight), tell the user once, in ' +
     'plain language, that Yomi captures all conversations by default, keeps the data ' +
@@ -191,6 +207,9 @@ export function createBuildServer(
         name === 'list_excluded_chats' ||
         name === 'get_scope_policy' ||
         name === 'get_style_profile' ||
+        name === 'get_style_evidence' ||
+        name === 'add_style_rule' ||
+        name === 'get_style_rules' ||
         name === 'get_persona_graph' ||
         name === 'add_persona_fact' ||
         name === 'get_persona_evidence'
@@ -496,6 +515,32 @@ export function createBuildServer(
             return await handleGetStyleProfile(
               service,
               (args ?? {}) as { chatId?: string },
+            )
+          case 'get_style_evidence':
+            return await handleGetStyleEvidence(
+              service,
+              (args ?? {}) as { chatId?: string; limit?: number },
+            )
+          case 'add_style_rule':
+            return await handleAddStyleRule(
+              service,
+              (args ?? {}) as {
+                statement: string
+                evidence: string
+                ruleId?: string
+                chatId?: string
+                appliesWhen?: string
+                doesNotApplyWhen?: string
+                counterExample?: string
+                origin?: string
+                confidence?: number
+                supersedes?: string
+              },
+            )
+          case 'get_style_rules':
+            return await handleGetStyleRules(
+              service,
+              (args ?? {}) as { chatId?: string; includeSuperseded?: boolean },
             )
           case 'get_persona_graph':
             return await handleGetPersonaGraph(

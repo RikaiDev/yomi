@@ -123,7 +123,7 @@ test('talker A, B and C get three different descriptions', () => {
   // C: an ordered-list talker is fully describable.
   expect(guideC).toContain('條列單位100%')
   expect(guideC).toContain('屬性表')
-  expect(guideC).toContain('風格指令')
+  expect(guideC).toContain('量測觀察')
 })
 
 test('a greeting-only sample is reported as insufficient', () => {
@@ -133,7 +133,7 @@ test('a greeting-only sample is reported as insufficient', () => {
 
   const guide = narrativeGuideLines(profile).join('\n')
   expect(guide).toContain('資料不足')
-  expect(guide).not.toContain('風格指令')
+  expect(guide).not.toContain('量測觀察')
 })
 
 test('a list-command sample is sufficient even without narrative prose', () => {

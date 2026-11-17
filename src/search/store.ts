@@ -278,6 +278,37 @@ export function getDb(): Database {
       UNIQUE (mid, kind, form, text)
     );
   `)
+  // Style rules: the owner's writing rules, written by a model that read the
+  // owner's own messages as evidence. The statistics in the style profile are
+  // measurements; these rows are judgements, and each one keeps the sentence
+  // it was based on, the situation it applies to, and the situation it does
+  // not apply to.
+  //
+  // A rule is never silently rewritten. A contradicting rule supersedes the
+  // older one: the old row stays with status 'superseded' so the history of
+  // what was believed, and when, is still readable.
+  handle.exec(`
+    CREATE TABLE IF NOT EXISTS style_rules (
+      id INTEGER PRIMARY KEY,
+      ruleId TEXT UNIQUE NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'global',
+      chatId TEXT,
+      statement TEXT NOT NULL,
+      appliesWhen TEXT,
+      doesNotApplyWhen TEXT,
+      evidence TEXT NOT NULL,
+      counterExample TEXT,
+      origin TEXT NOT NULL DEFAULT 'derived',
+      confidence REAL NOT NULL DEFAULT 0.5,
+      status TEXT NOT NULL DEFAULT 'active',
+      supersedes TEXT,
+      createdAt INTEGER NOT NULL
+    );
+  `)
+  handle.exec(`
+    CREATE INDEX IF NOT EXISTS style_rules_scope
+    ON style_rules (scope, chatId, status);
+  `)
   // The personas themselves: one row per person, with what the evidence
   // says about them.
   handle.exec(`
@@ -858,6 +889,153 @@ export function deletePersonaFact(subjectName: string, term: string): number {
     )
     .run({ $subjectName: subjectName, $term: term })
   return Number(before?.count ?? 0)
+}
+
+/**
+ * The slice of the database handle the style-rule functions need.
+ *
+ * Taking the handle as an argument lets a test exercise the rules against a
+ * throwaway database instead of the owner's own index.
+ */
+export interface StyleRuleHandle {
+  prepare: <T = Record<string, unknown>>(
+    sql: string,
+  ) => {
+    run: (params?: Record<string, unknown>) => unknown
+    all: (params?: Record<string, unknown>) => T[]
+    get: (params?: Record<string, unknown>) => T | undefined
+  }
+}
+
+/** One style rule as stored in the `style_rules` table. */
+export interface StyleRuleRecord {
+  /** Stable identifier, so a later rule can supersede this one. */
+  ruleId: string
+  /** 'global' or 'chat'. */
+  scope: string
+  /** The conversation this rule is scoped to, when scope is 'chat'. */
+  chatId: string | null
+  /** The rule itself, in the writer's words. */
+  statement: string
+  /** When the rule applies. */
+  appliesWhen: string | null
+  /** When the rule does not apply. */
+  doesNotApplyWhen: string | null
+  /** The owner's own sentence the rule was read from, verbatim. */
+  evidence: string
+  /** A case where the rule does not hold, when one is known. */
+  counterExample: string | null
+  /** 'stated' when the owner said the rule outright, 'derived' otherwise. */
+  origin: string
+  /** Confidence in [0,1]. */
+  confidence: number
+  /** 'active' or 'superseded'. */
+  status: string
+  /** The rule this one replaces, when it replaces one. */
+  supersedes: string | null
+  /** When the rule was recorded. */
+  createdAt: number
+}
+
+/**
+ * Store a style rule.
+ *
+ * The row is unique on ruleId, so re-recording the same rule updates it in
+ * place. A rule that supersedes another one marks the older row
+ * 'superseded' rather than deleting it — the history stays readable.
+ *
+ * @param rule - The rule to store.
+ * @returns The row id of the stored rule.
+ */
+export function upsertStyleRule(
+  rule: StyleRuleRecord,
+  handle: StyleRuleHandle = getDb(),
+): number {
+  const now = Date.now()
+  handle
+    .prepare(
+      `INSERT INTO style_rules (ruleId, scope, chatId, statement, appliesWhen, doesNotApplyWhen, evidence, counterExample, origin, confidence, status, supersedes, createdAt)
+     VALUES ($ruleId, $scope, $chatId, $statement, $appliesWhen, $doesNotApplyWhen, $evidence, $counterExample, $origin, $confidence, $status, $supersedes, $createdAt)
+     ON CONFLICT(ruleId) DO UPDATE SET
+       scope = excluded.scope,
+       chatId = excluded.chatId,
+       statement = excluded.statement,
+       appliesWhen = excluded.appliesWhen,
+       doesNotApplyWhen = excluded.doesNotApplyWhen,
+       evidence = excluded.evidence,
+       counterExample = excluded.counterExample,
+       origin = excluded.origin,
+       confidence = excluded.confidence,
+       status = excluded.status,
+       supersedes = excluded.supersedes,
+       createdAt = excluded.createdAt`,
+    )
+    .run({
+      $ruleId: rule.ruleId,
+      $scope: rule.scope,
+      $chatId: rule.chatId,
+      $statement: rule.statement,
+      $appliesWhen: rule.appliesWhen,
+      $doesNotApplyWhen: rule.doesNotApplyWhen,
+      $evidence: rule.evidence,
+      $counterExample: rule.counterExample,
+      $origin: rule.origin,
+      $confidence: rule.confidence,
+      $status: rule.status,
+      $supersedes: rule.supersedes,
+      $createdAt: now,
+    })
+  if (rule.supersedes) {
+    handle
+      .prepare(
+        `UPDATE style_rules SET status = 'superseded' WHERE ruleId = $supersedes`,
+      )
+      .run({ $supersedes: rule.supersedes })
+  }
+  const row = handle
+    .prepare<{ id: number }>(
+      'SELECT id FROM style_rules WHERE ruleId = $ruleId',
+    )
+    .get({ $ruleId: rule.ruleId })
+  return row?.id ?? 0
+}
+
+/**
+ * Read the style rules.
+ *
+ * Superseded rules are excluded unless asked for: they stay in the table so
+ * the history of what was believed is still readable, but a reader wants the
+ * rules in force.
+ *
+ * @param options - Which rules to read.
+ * @returns The matching rules, newest first.
+ */
+export function listStyleRules(
+  options: { includeSuperseded?: boolean; chatId?: string } = {},
+  handle: StyleRuleHandle = getDb(),
+): StyleRuleRecord[] {
+  if (options.chatId) {
+    return handle
+      .prepare<StyleRuleRecord>(
+        `SELECT ruleId, scope, chatId, statement, appliesWhen, doesNotApplyWhen, evidence, counterExample, origin, confidence, status, supersedes, createdAt
+         FROM style_rules
+         WHERE (scope = 'global' OR chatId = $chatId)
+           AND ($includeSuperseded = 1 OR status = 'active')
+         ORDER BY createdAt DESC;`,
+      )
+      .all({
+        $chatId: options.chatId,
+        $includeSuperseded: options.includeSuperseded ? 1 : 0,
+      })
+  }
+  return handle
+    .prepare<StyleRuleRecord>(
+      `SELECT ruleId, scope, chatId, statement, appliesWhen, doesNotApplyWhen, evidence, counterExample, origin, confidence, status, supersedes, createdAt
+       FROM style_rules
+       WHERE ($includeSuperseded = 1 OR status = 'active')
+       ORDER BY createdAt DESC;`,
+    )
+    .all({ $includeSuperseded: options.includeSuperseded ? 1 : 0 })
 }
 
 /** One piece of evidence as stored in the `persona_evidence` table. */
