@@ -51,7 +51,7 @@ missed edit *after* the package is public.
 - **the tarball actually starts in both protocol eras** — `npm pack`, install
   it into a clean project, then use the stable MCP v2 client to pin a
   stateless `2026-07-28` connection and separately complete a legacy
-  `initialize` connection. Both probes list all 41 tools and call
+  `initialize` connection. Both probes list all 49 tools and call
   `get_scope_policy`; the modern probe also audits the connection-independent
   MCP Apps tool metadata and UI resource. A fourth probe drives the
   2026-07-28 multi-round-trip `login` flow — it answers the pre-flight

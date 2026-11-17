@@ -86,8 +86,8 @@ async function verifyEra(expectedEra, supportsApps = false) {
 
     const toolList = await client.listTools()
     const { tools } = toolList
-    if (tools.length !== 43) {
-      throw new Error(`tools/list returned ${tools.length} tools; expected 43`)
+    if (tools.length !== 49) {
+      throw new Error(`tools/list returned ${tools.length} tools; expected 49`)
     }
     if (new Set(tools.map((tool) => tool.name)).size !== tools.length) {
       throw new Error('tools/list returned duplicate tool names')
