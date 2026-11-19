@@ -119,7 +119,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'Download and decrypt one LINE media message of any downloadable type (image, video, audio, file). Returns image/audio MCP content, or an embedded resource blob (with filename when known) for video/file. Non-media messages (text, sticker refs, unsupported types) return an honest error naming the content type — never fabricated bytes.',
+      'Download and decrypt one LINE media message of any downloadable type (image, video, audio, file). Returns image/audio MCP content, or an embedded resource blob (with filename when known) for video/file. Set asImage=true to convert a PDF attachment to a PNG image (first page) so it can be read as MCP image content. Non-media messages (text, sticker refs, unsupported types) return an honest error naming the content type — never fabricated bytes.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -136,6 +136,11 @@ export const TOOLS: Tool[] = [
           type: 'boolean',
           description:
             'Fetch the smaller preview object instead of the full-resolution original (images/video only).',
+        },
+        asImage: {
+          type: 'boolean',
+          description:
+            'If true and the attachment is a PDF, convert the first page to a PNG image and return it as MCP image content instead of a resource blob.',
         },
       },
       required: ['chat_id', 'message_id'],

@@ -2,6 +2,7 @@ import type { LineProtocolService } from '../../line/core/service.js'
 import {
   fetchLineMessageImage,
   fetchLineMessageMedia,
+  fetchLineMessageMediaAsImage,
   LineMediaAccessError,
   resolveLineMediaType,
 } from '../media.js'
@@ -56,12 +57,25 @@ export async function handleGetMessageImage(
  */
 export async function handleGetMessageMedia(
   service: LineProtocolService,
-  args: { chatId: string; messageId: string; preview?: boolean },
+  args: { chatId: string; messageId: string; preview?: boolean; asImage?: boolean },
 ) {
   if (!args.chatId || !args.messageId) {
     return toolError('chat_id and message_id are required.')
   }
   try {
+    if (args.asImage) {
+      const { bytes, mimeType } = await fetchLineMessageMediaAsImage(
+        service,
+        args.chatId,
+        args.messageId,
+        args.preview ?? false,
+      )
+      return {
+        content: [
+          { type: 'image' as const, data: bytes.toString('base64'), mimeType },
+        ],
+      }
+    }
     const { bytes, contentType, fileName, mimeType } =
       await fetchLineMessageMedia(
         service,

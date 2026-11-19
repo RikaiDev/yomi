@@ -21,6 +21,7 @@ import {
 import { isSquareChatMid } from '../line/client/square-service/client.js'
 import { CONTENT_TYPE } from '../line/core/constants.js'
 import { decryptLineMediaBytes } from '../line/core/media-decrypt.js'
+import { spawn } from 'node:child_process'
 
 interface LineMediaDescriptor {
   fileName: string | null
@@ -466,4 +467,108 @@ export async function fetchLineMessageImage(
     throw new UnsupportedMediaTypeError(result.contentType, messageId)
   }
   return { bytes: result.bytes, mimeType: result.mimeType }
+}
+
+/**
+ * Convert PDF bytes to a PNG image (first page) using the system `pdftoppm`.
+ * No temp files are written — everything flows through stdin/stdout pipes.
+ *
+ * @param pdfBytes - Raw PDF bytes.
+ * @param options - dpi (default 150).
+ * @returns PNG image bytes of the first page.
+ */
+export async function convertPdfBytesToPng(
+  pdfBytes: Buffer,
+  options: { dpi?: number } = {},
+): Promise<Buffer> {
+  const dpi = options.dpi ?? 150
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      'pdftoppm',
+      ['-png', '-singlefile', '-r', String(dpi), '-', '-'],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    )
+    const chunks: Buffer[] = []
+    const errChunks: Buffer[] = []
+    let settled = false
+
+    proc.stdout?.on('data', (chunk: Buffer) => chunks.push(chunk))
+    proc.stderr?.on('data', (chunk: Buffer) => errChunks.push(chunk))
+    proc.on('error', (err: Error) => {
+      settled = true
+      reject(err)
+    })
+    proc.on('close', (code: number | null) => {
+      if (settled) return
+      settled = true
+      if (code !== 0) {
+        reject(
+          new Error(
+            `pdftoppm exited ${code}: ${Buffer.concat(errChunks)
+              .toString()
+              .trim() || 'unknown error'}`,
+          ),
+        )
+        return
+      }
+      const png = Buffer.concat(chunks)
+      if (png.length === 0) {
+        reject(new Error('pdftoppm returned empty output'))
+        return
+      }
+      resolve(png)
+    })
+
+    proc.stdin?.write(pdfBytes)
+    proc.stdin?.end()
+  })
+}
+
+export interface FetchLineMessageMediaAsImageResult {
+  bytes: Buffer
+  mimeType: string
+  fileName: string | null
+  contentType: number
+}
+
+/**
+ * Fetch and decrypt one LINE media attachment. When the resolved MIME type is
+ * `application/pdf` (or the filename ends with `.pdf`), the PDF is converted
+ * to a PNG image (first page) so it can be carried as MCP `image` content.
+ * Everything else is returned as-is (image/audio/file bytes unchanged).
+ *
+ * @param service - Active LineProtocolService (must already have a resumed session).
+ * @param chatId - LINE chat/group/room MID the message belongs to.
+ * @param messageId - LINE message id.
+ * @param preview - Whether to fetch the smaller preview object instead of the original.
+ * @returns Media bytes (PNG for PDF, original otherwise), MIME type, filename, content type.
+ */
+export async function fetchLineMessageMediaAsImage(
+  service: any,
+  chatId: string,
+  messageId: string,
+  preview: boolean,
+): Promise<FetchLineMessageMediaAsImageResult> {
+  const result = await fetchLineMessageMedia(service, chatId, messageId, preview)
+  const isPdf =
+    result.mimeType === 'application/pdf' ||
+    result.fileName?.toLowerCase().endsWith('.pdf')
+  if (!isPdf) {
+    return {
+      bytes: result.bytes,
+      mimeType: result.mimeType,
+      fileName: result.fileName,
+      contentType: result.contentType,
+    }
+  }
+  const pngBytes = await convertPdfBytesToPng(result.bytes)
+  const baseName = result.fileName
+    ? result.fileName.replace(/\.pdf$/i, '')
+    : 'page'
+  return {
+    bytes: pngBytes,
+    mimeType: 'image/png',
+    fileName: `${baseName}.png`,
+    contentType: result.contentType,
+  }
 }

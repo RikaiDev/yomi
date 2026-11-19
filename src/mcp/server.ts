@@ -278,6 +278,7 @@ export function createBuildServer(
                 chatId: string
                 messageId: string
                 preview?: boolean
+                asImage?: boolean
               },
             )
           case 'get_unread_digest':
