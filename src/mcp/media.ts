@@ -470,8 +470,10 @@ export async function fetchLineMessageImage(
 }
 
 /**
- * Convert PDF bytes to a PNG image (first page) using the system `pdftoppm`.
+ * Convert PDF bytes to a PNG image (first page) using the system `pdftocairo`.
  * No temp files are written — everything flows through stdin/stdout pipes.
+ * (`pdftoppm` writes nothing when its stdin is a pipe on this build, so we
+ * use `pdftocairo` which streams stdout correctly.)
  *
  * @param pdfBytes - Raw PDF bytes.
  * @param options - dpi (default 150).
@@ -484,7 +486,7 @@ export async function convertPdfBytesToPng(
   const dpi = options.dpi ?? 150
   return new Promise((resolve, reject) => {
     const proc = spawn(
-      'pdftoppm',
+      'pdftocairo',
       ['-png', '-singlefile', '-r', String(dpi), '-', '-'],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     )
