@@ -20,5 +20,5 @@
     "src/ambient/ambient-observer.ts": ["exports"],
     "src/work-item/types.ts": ["exports"]
   },
-  "ignoreBinaries": ["security", "defaults", "sw_vers", "ffmpeg", "swiftc", "pkill", "ps"]
+  "ignoreBinaries": ["security", "defaults", "sw_vers", "ffmpeg", "swiftc", "pkill", "ps", "pdftoppm"]
 }
