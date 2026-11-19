@@ -67,7 +67,10 @@ async function verifyEra(expectedEra, supportsApps = false) {
       YOMI_DATA_DIR: dataDir,
       YOMI_INDEX_DB_PATH: dbPath,
       YOMI_NO_KEYCHAIN: '1',
-      // Keep the probes hermetic: no npm-registry round trip at startup.
+      // Keep the probes hermetic: no npm-registry round trip at startup, and
+      // never proxy to a daemon that happens to run on this machine — these
+      // probes certify the standalone artifact's own protocol negotiation.
+      YOMI_STANDALONE: '1',
       YOMI_NO_UPDATE_CHECK: '1',
     },
     stderr: 'pipe',
@@ -193,7 +196,10 @@ async function verifyMrtrLogin() {
       YOMI_DATA_DIR: dataDir,
       YOMI_INDEX_DB_PATH: dbPath,
       YOMI_NO_KEYCHAIN: '1',
-      // Keep the probes hermetic: no npm-registry round trip at startup.
+      // Keep the probes hermetic: no npm-registry round trip at startup, and
+      // never proxy to a daemon that happens to run on this machine — these
+      // probes certify the standalone artifact's own protocol negotiation.
+      YOMI_STANDALONE: '1',
       YOMI_NO_UPDATE_CHECK: '1',
     },
     stderr: 'pipe',
