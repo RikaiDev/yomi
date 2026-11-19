@@ -223,10 +223,26 @@ function recordSyncPoll(
  * @param ops - Parsed operations.
  */
 function emitOperations(runtime: any, ops: any[]): void {
+  if (!runtime._readReceipts) {
+    runtime._readReceipts = new Map()
+  }
   for (const op of ops) {
     runtime.emit('operation', op)
     if (op.type === OP_TYPE.RECEIVE_MESSAGE && op.message) {
       runtime.emit('message', op.message)
+    }
+    if (op.type === OP_TYPE.NOTIFIED_READ_MESSAGE) {
+      // Peer read receipt: param1 is the chat id, param2 the last read
+      // message id. get_chat_messages compares message ids against it to
+      // derive read_time for outgoing messages.
+      const chatId = op.param1
+      const lastReadMessageId = op.param2
+      if (chatId && lastReadMessageId) {
+        runtime._readReceipts.set(String(chatId), {
+          lastReadMessageId: String(lastReadMessageId),
+          readTime: op.createdTime,
+        })
+      }
     }
     if (op.revision && op.revision > runtime.revision) {
       runtime.revision = op.revision

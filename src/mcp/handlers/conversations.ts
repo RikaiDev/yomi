@@ -320,6 +320,8 @@ export async function handleGetChatMessages(
   )
   const myMid = service.profile?.mid
   const acc = createPhiAccumulator()
+  const readReceipts = service.client?._readReceipts ?? new Map()
+  const receipt = readReceipts.get(args.chatId)
   const shaped = messages.map((message: any) => {
     const contentTypeNum = Number(message.contentType ?? 0)
     const contentTypeLabel = contentTypeToLabel(contentTypeNum)
@@ -335,6 +337,20 @@ export async function handleGetChatMessages(
     const replyTo = extractReplyTo(message)
     const mentions = extractMentions(message)
     const hasMedia = resolveLineMediaDescriptor(message) !== null
+    let readTime: number | undefined
+    if (isSelf && receipt?.lastReadMessageId) {
+      try {
+        const msgId =
+          typeof message.id === 'bigint' ? message.id : BigInt(message.id)
+        const lastReadId =
+          typeof receipt.lastReadMessageId === 'bigint'
+            ? receipt.lastReadMessageId
+            : BigInt(receipt.lastReadMessageId)
+        if (msgId <= lastReadId) {
+          readTime = receipt.readTime
+        }
+      } catch {}
+    }
     return {
       createdTime: message.createdTime,
       deliveredTime: message.deliveredTime,
@@ -356,6 +372,7 @@ export async function handleGetChatMessages(
       stickerId: stickerInfo.stickerId,
       packageId: stickerInfo.packageId,
       replyToMessageId: replyTo,
+      readTime,
       // Emitted ONLY when the message decrypted but could not be authenticated
       // (LINE E2EE v1 — AES-CBC, no tag, no AAD), so its presence is a signal
       // rather than noise on the ~98% of traffic that is v2 and verified.
