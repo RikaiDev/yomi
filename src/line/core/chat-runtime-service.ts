@@ -250,8 +250,8 @@ export function createChatRuntimeService(service: any) {
      * Mark a LINE conversation read up to a message via the explicit
      * sendChatChecked boundary. When messageId is omitted, resolves the most
      * recent message id in the chat. NEVER called by background capture/sync —
-     * only by the explicit mark_read tool. Honest no-op (marked:false) when
-     * there is no message to mark.
+     * only by the send_* tools and the explicit mark_read tool. Honest
+     * no-op (marked:false) when there is no message to mark.
      *
      * @param chatId - LINE chat MID.
      * @param messageId - Optional message id to mark read up to.

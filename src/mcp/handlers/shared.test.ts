@@ -2,12 +2,16 @@ import { expect, test } from 'bun:test'
 import { jsonText, toonResult, toonText } from './shared.js'
 
 test('jsonText keeps small machine-facing payloads compact and valid', () => {
-  const value = { sent: true, messageId: '123' }
+  const value = { sent: true, delivered: true, read: true, messageId: '123' }
   const text = jsonText(value)
   // The MCP contract is snake_case; camelCase keys are converted on the way out.
-  expect(text).toBe('{"sent":true,"message_id":"123"}')
+  expect(text).toBe(
+    '{"sent":true,"delivered":true,"read":true,"message_id":"123"}',
+  )
   expect(JSON.parse(text)).toEqual({
     sent: true,
+    delivered: true,
+    read: true,
     message_id: '123',
   })
 })
