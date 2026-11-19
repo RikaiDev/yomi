@@ -9,16 +9,25 @@
  */
 
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  type Stats,
+  statSync,
+  unlinkSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { createServer, type Server as HttpServer } from 'node:http'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
+import { fileURLToPath } from 'node:url'
 import {
   createMcpHandler,
   ReadBuffer,
@@ -45,10 +54,104 @@ export interface DaemonInfo {
   host: string
   startedAt: string
   version: string
+  /** Absolute dist/ path the daemon loaded its code from. */
+  distPath?: string
+  /**
+   * Fingerprint of dist/ at daemon startup. A mismatch against the current
+   * on-disk build means the daemon is running stale code and should restart.
+   */
+  buildId?: string | null
 }
 
 export function daemonInfoPath(): string {
   return yomiDataPath('daemon.json')
+}
+
+/**
+ * Machine-wide single-instance guard for the daemon.
+ *
+ * The pre-check (`getRunningDaemon`) is advisory only: it can miss a daemon
+ * that listens on a non-default port while daemon.json is missing, and two
+ * `daemon start` calls racing before either binds a port would both pass it.
+ * `daemon.lock` closes that hole: the file is created with O_EXCL (atomic),
+ * records the owner pid, and is recovered only when the owner pid is provably
+ * dead — so a crashed daemon never wedges the next start.
+ */
+export function daemonLockPath(): string {
+  return yomiDataPath('daemon.lock')
+}
+
+export interface DaemonLock {
+  fd: number
+  pid: number
+}
+
+export type DaemonLockResult =
+  | { locked: true; lock: DaemonLock }
+  | { locked: false; holderPid: number | null }
+
+/**
+ * Acquire the machine-wide daemon lock.
+ *
+ * @returns A held lock to pass to `releaseDaemonLock`, or the holder pid when
+ * the lock is already owned by a live process.
+ */
+export function acquireDaemonLock(): DaemonLockResult {
+  const file = daemonLockPath()
+  const dir = dirname(file)
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(file, 'wx')
+      writeSync(fd, String(process.pid))
+      return { locked: true, lock: { fd, pid: process.pid } }
+    } catch (error: any) {
+      if (error?.code !== 'EEXIST') {
+        throw error
+      }
+      let holderPid: number | null = null
+      try {
+        const parsed = parseInt(readFileSync(file, 'utf8').trim(), 10)
+        holderPid = Number.isFinite(parsed) && parsed > 0 ? parsed : null
+      } catch {
+        holderPid = null
+      }
+      // A live holder keeps the lock — including this very process: two
+      // daemons must never share one process either.
+      if (holderPid) {
+        try {
+          process.kill(holderPid, 0)
+          return { locked: false, holderPid }
+        } catch {}
+      }
+      // Stale lock (holder dead or pid unreadable) — recover and retry once.
+      try {
+        unlinkSync(file)
+      } catch {}
+    }
+  }
+  return { locked: false, holderPid: null }
+}
+
+/**
+ * Release a lock acquired by `acquireDaemonLock`. Idempotent; never removes a
+ * successor's lock file.
+ *
+ * @param lock - The lock returned by a successful `acquireDaemonLock`.
+ */
+export function releaseDaemonLock(lock: DaemonLock): void {
+  const file = daemonLockPath()
+  try {
+    const currentPid = parseInt(readFileSync(file, 'utf8').trim(), 10)
+    if (currentPid === lock.pid) {
+      unlinkSync(file)
+    }
+  } catch {}
+  try {
+    closeSync(lock.fd)
+  } catch {}
 }
 
 export function readDaemonInfo(): DaemonInfo | null {
@@ -161,6 +264,74 @@ export async function getRunningDaemon(): Promise<DaemonInfo | null> {
   }
 }
 
+/** A dist/ write counts as finished only after this much mtime silence. */
+const DIST_REBUILD_QUIET_MS = 5000
+
+/**
+ * Resolve the compiled build directory this module was loaded from.
+ *
+ * @returns Absolute path to `dist/` in production, `src/` when run from TS
+ * sources (bun test) — both are valid fingerprint targets for their runtime.
+ */
+export function daemonDistPath(): string {
+  // dist/mcp/daemon.js → ../ = dist/  (src/mcp/daemon.ts → ../ = src/)
+  return fileURLToPath(new URL('../', import.meta.url))
+}
+
+/**
+ * Fingerprint a compiled build directory by content.
+ *
+ * Returns null when the directory is missing, unreadable mid-walk (a build is
+ * in flight), or still being written — the newest mtime inside the quiet
+ * window means `tsc`/`cp` has not finished, and loading or comparing now
+ * would snapshot a half-written build.
+ *
+ * @param distPath - Absolute build directory to fingerprint.
+ * @param options - `quietMs` overrides the write-quiet window (0 for tests).
+ * @returns Hex fingerprint, or null when no stable fingerprint is available.
+ */
+export function computeDistBuildId(
+  distPath: string,
+  { quietMs = DIST_REBUILD_QUIET_MS }: { quietMs?: number } = {},
+): string | null {
+  if (!existsSync(distPath)) {
+    return null
+  }
+  let entries: string[]
+  try {
+    entries = readdirSync(distPath, { recursive: true, encoding: 'utf8' })
+  } catch {
+    return null
+  }
+  const hash = createHash('sha256')
+  let newestMtime = 0
+  for (const entry of entries.sort()) {
+    const abs = join(distPath, entry)
+    let stat: Stats
+    try {
+      stat = statSync(abs)
+    } catch {
+      continue
+    }
+    if (!stat.isFile()) {
+      continue
+    }
+    newestMtime = Math.max(newestMtime, stat.mtimeMs)
+    hash.update(entry)
+    hash.update('\0')
+    try {
+      hash.update(readFileSync(abs))
+    } catch {
+      return null
+    }
+    hash.update('\0')
+  }
+  if (newestMtime && Math.max(0, Date.now() - newestMtime) < quietMs) {
+    return null
+  }
+  return hash.digest('hex')
+}
+
 export interface StartDaemonOptions {
   port?: number
   host?: string
@@ -170,6 +341,30 @@ export interface StartDaemonOptions {
 
 export async function startDaemonServer(
   options: StartDaemonOptions = {},
+): Promise<{ server: HttpServer; port: number; info: DaemonInfo }> {
+  // Single-instance gate: refuse before any expensive work (session resume,
+  // embedding model) so a second daemon can never come up, whatever the
+  // pre-check missed.
+  const lock = acquireDaemonLock()
+  if (!lock.locked) {
+    const holder = lock.holderPid ? ` (pid ${lock.holderPid})` : ''
+    throw new Error(
+      `Yomi daemon is already running${holder}. Clients proxy to it ` +
+        'automatically, or stop it first with `yomi daemon stop`.',
+    )
+  }
+
+  try {
+    return await startDaemonServerLocked(options, lock.lock)
+  } catch (error) {
+    releaseDaemonLock(lock.lock)
+    throw error
+  }
+}
+
+async function startDaemonServerLocked(
+  options: StartDaemonOptions,
+  lock: DaemonLock,
 ): Promise<{ server: HttpServer; port: number; info: DaemonInfo }> {
   const host = options.host ?? DEFAULT_DAEMON_HOST
   const requestedPort =
@@ -296,12 +491,19 @@ export async function startDaemonServer(
   const actualPort =
     typeof addr === 'object' && addr ? addr.port : requestedPort
 
+  const distPath = daemonDistPath()
   const info: DaemonInfo = {
     pid: process.pid,
     port: actualPort,
     host,
     startedAt: new Date().toISOString(),
     version: YOMI_VERSION,
+    distPath,
+    // Snapshot with no quiet window: this process just imported this exact
+    // build, so it is complete on disk by construction. "npm run build &&
+    // start" lands within the write-quiet window, and a null here would
+    // silently disable rebuild detection for the daemon's whole lifetime.
+    buildId: computeDistBuildId(distPath, { quietMs: 0 }),
   }
 
   try {
@@ -319,6 +521,7 @@ export async function startDaemonServer(
     try {
       rmSync(daemonInfoPath())
     } catch {}
+    releaseDaemonLock(lock)
     try {
       server.close()
     } catch {}
@@ -388,13 +591,25 @@ export async function stopDaemon(): Promise<{
 /**
  * Start the daemon in a detached background process using the current runtime
  * and entrypoint, then wait until it is healthy. Used for automatic restarts
- * after package updates so users do not have to run `yomi daemon restart`.
+ * after package updates or dist rebuilds so users do not have to run
+ * `yomi daemon restart`.
  */
 export async function startDaemonInBackground(
   options: { port?: number } = {},
 ): Promise<DaemonInfo | null> {
   const port = options.port
-  const entry = process.argv[1]
+  // Prefer the CLI entry this process was started with; fall back to the
+  // run.mjs beside this module so test or library contexts can never spawn
+  // themselves (e.g. a bun test file) as the daemon.
+  let entry = process.argv[1]
+  if (!entry?.endsWith('run.mjs')) {
+    const candidate = fileURLToPath(
+      new URL('../../../run.mjs', import.meta.url),
+    )
+    if (existsSync(candidate)) {
+      entry = candidate
+    }
+  }
   if (!entry) {
     return null
   }
@@ -427,24 +642,32 @@ export async function startDaemonInBackground(
 }
 
 /**
- * Ensure the running daemon (if any) matches this installed Yomi version.
- * When a stale daemon is detected, restart it automatically and transparently.
+ * Ensure the running daemon (if any) matches what should be running: this
+ * installed Yomi version, and the build currently on the daemon's own disk.
+ * A stale daemon — older version, or its dist/ rebuilt underneath it — is
+ * restarted automatically and transparently on the next client connect.
  */
 export async function ensureDaemonUpToDate(): Promise<DaemonInfo | null> {
   const daemon = await getRunningDaemon()
   if (!daemon) {
     return null
   }
-  if (!daemon.version || daemon.version === YOMI_VERSION) {
-    return daemon
+
+  const versionStale =
+    !!daemon.version && compareVersions(YOMI_VERSION, daemon.version) > 0
+  let rebuildStale = false
+  if (daemon.distPath && daemon.buildId) {
+    const current = computeDistBuildId(daemon.distPath)
+    rebuildStale = current !== null && current !== daemon.buildId
   }
-  if (compareVersions(YOMI_VERSION, daemon.version) <= 0) {
+  if (!versionStale && !rebuildStale) {
     return daemon
   }
 
   log.info('daemon.auto_restart', {
     from: daemon.version,
     to: YOMI_VERSION,
+    reason: rebuildStale ? 'dist_rebuilt' : 'version',
     port: daemon.port,
   })
   await stopDaemon()

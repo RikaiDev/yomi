@@ -3,7 +3,8 @@
  * Yomi entry point — the npm shim.
  *
  * Usage:
- *   yomi                Start the MCP stdio server (default)
+ *   yomi                Start the MCP stdio server (default; starts the shared
+ *                       daemon if needed, then proxies to it)
  *   yomi serve          Same as above, explicit
  *   yomi login [...]    Run the passwordless login flow in a terminal
  *   yomi help           Show this help
@@ -546,7 +547,8 @@ switch (cmd) {
     console.log(`Yomi (読み) — read, reply, send images to, and search your LINE from any AI agent.
 
 Usage:
-  yomi                Start the MCP stdio server (default, proxies to daemon if running)
+  yomi                Start the MCP stdio server (default; starts the shared
+                      daemon if needed, then proxies to it)
   yomi serve          Same as above, explicit
   yomi daemon [...]   Manage background persistent MCP daemon (start|stop|status|restart)
   yomi login [...]    Run the passwordless login flow in a terminal

@@ -587,11 +587,42 @@ export function createBuildServer(
  * Build and start the Yomi MCP server over stdio.
  */
 async function main(): Promise<void> {
-  // If a background daemon is running and standalone is not forced, proxy stdio to it!
-  if (process.env.YOMI_STANDALONE !== '1') {
-    const { ensureDaemonUpToDate, getRunningDaemon, proxyStdioToDaemon } =
-      await import('./daemon.js')
+  // `run.mjs daemon …` owns this process: its switch case starts the real
+  // daemon. main() running here too would import-chain the daemon decision a
+  // second time in the same process and can spawn a redundant generation.
+  if (process.argv[2] === 'daemon') {
+    return
+  }
+  // Converge on the shared daemon: proxy to it when it is running, and start
+  // it in the background when it is not, so every client shares one LINE
+  // runtime instead of each stdio connection running its own. The daemon's
+  // machine-wide lock makes concurrent starts safe — losers exit, the winner
+  // serves everyone. YOMI_STANDALONE=1 keeps the legacy per-connection runtime.
+  //
+  // Auto-starting is only safe from the real CLI entry (`run.mjs`): importing
+  // this module (e.g. from daemon.js under bun test) runs main() at module
+  // load with argv[1] pointing at the importing file, and spawning that as a
+  // daemon would execute arbitrary unrelated files in the background.
+  const fromYomiCli = (process.argv[1] ?? '').endsWith('run.mjs')
+  if (process.env.YOMI_STANDALONE !== '1' && fromYomiCli) {
+    const {
+      ensureDaemonUpToDate,
+      getRunningDaemon,
+      proxyStdioToDaemon,
+      startDaemonInBackground,
+    } = await import('./daemon.js')
     let daemon = await getRunningDaemon()
+    if (!daemon && fromYomiCli) {
+      log.info('daemon.auto_start')
+      try {
+        await startDaemonInBackground()
+      } catch (error: any) {
+        log.warn('daemon.auto_start_failed', {
+          error: error?.message ?? String(error),
+        })
+      }
+      daemon = await getRunningDaemon()
+    }
     if (daemon) {
       const updated = await ensureDaemonUpToDate()
       if (updated) {
@@ -601,6 +632,7 @@ async function main(): Promise<void> {
       await proxyStdioToDaemon(daemon)
       return
     }
+    log.warn('daemon.unavailable', { fallback: 'standalone' })
   }
 
   const service = new LineProtocolService()
