@@ -57,7 +57,12 @@ export async function handleGetMessageImage(
  */
 export async function handleGetMessageMedia(
   service: LineProtocolService,
-  args: { chatId: string; messageId: string; preview?: boolean; asImage?: boolean },
+  args: {
+    chatId: string
+    messageId: string
+    preview?: boolean
+    asImage?: boolean
+  },
 ) {
   if (!args.chatId || !args.messageId) {
     return toolError('chat_id and message_id are required.')

@@ -14,6 +14,7 @@
  * callers get an honest error naming the reason.
  */
 
+import { spawn } from 'node:child_process'
 import {
   downloadLineMessageData,
   downloadLineObsMediaObject,
@@ -21,7 +22,6 @@ import {
 import { isSquareChatMid } from '../line/client/square-service/client.js'
 import { CONTENT_TYPE } from '../line/core/constants.js'
 import { decryptLineMediaBytes } from '../line/core/media-decrypt.js'
-import { spawn } from 'node:child_process'
 
 interface LineMediaDescriptor {
   fileName: string | null
@@ -504,9 +504,9 @@ export async function convertPdfBytesToPng(
       if (code !== 0) {
         reject(
           new Error(
-            `pdftoppm exited ${code}: ${Buffer.concat(errChunks)
-              .toString()
-              .trim() || 'unknown error'}`,
+            `pdftoppm exited ${code}: ${
+              Buffer.concat(errChunks).toString().trim() || 'unknown error'
+            }`,
           ),
         )
         return
@@ -549,7 +549,12 @@ export async function fetchLineMessageMediaAsImage(
   messageId: string,
   preview: boolean,
 ): Promise<FetchLineMessageMediaAsImageResult> {
-  const result = await fetchLineMessageMedia(service, chatId, messageId, preview)
+  const result = await fetchLineMessageMedia(
+    service,
+    chatId,
+    messageId,
+    preview,
+  )
   const isPdf =
     result.mimeType === 'application/pdf' ||
     result.fileName?.toLowerCase().endsWith('.pdf')
