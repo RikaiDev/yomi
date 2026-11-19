@@ -69,21 +69,11 @@ export async function handleSendMessage(
   )
   const messageId = sent?.id ?? sent?.messageId ?? null
   log.info('send_message.sent', { chatId: args.chatId, messageId })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_message.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
         type: 'text' as const,
-        text: jsonText({ sent: true, messageId, read }),
+        text: jsonText({ sent: true, messageId }),
       },
     ],
   }
@@ -142,16 +132,6 @@ export async function handleSendImage(
     messageId: result?.messageId,
     oid: result?.oid,
   })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_image.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
@@ -160,7 +140,6 @@ export async function handleSendImage(
           messageId: result?.messageId ?? null,
           oid: result?.oid ?? null,
           sent: true,
-          read,
         }),
       },
     ],
@@ -226,16 +205,6 @@ export async function handleSendFile(
     oid: result?.oid,
     fileName,
   })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_file.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
@@ -245,7 +214,6 @@ export async function handleSendFile(
           oid: result?.oid ?? null,
           fileName,
           sent: true,
-          read,
         }),
       },
     ],
@@ -298,16 +266,6 @@ export async function handleSendContact(
     contactMid: args.contactMid,
     messageId: result?.messageId,
   })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_contact.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
@@ -317,7 +275,6 @@ export async function handleSendContact(
           contactMid: args.contactMid,
           displayName,
           sent: true,
-          read,
         }),
       },
     ],
@@ -360,16 +317,6 @@ export async function handleSendSticker(
     packageId: args.packageId,
     messageId: result?.messageId,
   })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_sticker.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
@@ -379,7 +326,6 @@ export async function handleSendSticker(
           stickerId: args.stickerId,
           packageId: args.packageId,
           sent: true,
-          read,
         }),
       },
     ],
@@ -428,16 +374,6 @@ export async function handleSendLocation(
     chatId: args.chatId,
     messageId: result?.messageId,
   })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_location.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
@@ -447,7 +383,6 @@ export async function handleSendLocation(
           latitude: args.latitude,
           longitude: args.longitude,
           sent: true,
-          read,
         }),
       },
     ],
@@ -513,16 +448,6 @@ export async function handleSendAudio(
     messageId: result?.messageId,
     oid: result?.oid,
   })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_audio.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
@@ -531,7 +456,6 @@ export async function handleSendAudio(
           messageId: result?.messageId ?? null,
           oid: result?.oid ?? null,
           sent: true,
-          read,
         }),
       },
     ],
@@ -599,16 +523,6 @@ export async function handleSendVideo(
     messageId: result?.messageId,
     oid: result?.oid,
   })
-  let read = false
-  try {
-    const r = await service.markChatRead(args.chatId)
-    read = r.marked
-  } catch (error: any) {
-    log.warn('send_video.mark_read_failed', {
-      chatId: args.chatId,
-      error: error?.message ?? String(error),
-    })
-  }
   return {
     content: [
       {
@@ -617,7 +531,6 @@ export async function handleSendVideo(
           messageId: result?.messageId ?? null,
           oid: result?.oid ?? null,
           sent: true,
-          read,
         }),
       },
     ],
