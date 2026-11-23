@@ -14,6 +14,7 @@
 import { isSquareChatMid } from '../client/square-service/client.js'
 import { createMessageCommandService } from './message-command-service.js'
 import { createMessageQueryService } from './message-query-service.js'
+import { isOfficialAccountChatMid } from './official-account.js'
 
 /**
  * Create the chat/runtime capability bound to one LINE protocol service.
@@ -53,10 +54,21 @@ export function createChatRuntimeService(service: any) {
       if (isSquareChatMid(to)) {
         return service.client.sendSquareMessage(to, text, contentMetadata)
       }
-      return createMessageCommandService(
+      const commands = createMessageCommandService(
         () => service.client,
         service.e2eeManager,
-      ).sendMessage(to, {
+      )
+      if (isOfficialAccountChatMid(to)) {
+        // Official accounts have no E2EE peer key — the channel is plain
+        // text, which is exactly how the official LINE client talks to
+        // them. Encrypting for one fails at key negotiation and the
+        // message never leaves Yomi.
+        return commands.sendMessage(
+          to,
+          contentMetadata ? { text, contentMetadata } : text,
+        )
+      }
+      return commands.sendMessage(to, {
         e2ee: true,
         text,
         contentMetadata,
