@@ -342,14 +342,19 @@ export function getDb(): Database {
  * directly.
  *
  * @param rows - Messages to index.
+ * @param handle - Database handle to write to. Defaults to the shared index;
+ *   tests pass their own so they never touch the real one.
  * @returns Number of rows upserted.
  */
-export function upsertMessages(rows: MessageRecord[]): number {
+export function upsertMessages(
+  rows: MessageRecord[],
+  handle?: Database,
+): number {
   if (rows.length === 0) {
     return 0
   }
-  const handle = getDb()
-  const stmt = handle.prepare(`
+  const db = handle ?? getDb()
+  const stmt = db.prepare(`
     INSERT INTO messages (messageId, chatId, chatName, fromMid, fromName, text, search_text, createdTime, contentType, stickerId, stickerPackageId)
     VALUES ($messageId, $chatId, $chatName, $fromMid, $fromName, $text, $searchText, $createdTime, $contentType, $stickerId, $stickerPackageId)
     ON CONFLICT(messageId) DO UPDATE SET
@@ -364,7 +369,7 @@ export function upsertMessages(rows: MessageRecord[]): number {
       stickerId = excluded.stickerId,
       stickerPackageId = excluded.stickerPackageId;
   `)
-  const upsertAll = handle.transaction((batch: MessageRecord[]) => {
+  const upsertAll = db.transaction((batch: MessageRecord[]) => {
     for (const row of batch) {
       stmt.run({
         $messageId: row.messageId,
@@ -552,24 +557,27 @@ export function pruneStaleEmbeddings(model: string): number {
  *
  * @param rows - messageId + vector pairs to store.
  * @param model - Embedder.modelLabel that produced these vectors.
+ * @param handle - Database handle to write to. Defaults to the shared index;
+ *   tests pass their own so they never touch the real one.
  * @returns Number of rows upserted.
  */
 export function upsertEmbeddings(
   rows: { messageId: string; vector: number[] }[],
   model: string,
+  handle?: Database,
 ): number {
   if (rows.length === 0) {
     return 0
   }
-  const handle = getDb()
-  const stmt = handle.prepare(`
+  const db = handle ?? getDb()
+  const stmt = db.prepare(`
     INSERT INTO embeddings (messageId, model, dim, vector)
     VALUES ($messageId, $model, $dim, $vector)
     ON CONFLICT(messageId, model) DO UPDATE SET
       dim = excluded.dim,
       vector = excluded.vector;
   `)
-  const upsertAll = handle.transaction(
+  const upsertAll = db.transaction(
     (batch: { messageId: string; vector: number[] }[]) => {
       for (const row of batch) {
         stmt.run({
@@ -592,11 +600,12 @@ export function upsertEmbeddings(
  * (which counts raw messages regardless of embedding status).
  *
  * @param model - Embedder.modelLabel to count vectors for.
+ * @param handle - Database handle to read from. Defaults to the shared index.
  * @returns Number of stored vectors for that model.
  */
-export function getEmbeddingCount(model: string): number {
-  const handle = getDb()
-  const row = handle
+export function getEmbeddingCount(model: string, handle?: Database): number {
+  const db = handle ?? getDb()
+  const row = db
     .prepare<{ count: number }>(
       'SELECT COUNT(*) as count FROM embeddings WHERE model = $model;',
     )
@@ -613,20 +622,55 @@ export function getEmbeddingCount(model: string): number {
  * re-fetch it from LINE. Empty-text rows are excluded (nothing to embed).
  *
  * @param model - Embedder.modelLabel to check coverage for.
+ * @param limit - Maximum number of rows to return. The worker embeds in small
+ *   idle batches, so it asks for one batch at a time instead of materialising
+ *   the whole backlog on every tick.
+ * @param handle - Database handle to read from. Defaults to the shared index.
  * @returns messageId + text for every indexed message missing a vector for that model.
  */
 export function getMessagesMissingEmbedding(
   model: string,
+  limit?: number,
+  handle?: Database,
 ): { messageId: string; text: string }[] {
-  const handle = getDb()
-  return handle
-    .prepare<{ messageId: string; text: string }>(`
+  const db = handle ?? getDb()
+  const bounded = typeof limit === 'number' && limit > 0
+  const sql = `
     SELECT m.messageId as messageId, m.text as text
     FROM messages m
     LEFT JOIN embeddings e ON e.messageId = m.messageId AND e.model = $model
-    WHERE e.messageId IS NULL AND length(m.text) > 0;
+    WHERE e.messageId IS NULL AND length(m.text) > 0
+    ${bounded ? 'LIMIT $limit' : ''};
+  `
+  return db
+    .prepare<{ messageId: string; text: string }>(sql)
+    .all(bounded ? { $model: model, $limit: limit } : { $model: model })
+}
+
+/**
+ * Newest indexed message time per chat — the watermark the incremental
+ * capture compares LINE's per-chat activity against, so a chat that has not
+ * moved since the last index is not re-fetched on every process start.
+ *
+ * @param handle - Database handle to read from. Defaults to the shared index.
+ * @returns Map of chat MID to the newest indexed message time (epoch ms).
+ */
+export function getMaxIndexedMessageTimeByChat(
+  handle?: Database,
+): Map<string, number> {
+  const db = handle ?? getDb()
+  const rows = db
+    .prepare<{ chatId: string; maxTime: number }>(`
+    SELECT chatId as chatId, MAX(COALESCE(createdTime, 0)) as maxTime
+    FROM messages
+    GROUP BY chatId;
   `)
-    .all({ $model: model })
+    .all()
+  const result = new Map<string, number>()
+  for (const row of rows) {
+    result.set(row.chatId, Number(row.maxTime) || 0)
+  }
+  return result
 }
 
 /**

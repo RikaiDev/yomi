@@ -33,6 +33,7 @@ import { resolveConversationNames, resolveSenderNames } from '../mcp/names.js'
 import { createCliLogger } from '../util/log.js'
 import type { Embedder } from './embedder.js'
 import { getExcludedChatIds } from './scope.js'
+import type { Database } from './sqlite.js'
 import {
   getMessagesMissingEmbedding,
   type MessageRecord,
@@ -44,8 +45,15 @@ import {
 const log = createCliLogger('Yomi')
 
 const DEFAULT_EMBED_BATCH = 8
-const DEFAULT_EMBED_BACKFILL_MAX = 512
 const MAX_EMBED_TEXT_CHARS = 2000
+/**
+ * Maximum number of messages embedded inline (in the caller's own request)
+ * during one collect run. Everything beyond this is left to the background
+ * embedding worker: a foreground collect must not turn into minutes of CPU
+ * embedding, which is what used to push `collect_messages` past the MCP
+ * request timeout.
+ */
+const DEFAULT_INLINE_EMBED_MAX = 48
 
 function embedBatchSize(): number {
   const raw = Number(process.env.YOMI_EMBED_BATCH)
@@ -53,10 +61,10 @@ function embedBatchSize(): number {
   return DEFAULT_EMBED_BATCH
 }
 
-function embedBackfillMax(): number {
-  const raw = Number(process.env.YOMI_EMBED_BACKFILL_MAX)
+function inlineEmbedMax(): number {
+  const raw = Number(process.env.YOMI_INLINE_EMBED_MAX)
   if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw)
-  return DEFAULT_EMBED_BACKFILL_MAX
+  return DEFAULT_INLINE_EMBED_MAX
 }
 
 function normalizeEmbedText(text: string): string {
@@ -82,6 +90,10 @@ export interface CollectMessagesOptions {
   /**
    * Skip global backfill of already-indexed messages missing embeddings.
    * Useful for frequent live flushes to avoid repeated full-index sweeps.
+   *
+   * @deprecated Backfill now runs in the background embedding worker
+   *   (./embedding-worker.ts), never inside a foreground request. This flag
+   *   is kept for compatibility and no longer changes behaviour.
    */
   skipBackfill?: boolean
   /**
@@ -89,6 +101,13 @@ export interface CollectMessagesOptions {
    * Omit for the default budget. Ignored when skipBackfill is true.
    */
   backfillMax?: number
+  /**
+   * Wall-clock budget for the chat loop, in milliseconds. When the budget is
+   * exhausted the run stops early and returns what it indexed so far — the
+   * next run resumes from the chats that were not reached, so a bounded run
+   * degrades in latency, never in coverage.
+   */
+  budgetMs?: number
 }
 
 /** Summary of one collect_messages run. */
@@ -153,6 +172,12 @@ export async function collectMessages(
   }
   let messagesIndexed = 0
   let messagesEmbedded = 0
+  const startedAt = Date.now()
+  const deadline =
+    typeof options.budgetMs === 'number' && options.budgetMs > 0
+      ? startedAt + options.budgetMs
+      : null
+  const inlineBudget = inlineEmbedMax()
 
   if (options.embedder) {
     try {
@@ -165,6 +190,13 @@ export async function collectMessages(
   }
 
   for (const [chatId, chatName] of chatNames) {
+    if (deadline && Date.now() >= deadline) {
+      log.warn('collect.budget_exhausted', {
+        elapsedMs: Date.now() - startedAt,
+        chatsScanned: messagesIndexed,
+      })
+      break
+    }
     const messages = await service.getRecentMessages(chatId, perChat)
     const withText = messages.filter(
       (message: any) =>
@@ -172,6 +204,7 @@ export async function collectMessages(
         message.contentType === 7,
     )
     if (withText.length === 0) {
+      await yieldToEventLoop()
       continue
     }
     const senderNames = await resolveSenderNames(
@@ -201,47 +234,58 @@ export async function collectMessages(
       }
     })
     messagesIndexed += upsertMessages(rows)
-    messagesEmbedded += await embedAndStore(rows, options.embedder)
+    // Only a bounded slice is embedded inline. The remainder joins the
+    // backlog the background worker drains in idle batches, so a foreground
+    // collect stays fast and the index still converges on full coverage.
+    const inlineRows = rows.slice(0, Math.max(0, inlineBudget))
+    messagesEmbedded += await embedAndStore(inlineRows, options.embedder)
+    await yieldToEventLoop()
   }
 
-  // Self-heal embedding coverage: embed anything already in the index that
-  // still lacks a vector for this model — legacy keyword-only rows, or rows
-  // from a run where the model wasn't loaded. This is why re-running
-  // collect_messages repairs a partially-embedded index without re-fetching
-  // from LINE. The rows just embedded above are no longer "missing", so they
-  // are not embedded twice. Live/incremental flushes can skip or cap this to
-  // keep latency and memory bounded.
-  if (options.embedder && !options.skipBackfill) {
-    messagesEmbedded += await backfillMissingEmbeddings(
-      options.embedder,
-      options.backfillMax,
-    )
-  }
-
+  // Embedding coverage is repaired by the background worker (see
+  // ./embedding-worker.ts), which embeds the backlog in small idle batches
+  // with a persisted watermark. It deliberately does NOT run here: a
+  // foreground request that sweeps thousands of unembedded messages is what
+  // pushed `collect_messages` past the MCP request timeout, and the worker
+  // reaches the same coverage without blocking anyone.
   return { chatsScanned: chatNames.size, messagesIndexed, messagesEmbedded }
 }
 
 /**
- * Embed every indexed message that still lacks a vector for the given
- * model, in batches, from stored text alone (no LINE round-trip). Best-
- * effort like embedAndStore: if the model fails mid-sweep it stops and
- * returns what it managed, leaving the rest keyword-only rather than
- * aborting. Idempotent — a fully-embedded index makes this a no-op.
+ * Embed a bounded batch of indexed messages that still lack a vector for the
+ * given model, in batches, from stored text alone (no LINE round-trip).
+ *
+ * Best-effort: if the model fails mid-batch it stops and returns what it
+ * managed, leaving the rest keyword-only rather than aborting. Idempotent —
+ * a fully-embedded index makes this a no-op.
+ *
+ * This is the unit of work the background embedding worker calls on every
+ * idle tick: a small, bounded batch instead of the whole backlog, so the
+ * worker can be interrupted at any point without losing or repeating work.
  *
  * @param embedder - Injected embedder to embed missing rows with.
+ * @param max - Maximum number of messages to embed in this call.
+ * @param handle - Database handle to read and write. Defaults to the shared
+ *   index; tests pass their own so they never touch the real one.
  * @returns Number of messages newly embedded and stored.
  */
-async function backfillMissingEmbeddings(
+export async function embedMissingBatch(
   embedder: Embedder,
-  max?: number,
+  max: number,
+  handle?: Database,
 ): Promise<number> {
-  const missingAll = getMessagesMissingEmbedding(embedder.modelLabel)
-  if (missingAll.length === 0) {
+  const limit = Math.max(0, max)
+  if (limit === 0) {
     return 0
   }
-  const limit = Math.max(0, max ?? embedBackfillMax())
-  const missing =
-    limit >= missingAll.length ? missingAll : missingAll.slice(0, limit)
+  const missing = getMessagesMissingEmbedding(
+    embedder.modelLabel,
+    limit,
+    handle,
+  )
+  if (missing.length === 0) {
+    return 0
+  }
   let embedded = 0
   const batchSize = embedBatchSize()
   for (let i = 0; i < missing.length; i += batchSize) {
@@ -256,9 +300,10 @@ async function backfillMissingEmbeddings(
           vector: vectors[j],
         })),
         embedder.modelLabel,
+        handle,
       )
     } catch (error: any) {
-      log.warn('backfill.failed', {
+      log.warn('embed.batch_failed', {
         error: error?.message ?? String(error),
         remaining: missing.length - embedded,
       })

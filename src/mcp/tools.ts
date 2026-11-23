@@ -836,7 +836,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      "Bulk-fetch recent messages from LINE conversations into Yomi's local cross-conversation search index (LINE has no native cross-chat search). Fetches up to `per_chat` per chat (default 100) for `chat_ids`, or all conversations when omitted, and best-effort embeds them for semantic search — re-running also repairs any messages still missing a vector. A background capture loop keeps the index current on its own, so call this only to force a reconcile or backfill specific chats. Undecryptable messages are skipped, not fabricated.",
+      "Bulk-fetch recent messages from LINE conversations into Yomi's local cross-conversation search index (LINE has no native cross-chat search). Fetches up to `per_chat` per chat (default 100) for `chat_ids`, or all conversations when omitted, and indexes them for keyword search. Semantic vectors are produced by a background worker in idle batches, so a collect does not wait for the whole embedding backlog. A background capture loop keeps the index current on its own, so call this only to force a reconcile or backfill specific chats. Undecryptable messages are skipped, not fabricated.",
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -857,7 +857,7 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
-      'Search across your LINE messages. Hybrid ranking: FTS5 keyword search (covers every indexed message, so exact matches are never dropped) fused with semantic similarity when embeddings are available — the `mode` field reports which contributed (hybrid | semantic | keyword). If the index is empty and a session is live, it auto-collects all conversations first; a populated index searches locally with no network. Empty index with no session returns an honest notice, never a fabricated match list.',
+      'Search across your LINE messages. Hybrid ranking: FTS5 keyword search (covers every indexed message, so exact matches are never dropped) fused with semantic similarity when embeddings are available — the `mode` field reports which contributed (hybrid | semantic | keyword). Semantic ranking runs only when the vector index covers enough of the corpus and only within a timeout; otherwise the search degrades to the keyword index and says so in `mode`. If the index is empty and a session is live, it auto-collects the conversations within a time budget first; a populated index searches locally with no network. Empty index with no session returns an honest notice, never a fabricated match list.',
     inputSchema: {
       type: 'object' as const,
       properties: {

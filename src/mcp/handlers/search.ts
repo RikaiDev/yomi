@@ -41,6 +41,87 @@ import { jsonText, toolError, toonText } from './shared.js'
 
 const log = createCliLogger('Yomi')
 
+/** Minimum vectors before semantic search is worth its model run. */
+const MIN_SEMANTIC_VECTORS = 64
+/** Minimum share of the corpus that must carry a vector. */
+const MIN_SEMANTIC_RATIO = 0.05
+
+/**
+ * Wall-clock budget for the semantic half of a search. The query vector needs
+ * a local ONNX forward pass, which is slow on a cold model — a search must
+ * not wait minutes for it.
+ */
+function semanticTimeoutMs(): number {
+  const raw = Number(process.env.YOMI_SEMANTIC_TIMEOUT_MS)
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw)
+  return 8000
+}
+
+/**
+ * Wall-clock budget for the empty-index auto-collect.
+ */
+function autoCollectBudgetMs(): number {
+  const raw = Number(process.env.YOMI_AUTO_COLLECT_BUDGET_MS)
+  if (Number.isFinite(raw) && raw > 0) return Math.floor(raw)
+  return 20000
+}
+
+/**
+ * Whether the vector index holds enough of the corpus for semantic ranking
+ * to be worth running.
+ *
+ * @param model - Embedder model label.
+ * @returns Coverage verdict plus the numbers behind it.
+ */
+function semanticCoverage(model: string): {
+  usable: boolean
+  reason: string
+  vectors: number
+  messages: number
+} {
+  const vectors = getEmbeddingCount(model)
+  const messages = getIndexedMessageCount()
+  if (vectors === 0) {
+    return { usable: false, reason: 'no_vectors', vectors, messages }
+  }
+  if (vectors < MIN_SEMANTIC_VECTORS) {
+    return { usable: false, reason: 'too_few_vectors', vectors, messages }
+  }
+  if (messages > 0 && vectors / messages < MIN_SEMANTIC_RATIO) {
+    return { usable: false, reason: 'sparse_coverage', vectors, messages }
+  }
+  return { usable: true, reason: 'ok', vectors, messages }
+}
+
+/**
+ * Resolve a promise, or reject when it takes longer than the budget.
+ *
+ * @param promise - Work to await.
+ * @param timeoutMs - Budget in milliseconds.
+ * @param label - Label used in the timeout error message.
+ * @returns The promise's value, or a timeout error.
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label}_timeout_after_${timeoutMs}ms`)),
+          timeoutMs,
+        )
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /**
  * Reciprocal Rank Fusion constant. The standard k=60 from Cormack et al.:
  * a result's contribution from one list is 1/(k + rank), so rank matters
@@ -147,16 +228,23 @@ export async function handleCollectMessages(
  * model, adding paraphrase recall. `mode` reports which methods contributed.
  *
  * Auto-collects on an empty index: the first search with a live session
- * transparently runs a full `collect_messages` across all conversations
+ * transparently runs a bounded `collect_messages` across the conversations
  * before searching, so callers never have to know `collect_messages`
- * exists — searching "just works" out of the box. This is the one place
- * search itself may hit LINE; a non-empty index searches locally with no
- * network. Ongoing freshness is not this handler's job: the background
+ * exists — searching "just works" out of the box. The auto-collect is
+ * wall-clock bounded and indexes text only; vectors are produced by the
+ * background embedding worker, so the first search answers from the keyword
+ * index instead of waiting for the whole embedding backlog. This is the one
+ * place search itself may hit LINE; a non-empty index searches locally with
+ * no network. Ongoing freshness is not this handler's job: the background
  * capture loop (see ../search/capture.ts) indexes incoming messages as they
  * arrive, so the index stays current without search re-collecting on every
  * query (which would cost tens of seconds of latency — not any rate limit,
  * which we have never observed). With an empty index and no session, it says
  * so honestly rather than returning a silently empty result.
+ *
+ * Semantic search is attempted only when the vector index covers enough of
+ * the corpus, and only within a timeout; otherwise the search degrades to
+ * the keyword index and says so through the reported `mode`.
  *
  * @param service - Resumed LineProtocolService (used only to auto-collect an empty index).
  * @param args - Tool arguments.
@@ -181,8 +269,13 @@ export async function handleSearchMessages(
       }
     }
     log.info('search.auto_collect', { reason: 'empty_index' })
+    // The empty-index auto-collect is bounded: it sweeps the conversations
+    // within a wall-clock budget and indexes text only. Vectors are the
+    // background worker's job (see ../../search/embedding-worker.ts), so a
+    // first search answers from the keyword index instead of waiting for
+    // thousands of CPU embeddings.
     const summary = await collectMessages(service, {
-      embedder: getDefaultEmbedder(),
+      budgetMs: autoCollectBudgetMs(),
     })
     log.info('search.auto_collect_done', { ...summary })
     if (getIndexedMessageCount() === 0) {
@@ -204,9 +297,25 @@ export async function handleSearchMessages(
 
   const keyword = searchMessages(args.query, pool)
   let semantic: SemanticSearchResult[] = []
-  if (getEmbeddingCount(embedder.modelLabel) > 0) {
+  // Semantic search is a bonus, not a prerequisite. It costs a local model
+  // run for the query vector, so it is attempted only when the vector index
+  // holds enough of the corpus to be worth it, and only for as long as the
+  // caller is willing to wait. Anything else falls back to the keyword index,
+  // which already covers every message.
+  const coverage = semanticCoverage(embedder.modelLabel)
+  if (!coverage.usable) {
+    log.info('search.semantic_skipped', {
+      reason: coverage.reason,
+      vectors: coverage.vectors,
+      messages: coverage.messages,
+    })
+  } else {
     try {
-      semantic = await semanticSearch(args.query, pool, embedder)
+      semantic = await withTimeout(
+        semanticSearch(args.query, pool, embedder),
+        semanticTimeoutMs(),
+        'semantic_search',
+      )
     } catch (error: any) {
       log.warn('search.semantic_failed', {
         error: error?.message ?? String(error),

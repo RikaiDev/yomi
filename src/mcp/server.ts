@@ -16,6 +16,7 @@ import type { Mention } from '../line/core/mention.js'
 import { LineProtocolService } from '../line/core/service.js'
 import { startCapture } from '../search/capture.js'
 import { getDefaultEmbedder } from '../search/default-embedder.js'
+import { markForegroundActivity } from '../search/embedding-worker.js'
 import { createCliLogger } from '../util/log.js'
 import { checkForUpdate } from '../util/update-check.js'
 import { YOMI_VERSION } from '../version.js'
@@ -185,6 +186,10 @@ export function createBuildServer(
 
     server.setRequestHandler('tools/call', async (request, ctx) => {
       const { name } = request.params
+      // Tell the background embedding worker that a foreground request is in
+      // flight, so it spends its idle budget elsewhere (see
+      // ../search/embedding-worker.ts).
+      markForegroundActivity()
       // The MCP contract is snake_case; the code behind the boundary speaks
       // camelCase. Normalize the arguments once, here, so no handler has to
       // know which convention the client used.
@@ -625,8 +630,13 @@ async function main(): Promise<void> {
   } else {
     log.info('session.resumed', { mid: service.profile?.mid ?? null })
     if (process.env.YOMI_NO_CAPTURE !== '1') {
+      // Embeddings are enabled by default. Set YOMI_EMBEDDINGS=0 to disable
+      // semantic vectors (keyword search still works); capture itself can be
+      // disabled with YOMI_NO_CAPTURE=1. This mirrors the daemon path
+      // (../mcp/daemon.ts) — the standalone runtime used to invert the test,
+      // so it started capture with NO embedder while the daemon embedded.
       const embedder =
-        process.env.YOMI_EMBEDDINGS === '0' ? getDefaultEmbedder() : undefined
+        process.env.YOMI_EMBEDDINGS === '0' ? undefined : getDefaultEmbedder()
       startCapture(service, embedder).catch((error: any) => {
         log.error('capture.start_failed', {
           error: error?.message ?? String(error),

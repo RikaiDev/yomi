@@ -7,11 +7,21 @@
  * local search index current while the user is actually using the app.
  *
  * Two mechanisms:
- *   - Startup catch-up: one collectMessages() over all conversations, to fill
- *     the gap for anything that arrived while the process was down. Idempotent
- *     (upsert), and denylist-gated inside collectMessages.
+ *   - Startup catch-up: one collectMessages() over the conversations that
+ *     moved since the last run, to fill the gap for anything that arrived
+ *     while the process was down. Idempotent (upsert), denylist-gated inside
+ *     collectMessages, and bounded by a wall-clock budget.
  *   - Live loop: LINE's startPolling long-polls SYNC4; on each new message we
  *     index just the affected chat via collectMessages({ chatIds }).
+ *
+ * A third, separate mechanism lives in ./embedding-worker.ts: the semantic
+ * vectors for already-indexed messages are produced by a background worker
+ * in small idle batches, so neither the catch-up nor a foreground tool call
+ * ever pays for the whole embedding backlog.
+ *
+ * Only one process writes the index at a time (see ./capture-lock.ts); the
+ * others stand down so two instances never duplicate the work or race on
+ * the same SQLite file.
  *
  * This is SILENT: SYNC4 sync never sends a read receipt, so capture never marks
  * anything read. Excluded (denylisted) chats are dropped inside collectMessages,
@@ -19,17 +29,20 @@
  * triggered here.
  */
 
+import { listBoxesByRecency } from '../line/core/message-box-recency.js'
 import type { LineProtocolService } from '../line/core/service.js'
 import { createCliLogger } from '../util/log.js'
+import { acquireCaptureLock } from './capture-lock.js'
 import { collectMessages } from './collector.js'
 import type { Embedder } from './embedder.js'
+import { startEmbeddingWorker } from './embedding-worker.js'
 import {
   deriveAllEvidence,
   deriveEvidenceForChats,
   FULL_REDERIVE_INTERVAL_MS,
 } from './persona-index.js'
 import { SqliteUnavailableError } from './sqlite.js'
-import { saveCaptureState } from './store.js'
+import { getMaxIndexedMessageTimeByChat, saveCaptureState } from './store.js'
 
 const log = createCliLogger('Yomi')
 
@@ -37,6 +50,41 @@ const log = createCliLogger('Yomi')
 const FLUSH_DEBOUNCE_MS = 2000
 /** Recent messages to (re)index per affected chat on a live flush. */
 const LIVE_PER_CHAT = 30
+/** Messages fetched per chat during the startup catch-up. */
+const CATCHUP_PER_CHAT = 50
+/** Wall-clock budget for the startup catch-up sweep. */
+const CATCHUP_BUDGET_MS = 30000
+
+/**
+ * Chats that moved since the last time we indexed them.
+ *
+ * A full sweep re-reads every conversation on every process start, which is
+ * pure waste for the chats that have not changed since the last run. LINE
+ * tells us the newest activity per chat (see listBoxesByRecency) and the
+ * index tells us the newest message we already stored for that chat, so the
+ * difference is exactly the set of chats worth re-reading.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @returns Chat MIDs whose LINE activity is newer than our last indexed
+ *   message, most recently active first.
+ */
+async function selectChatsNeedingCatchup(
+  service: LineProtocolService,
+): Promise<string[]> {
+  const boxes = await listBoxesByRecency(service, { withUnreadCount: false })
+  const lastIndexed = getMaxIndexedMessageTimeByChat()
+  const targets: { id: string; activity: number }[] = []
+  for (const box of boxes) {
+    const id = box?.id
+    if (!id) continue
+    const activity = Number(box?.lastDeliveredMessageId?.deliveredTime ?? 0)
+    const known = lastIndexed.get(id) ?? 0
+    if (activity > known) {
+      targets.push({ id, activity })
+    }
+  }
+  return targets.map((target) => target.id)
+}
 
 /**
  * Resolve the chat MID a parsed LINE message belongs to. Group/room messages
@@ -70,12 +118,25 @@ export async function startCapture(
   service: LineProtocolService,
   embedder?: Embedder,
 ): Promise<void> {
+  // One writer for the shared index. A second Yomi process (a standalone
+  // runtime next to the daemon, or a client-spawned server) stands down
+  // instead of repeating the same catch-up and racing the same SQLite file.
+  const lock = acquireCaptureLock()
+  if (!lock) {
+    log.info('capture.skipped_other_writer', {})
+    return
+  }
+
   try {
+    const chatIds = await selectChatsNeedingCatchup(service)
     const summary = await collectMessages(service, {
+      chatIds: chatIds.length > 0 ? chatIds : undefined,
+      perChat: CATCHUP_PER_CHAT,
       embedder,
-      backfillMax: 256,
+      budgetMs: CATCHUP_BUDGET_MS,
     })
     log.info('capture.catchup', {
+      chatsTargeted: chatIds.length,
       chatsScanned: summary.chatsScanned,
       messagesIndexed: summary.messagesIndexed,
       messagesEmbedded: summary.messagesEmbedded,
@@ -107,6 +168,13 @@ export async function startCapture(
   const pending = new Set<string>()
   let flushTimer: ReturnType<typeof setTimeout> | null = null
 
+  // The embedding backlog is drained by a background worker in idle batches,
+  // never inside a foreground request (see ./embedding-worker.ts).
+  const embeddingWorker = embedder ? startEmbeddingWorker(embedder) : null
+  if (embeddingWorker) {
+    process.once('exit', () => embeddingWorker.stop())
+  }
+
   const flush = async (): Promise<void> => {
     flushTimer = null
     const chatIds = [...pending]
@@ -129,6 +197,9 @@ export async function startCapture(
     }
     persistCursor(service)
     refreshPersona(service.profile?.mid ?? null, chatIds)
+    // New messages are now in the index but probably not embedded yet; let
+    // the worker pick them up on its next tick.
+    embeddingWorker?.nudge()
   }
 
   service.client.on('message', (message: any) => {
