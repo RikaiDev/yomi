@@ -33,12 +33,29 @@ interface EmbeddingOutput {
 }
 
 /** Minimal text-only embedding runtime used by this module. */
-interface TextEmbeddingRuntime {
-  tokenizer: (texts: string[]) => Promise<Record<string, unknown>>
+export interface TextEmbeddingRuntime {
+  tokenizer: (
+    texts: string[],
+    options?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>
   model: (inputs: Record<string, unknown>) => Promise<EmbeddingOutput>
 }
 
 let runtimePromise: Promise<TextEmbeddingRuntime> | null = null
+
+/**
+ * Tokenizer options every batch call uses.
+ *
+ * Padding and truncation are not optional here: a batch of messages almost
+ * never has the same text length, and an unpadded batch makes the tokenizer
+ * return ragged tensors that the model refuses ("Unable to create tensor …
+ * activate truncation and/or padding"). That failure is quiet in effect —
+ * every mixed-length batch throws, so the index stays keyword-only forever
+ * while the code looks healthy. With padding enabled, mean pooling still
+ * respects the attention mask: the same text embedded on its own and inside a
+ * padded batch yields identical vectors.
+ */
+const TOKENIZER_OPTIONS = { padding: true, truncation: true } as const
 
 /**
  * Resolve embedder dtype from environment, defaulting to q4 for lower memory.
@@ -123,18 +140,37 @@ export class DefaultEmbedder implements Embedder {
       return []
     }
     const runtime = await getRuntime()
-    const inputs = await runtime.tokenizer(texts.map(formatDocument))
+    const inputs = await runtime.tokenizer(
+      texts.map(formatDocument),
+      TOKENIZER_OPTIONS,
+    )
     const output = await runtime.model(inputs)
     return splitRows(output.sentence_embedding)
   }
 
   async embedQuery(query: string): Promise<number[]> {
     const runtime = await getRuntime()
-    const inputs = await runtime.tokenizer([`${QUERY_PREFIX}${query}`])
+    const inputs = await runtime.tokenizer(
+      [`${QUERY_PREFIX}${query}`],
+      TOKENIZER_OPTIONS,
+    )
     const output = await runtime.model(inputs)
     const [vector] = splitRows(output.sentence_embedding)
     return vector
   }
+}
+
+/**
+ * Install a stand-in embedding runtime, for tests that need to exercise the
+ * embedder without downloading the model. Passing null restores the real
+ * runtime.
+ *
+ * @param runtime - Runtime to use, or null to go back to the real one.
+ */
+export function setEmbeddingRuntimeForTesting(
+  runtime: TextEmbeddingRuntime | null,
+): void {
+  runtimePromise = runtime ? Promise.resolve(runtime) : null
 }
 
 let defaultEmbedder: DefaultEmbedder | null = null
