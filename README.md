@@ -103,6 +103,26 @@ Choose the client you actually use and follow only that section. Claude Code and
 Claude Desktop have separate MCP settings; configuring one does not configure the
 other.
 
+#### Several clients on one machine: start the shared daemon first
+
+Every client that launches Yomi on its own starts a **separate process**. Each
+one holds its own LINE session, loads its own copy of the embedding model, and
+writes the same search index. On a laptop that means several copies of a model
+that does not fit in memory together, and several writers on one SQLite file.
+
+Run the shared daemon once instead:
+
+```bash
+npx @rikaidev/yomi daemon start    # one process for every client
+npx @rikaidev/yomi daemon status   # is it running, and on which port
+npx @rikaidev/yomi daemon stop     # stop it again
+```
+
+Clients then proxy to that daemon over `127.0.0.1:3333` instead of running
+their own server, so the encoder is loaded once and the index has one writer.
+A client that finds no daemon falls back to its own process, so the daemon is
+an optimisation and a single-client setup works without it.
+
 <details open>
 <summary><strong>Claude Desktop — one-click install (no terminal, no Node)</strong></summary>
 

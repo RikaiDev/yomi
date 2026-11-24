@@ -5,6 +5,8 @@
  * initialize-based clients. One factory instance is pinned to the selected
  * era for the lifetime of the stdio connection.
  */
+
+import { realpathSync } from 'node:fs'
 import {
   type McpRequestContext,
   ResourceNotFoundError,
@@ -589,6 +591,34 @@ export function createBuildServer(
 }
 
 /**
+ * Whether this process was launched through the Yomi CLI entry point.
+ *
+ * The installed CLI is a symlink — `~/.bun/bin/yomi` points at the package's
+ * `run.mjs` — so the path the client used to spawn the process does not end
+ * in `run.mjs`. Comparing the raw argument therefore sent every globally
+ * installed client down the standalone path, where it opened its own LINE
+ * session, loaded its own encoder and wrote the shared index. Resolving the
+ * symlink first makes the installed client reach the shared daemon like every
+ * other launch path.
+ *
+ * @param entry - The script path the process was started with.
+ * @returns True when the entry point is the Yomi CLI.
+ */
+export function isYomiCliEntry(entry: string | undefined): boolean {
+  if (!entry) {
+    return false
+  }
+  if (entry.endsWith('run.mjs')) {
+    return true
+  }
+  try {
+    return realpathSync(entry).endsWith('run.mjs')
+  } catch {
+    return false
+  }
+}
+
+/**
  * Build and start the Yomi MCP server over stdio.
  */
 async function main(): Promise<void> {
@@ -604,7 +634,7 @@ async function main(): Promise<void> {
   // elicitation), so auto-starting a daemon here would silently degrade the
   // default install path — the install-smoke gate caught exactly that.
   // Clients that want the shared runtime start it with `yomi daemon start`.
-  const fromYomiCli = (process.argv[1] ?? '').endsWith('run.mjs')
+  const fromYomiCli = isYomiCliEntry(process.argv[1])
   if (process.env.YOMI_STANDALONE !== '1' && fromYomiCli) {
     const { ensureDaemonUpToDate, getRunningDaemon, proxyStdioToDaemon } =
       await import('./daemon.js')
