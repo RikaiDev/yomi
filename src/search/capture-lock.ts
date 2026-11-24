@@ -42,6 +42,15 @@ export interface CaptureLock {
   heartbeat(): void
   /** Release the lock (called on shutdown). */
   release(): void
+  /**
+   * Whether this process still owns the lock.
+   *
+   * Another process takes the lock over when the owner's heartbeat goes
+   * stale, so ownership can end without this process noticing. The owner has
+   * to check: a process that lost the lock must stop writing, otherwise two
+   * writers keep the index churning.
+   */
+  isOwner(): boolean
 }
 
 function lockPath(): string {
@@ -125,7 +134,7 @@ export function acquireCaptureLock(
     return null
   }
 
-  const timer = setInterval(() => {
+  const writeHeartbeat = (): void => {
     try {
       writeFileSync(
         path,
@@ -135,7 +144,9 @@ export function acquireCaptureLock(
     } catch {
       // A failed heartbeat lets the next process take over — acceptable.
     }
-  }, HEARTBEAT_INTERVAL_MS)
+  }
+
+  const timer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS)
   timer.unref?.()
 
   const release = (): void => {
@@ -154,7 +165,15 @@ export function acquireCaptureLock(
   process.once('exit', release)
   log.info('capture.lock_acquired', { pid: process.pid, path })
   return {
-    heartbeat: () => {},
+    heartbeat: writeHeartbeat,
     release,
+    isOwner: () => {
+      const current = readLock()
+      return (
+        current !== null &&
+        current.pid === process.pid &&
+        Date.now() - current.heartbeatAt < staleMs
+      )
+    },
   }
 }

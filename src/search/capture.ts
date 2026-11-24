@@ -169,8 +169,12 @@ export async function startCapture(
   let flushTimer: ReturnType<typeof setTimeout> | null = null
 
   // The embedding backlog is drained by a background worker in idle batches,
-  // never inside a foreground request (see ./embedding-worker.ts).
-  const embeddingWorker = embedder ? startEmbeddingWorker(embedder) : null
+  // never inside a foreground request (see ./embedding-worker.ts). The worker
+  // stops when this process loses the lock, so a takeover never leaves two
+  // embedders writing the same index.
+  const embeddingWorker = embedder
+    ? startEmbeddingWorker(embedder, { isOwner: () => lock.isOwner() })
+    : null
   if (embeddingWorker) {
     process.once('exit', () => embeddingWorker.stop())
   }
@@ -182,6 +186,13 @@ export async function startCapture(
     if (chatIds.length === 0) {
       return
     }
+    if (!lock.isOwner()) {
+      // Another process took the index over. Writing here would duplicate its
+      // work and churn the WAL for nothing.
+      log.info('capture.flush_skipped_lock_lost', {})
+      return
+    }
+    lock.heartbeat()
     try {
       await collectMessages(service, {
         chatIds,
@@ -229,7 +240,13 @@ export async function startCapture(
     if (!selfMid) {
       return
     }
+    if (!lock.isOwner()) {
+      // Another process owns the index now; the full pass would only repeat
+      // its work and write the same pages again.
+      return
+    }
     try {
+      lock.heartbeat()
       const evidence = deriveAllEvidence(selfMid)
       log.info('capture.persona_full', { evidence })
     } catch (error: any) {

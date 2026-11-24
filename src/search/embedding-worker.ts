@@ -27,7 +27,12 @@
 import { createCliLogger } from '../util/log.js'
 import { embedMissingBatch } from './collector.js'
 import type { Embedder } from './embedder.js'
-import { getMessagesMissingEmbedding } from './store.js'
+import {
+  currentLoad,
+  isMachineIdle,
+  withLowPriority,
+} from './idle-resources.js'
+import { getEmbeddingBacklog } from './store.js'
 
 const log = createCliLogger('Yomi')
 
@@ -81,6 +86,16 @@ export interface EmbeddingWorkerOptions {
   intervalMs?: number
   /** How long the process stays "busy" after a foreground request (default 5000ms). */
   busyGraceMs?: number
+  /**
+   * Whether this process still owns the index.
+   *
+   * The lock can be taken over by another process while this one runs, so the
+   * worker checks ownership on every tick and stops when it lost it. Two
+   * embedders writing the same index is duplicated work and WAL churn.
+   */
+  isOwner?: () => boolean
+  /** Load average above which the machine counts as busy. */
+  maxLoad?: number
 }
 
 /** Handle for a running worker. */
@@ -118,6 +133,8 @@ export function startEmbeddingWorker(
   const busyGraceMs =
     options.busyGraceMs ??
     envInt('YOMI_EMBED_WORKER_BUSY_GRACE_MS', DEFAULT_BUSY_GRACE_MS)
+  const isOwner = options.isOwner ?? (() => true)
+  const maxLoad = options.maxLoad
 
   let timer: ReturnType<typeof setTimeout> | null = null
   let stopped = false
@@ -128,21 +145,42 @@ export function startEmbeddingWorker(
   const tick = async (): Promise<void> => {
     if (stopped) return
     if (running) return
+    if (!isOwner()) {
+      log.info('embedder.worker_stopped', { reason: 'lock_not_owned' })
+      stopped = true
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      return
+    }
     if (isForegroundBusy(busyGraceMs)) {
       log.info('embedder.worker_deferred', { reason: 'foreground_busy' })
       schedule()
       return
     }
+    if (!isMachineIdle(maxLoad)) {
+      // The machine is busy: wait for it to become idle instead of competing
+      // with the work the user is waiting on.
+      log.info('embedder.worker_deferred', {
+        reason: 'machine_busy',
+        load: currentLoad(),
+      })
+      schedule()
+      return
+    }
     running = true
     try {
-      const pending = getMessagesMissingEmbedding(embedder.modelLabel, 1).length
+      const pending = getEmbeddingBacklog(embedder.modelLabel)
       if (pending === 0) {
         consecutiveFailures = 0
         backoffMs = intervalMs
         schedule()
         return
       }
-      const embedded = await embedMissingBatch(embedder, batchSize)
+      const embedded = await withLowPriority(() =>
+        embedMissingBatch(embedder, batchSize),
+      )
       consecutiveFailures = 0
       backoffMs = intervalMs
       if (embedded > 0) {

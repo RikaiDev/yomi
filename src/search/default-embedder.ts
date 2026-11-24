@@ -69,6 +69,40 @@ function resolveDType(): DType {
 }
 
 /**
+ * Resolve the ONNX Runtime session options.
+ *
+ * The encoder runs on the CPU of the same machine the user is working on, so
+ * the runtime defaults are wrong for it: ONNX Runtime starts one intra-op
+ * thread per core, and those threads busy-wait between batches. With several
+ * Yomi processes on one Mac that turns a background indexing task into a
+ * permanent CPU load and pushes the rest of the machine into swap.
+ *
+ * One intra-op thread and one inter-op thread keep the encoder predictable: it
+ * uses one core, it never spins, and a second process cannot multiply the
+ * thread count. The memory arena and the memory pattern planner are off
+ * because a background indexer does not need a reusable arena, and holding one
+ * costs resident memory the rest of the machine needs.
+ *
+ * `YOMI_EMBED_THREADS` raises the thread count for a machine that is only
+ * running Yomi.
+ *
+ * @returns Session options for the ONNX Runtime session.
+ */
+function resolveSessionOptions(): Record<string, unknown> {
+  const raw = Number(process.env.YOMI_EMBED_THREADS)
+  const threads = Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1
+  const arena = process.env.YOMI_EMBED_MEM_ARENA === '1'
+  return {
+    intraOpNumThreads: threads,
+    interOpNumThreads: 1,
+    executionMode: 'sequential',
+    enableCpuMemArena: arena,
+    enableMemPattern: false,
+    graphOptimizationLevel: 'all',
+  }
+}
+
+/**
  * Lazily load and memoize the text-only EmbeddingGemma 2 runtime.
  * Vision/audio configs are nulled so only the text encoder is loaded.
  */
@@ -94,6 +128,7 @@ function getRuntime(): Promise<TextEmbeddingRuntime> {
             config,
             device: 'cpu',
             dtype,
+            session_options: resolveSessionOptions(),
           }),
         ])
 

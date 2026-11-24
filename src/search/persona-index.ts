@@ -43,6 +43,7 @@ import {
   type PersonaEvidenceRecord,
   type PersonaNodeRecord,
   replacePersonaEvidence,
+  replacePersonaEvidenceForMids,
 } from './store.js'
 
 /** How many messages the derivation reads. */
@@ -133,21 +134,19 @@ export function deriveEvidenceForChats(
   }
   const { rows } = loadEvidenceRows(DERIVE_LIMIT, chatIds)
   const derived = collectEvidence(rows as EvidenceRow[], selfMid)
-  const existing = listPersonaEvidence()
-  const existingNodes = listPersonaNodes()
 
-  // Merge: the incremental result replaces the rows for the people it
-  // touched, and leaves everyone else's rows in place.
+  // Replace the rows of the people this derivation touched and leave everyone
+  // else's rows in place. Rewriting the whole table on every message was the
+  // index's largest write amplifier: every derivation deleted and reinserted
+  // every row, so the WAL grew and checkpointed continuously.
   const touched = new Set(derived.map((item) => item.mid))
-  const mergedEvidence = [
-    ...existing.filter((item) => !touched.has(item.mid)),
-    ...toRecords(derived).evidence,
-  ]
-  const mergedNodes = [
-    ...existingNodes.filter((node) => !touched.has(node.mid)),
-    ...toRecords(derived).nodes,
-  ]
-  replacePersonaEvidence(mergedEvidence, mergedNodes, existing.length)
+  const records = toRecords(derived)
+  replacePersonaEvidenceForMids(
+    records.evidence,
+    records.nodes,
+    [...touched],
+    rows.length,
+  )
   return derived.length
 }
 

@@ -193,6 +193,12 @@ export function getDb(): Database {
       PRIMARY KEY (messageId, model)
     );
   `)
+  // Counting the vectors of one model must not read the whole table: the
+  // background worker asks for the backlog on every tick, and without this
+  // index each question scans every stored vector.
+  handle.exec(`
+    CREATE INDEX IF NOT EXISTS embeddings_model ON embeddings(model);
+  `)
   // Observability/resume cursor for the continuous capture loop (see
   // ../search/capture.ts): a single-row table recording the LINE sync
   // revision counters as of the last successful capture flush. Capture
@@ -591,6 +597,37 @@ export function upsertEmbeddings(
   )
   upsertAll(rows)
   return rows.length
+}
+
+/**
+ * Estimate how many messages still need a vector for the given model.
+ *
+ * The exact answer is an anti-join between the messages and the vectors,
+ * which probes the vector table once per message. The background worker asked
+ * that question every few seconds, so a corpus of a few thousand messages
+ * turned into a few thousand random reads of a large table on every tick.
+ *
+ * Two counts answer it far cheaper: how many messages carry text, and how
+ * many vectors the model already has. The difference is an upper bound — a
+ * message with no text needs no vector — so a zero means there is provably
+ * nothing left to embed.
+ *
+ * @param model - The embedder model label to count vectors for.
+ * @param handle - Database handle to read from. Defaults to the shared index.
+ * @returns The estimated number of messages still missing a vector.
+ */
+export function getEmbeddingBacklog(model: string, handle?: Database): number {
+  const db = handle ?? getDb()
+  const row = db
+    .prepare<{ total: number; embedded: number }>(
+      `SELECT
+         (SELECT COUNT(*) FROM messages WHERE length(text) > 0) AS total,
+         (SELECT COUNT(*) FROM embeddings WHERE model = $model) AS embedded;`,
+    )
+    .get({ $model: model })
+  const total = Number(row?.total ?? 0)
+  const embedded = Number(row?.embedded ?? 0)
+  return Math.max(0, total - embedded)
 }
 
 /**
@@ -1121,11 +1158,93 @@ export function replacePersonaEvidence(
   evidence: PersonaEvidenceRecord[],
   nodes: PersonaNodeRecord[],
   messageCount: number,
+  db?: Database,
 ): void {
-  const handle = getDb()
+  const handle = db ?? getDb()
   const now = Date.now()
-  handle.exec('DELETE FROM persona_evidence;')
-  handle.exec('DELETE FROM persona_nodes;')
+  // One transaction for the whole rewrite. Without it every statement commits
+  // on its own, and a full derivation of a few thousand rows turns into a few
+  // thousand WAL commits: the WAL fills to the auto-checkpoint threshold, the
+  // checkpoint copies the same pages back into the database, and the index
+  // spends its time writing WAL instead of answering searches.
+  handle.exec('BEGIN IMMEDIATE;')
+  try {
+    handle.exec('DELETE FROM persona_evidence;')
+    handle.exec('DELETE FROM persona_nodes;')
+    insertPersonaRows(handle, evidence, nodes, now)
+    writePersonaState(handle, {
+      derivedAt: now,
+      messageCount,
+      roleCount: evidence.length,
+    })
+    handle.exec('COMMIT;')
+  } catch (error) {
+    handle.exec('ROLLBACK;')
+    throw error
+  }
+}
+
+/**
+ * Replace the derived evidence of the given people only.
+ *
+ * The incremental derivation touches a handful of people at a time, so it
+ * rewrites only their rows. The wholesale replacement stays available for the
+ * full derivation, but the incremental path must not delete and reinsert every
+ * row in the table on every message.
+ *
+ * @param evidence - The derived evidence for the touched people.
+ * @param nodes - The derived personas for the touched people.
+ * @param touchedMids - The mids whose rows are replaced.
+ * @param messageCount - How many messages the derivation read.
+ */
+export function replacePersonaEvidenceForMids(
+  evidence: PersonaEvidenceRecord[],
+  nodes: PersonaNodeRecord[],
+  touchedMids: string[],
+  messageCount: number,
+  db?: Database,
+): void {
+  const handle = db ?? getDb()
+  const now = Date.now()
+  handle.exec('BEGIN IMMEDIATE;')
+  try {
+    const deleteEvidence = handle.prepare(
+      'DELETE FROM persona_evidence WHERE mid = $mid;',
+    )
+    const deleteNode = handle.prepare(
+      'DELETE FROM persona_nodes WHERE mid = $mid;',
+    )
+    for (const mid of touchedMids) {
+      deleteEvidence.run({ $mid: mid })
+      deleteNode.run({ $mid: mid })
+    }
+    insertPersonaRows(handle, evidence, nodes, now)
+    writePersonaState(handle, {
+      derivedAt: now,
+      messageCount,
+      roleCount: evidence.length,
+    })
+    handle.exec('COMMIT;')
+  } catch (error) {
+    handle.exec('ROLLBACK;')
+    throw error
+  }
+}
+
+/**
+ * Insert the derived evidence and persona rows.
+ *
+ * @param handle - The database handle to write to.
+ * @param evidence - The derived evidence.
+ * @param nodes - The derived personas.
+ * @param now - Timestamp written into every row.
+ */
+function insertPersonaRows(
+  handle: Pick<Database, 'prepare'>,
+  evidence: PersonaEvidenceRecord[],
+  nodes: PersonaNodeRecord[],
+  now: number,
+): void {
   const insertEvidence = handle.prepare(
     `INSERT INTO persona_evidence (mid, name, kind, form, text, occurrences, chatId, chatName, derivedAt)
      VALUES ($mid, $name, $kind, $form, $text, $occurrences, $chatId, $chatName, $derivedAt)`,
@@ -1156,11 +1275,6 @@ export function replacePersonaEvidence(
       $derivedAt: now,
     })
   }
-  writePersonaState(handle, {
-    derivedAt: now,
-    messageCount,
-    roleCount: evidence.length,
-  })
 }
 
 /**
@@ -1200,8 +1314,10 @@ export function writePersonaState(
  *
  * @returns The evidence, most substantial first.
  */
-export function listPersonaEvidence(): PersonaEvidenceRecord[] {
-  return getDb()
+export function listPersonaEvidence(
+  handle?: Database,
+): PersonaEvidenceRecord[] {
+  return (handle ?? getDb())
     .prepare<PersonaEvidenceRecord>(
       `SELECT mid, name, kind, form, text, occurrences, chatId, chatName, derivedAt
        FROM persona_evidence
@@ -1215,8 +1331,8 @@ export function listPersonaEvidence(): PersonaEvidenceRecord[] {
  *
  * @returns The personas, by MID.
  */
-export function listPersonaNodes(): PersonaNodeRecord[] {
-  return getDb()
+export function listPersonaNodes(handle?: Database): PersonaNodeRecord[] {
+  return (handle ?? getDb())
     .prepare<PersonaNodeRecord>(
       `SELECT mid, name, addresses, summary, derivedAt
        FROM persona_nodes
