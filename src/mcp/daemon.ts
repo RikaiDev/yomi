@@ -25,14 +25,19 @@ import {
   writeSync,
 } from 'node:fs'
 import { createServer, type Server as HttpServer } from 'node:http'
+import {
+  createConnection,
+  createServer as createNetServer,
+  type Server as NetServer,
+} from 'node:net'
 import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import {
-  createMcpHandler,
-  ReadBuffer,
-  serializeMessage,
-} from '@modelcontextprotocol/server'
+  StdioServerTransport,
+  serveStdio,
+} from '@modelcontextprotocol/server/stdio'
 import { LineProtocolService } from '../line/core/service.js'
 import { startCapture } from '../search/capture.js'
 import { getDefaultEmbedder } from '../search/default-embedder.js'
@@ -61,10 +66,25 @@ export interface DaemonInfo {
    * on-disk build means the daemon is running stale code and should restart.
    */
   buildId?: string | null
+  /** Unix socket where the daemon serves full stdio MCP sessions. */
+  socketPath?: string
 }
 
 export function daemonInfoPath(): string {
   return yomiDataPath('daemon.json')
+}
+
+/**
+ * Path of the Unix socket used for stdio MCP clients.
+ *
+ * Daemon-owned stdio sessions are served here rather than proxied through the
+ * one-shot HTTP endpoint, so protocol negotiation and server-initiated
+ * requests stay in the process that owns the LINE service.
+ *
+ * @returns Absolute socket path in the Yomi data directory.
+ */
+export function daemonSocketPath(): string {
+  return yomiDataPath('daemon.sock')
 }
 
 /**
@@ -424,6 +444,7 @@ async function startDaemonServerLocked(
           uptime: process.uptime(),
           session: service.profile ? { mid: service.profile.mid } : null,
           loginRequired: service.loginRequired ?? false,
+          socketPath: daemonSocketPath(),
         }),
       )
       return
@@ -487,6 +508,30 @@ async function startDaemonServerLocked(
     server.listen(requestedPort, host, () => resolve())
   })
 
+  // Serve full stdio MCP sessions over a local Unix socket. This is the path
+  // installed CLI clients use: the real serveStdio entry runs in the daemon,
+  // so era negotiation and server-initiated elicitation are never proxied
+  // through a one-shot HTTP POST.
+  const socketPath = daemonSocketPath()
+  try {
+    mkdirSync(dirname(socketPath), { recursive: true })
+    rmSync(socketPath)
+  } catch {}
+  const socketServer: NetServer = createNetServer((socket) => {
+    serveStdio(buildServer, {
+      legacy: 'serve',
+      transport: new StdioServerTransport(socket, socket),
+      onerror: (error) =>
+        log.error('server.protocol_error', {
+          error: error?.message ?? String(error),
+        }),
+    })
+  })
+  await new Promise<void>((resolve, reject) => {
+    socketServer.once('error', reject)
+    socketServer.listen(socketPath, () => resolve())
+  })
+
   const addr = server.address()
   const actualPort =
     typeof addr === 'object' && addr ? addr.port : requestedPort
@@ -499,6 +544,7 @@ async function startDaemonServerLocked(
     startedAt: new Date().toISOString(),
     version: YOMI_VERSION,
     distPath,
+    socketPath,
     // Snapshot with no quiet window: this process just imported this exact
     // build, so it is complete on disk by construction. "npm run build &&
     // start" lands within the write-quiet window, and a null here would
@@ -521,7 +567,13 @@ async function startDaemonServerLocked(
     try {
       rmSync(daemonInfoPath())
     } catch {}
+    try {
+      rmSync(socketPath)
+    } catch {}
     releaseDaemonLock(lock)
+    try {
+      socketServer.close()
+    } catch {}
     try {
       server.close()
     } catch {}
@@ -688,66 +740,38 @@ export async function ensureDaemonUpToDate(): Promise<DaemonInfo | null> {
   return restarted
 }
 
+/**
+ * Attach the CLI's stdio bytes to the daemon's Unix socket. The daemon runs a
+ * real `serveStdio` per connection, so no JSON, headers, era negotiation, or
+ * server-initiated request is reimplemented here — the CLI is just a pipe.
+ *
+ * @param info - Running daemon whose socket should receive this session.
+ */
 export async function proxyStdioToDaemon(info: DaemonInfo): Promise<void> {
-  const daemonUrl = `http://${info.host}:${info.port}/mcp`
-  const readBuffer = new ReadBuffer()
-
-  process.stdin.on('data', (chunk) => {
-    readBuffer.append(chunk)
-    while (true) {
-      let message: any
-      try {
-        message = readBuffer.readMessage()
-      } catch (err: any) {
-        log.error('proxy.buffer_error', { error: err?.message ?? String(err) })
-        break
-      }
-      if (!message) break
-
-      const body = serializeMessage(message)
-      fetch(daemonUrl, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json, text/event-stream',
-        },
-        body,
-      })
-        .then(async (res) => {
-          const text = await res.text()
-          const lines = text.split('\n')
-          let handled = false
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim()
-              if (data) {
-                process.stdout.write(`${data}\n`)
-                handled = true
-              }
-            }
-          }
-          if (!handled && text.trim()) {
-            process.stdout.write(`${text.trim()}\n`)
-          }
-        })
-        .catch((error: any) => {
-          if (message.id !== undefined && message.id !== null) {
-            const errResp = {
-              jsonrpc: '2.0',
-              id: message.id,
-              error: {
-                code: -32000,
-                message: `Failed to forward request to Yomi daemon: ${error?.message ?? String(error)}`,
-              },
-            }
-            process.stdout.write(`${JSON.stringify(errResp)}\n`)
-          }
-        })
-    }
+  const socketPath = info.socketPath ?? daemonSocketPath()
+  const socket = createConnection(socketPath)
+  await new Promise<void>((resolve, reject) => {
+    socket.once('connect', resolve)
+    socket.once('error', reject)
   })
 
   await new Promise<void>((resolve) => {
-    process.stdin.on('end', resolve)
-    process.stdin.on('close', resolve)
+    let done = false
+    // Half-close the daemon side when the client stops writing, but keep
+    // draining its replies until the socket really closes — destroying it on
+    // stdin EOF would truncate in-flight tool results.
+    const finishInput = () => socket.end()
+    const finishOutput = () => {
+      if (done) return
+      done = true
+      resolve()
+    }
+    process.stdin.once('end', finishInput)
+    process.stdin.once('close', finishInput)
+    socket.once('end', finishOutput)
+    socket.once('close', finishOutput)
+    socket.once('error', finishOutput)
+    process.stdin.pipe(socket)
+    socket.pipe(process.stdout, { end: false })
   })
 }

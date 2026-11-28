@@ -160,6 +160,128 @@ export async function handleAddFriend(
 }
 
 /**
+ * Validate an identifier value for a contact lookup or add call.
+ *
+ * @param by - Identifier type.
+ * @param value - Caller-supplied value.
+ * @returns An error string, or null when valid.
+ */
+function validateIdentifier(
+  by: string | undefined,
+  value: unknown,
+): string | null {
+  if (!by) {
+    return 'by is required (userid, phone, ticket, or mid).'
+  }
+  if (by === 'phone') {
+    if (
+      !Array.isArray(value) ||
+      value.length === 0 ||
+      !value.every((item) => typeof item === 'string' && item.trim())
+    ) {
+      return 'phone requires a non-empty array of phone numbers.'
+    }
+    return null
+  }
+  if (typeof value !== 'string' || !value.trim()) {
+    return `${by} requires a non-empty string.`
+  }
+  return null
+}
+
+/**
+ * Normalize one or more service contacts into the MCP contact summary shape.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param result - Normalized contact or list of contacts.
+ * @returns Contact summaries with unresolved names left as null.
+ */
+function contactSummaries(
+  service: LineProtocolService,
+  result: any,
+): ContactSummary[] {
+  const items = Array.isArray(result) ? result : [result]
+  const summaries: ContactSummary[] = []
+  for (const contact of items as any[]) {
+    if (!contact?.mid) {
+      continue
+    }
+    const name = contactDisplayName(contact)
+    if (name) {
+      service.nameCache.set(contact.mid, name)
+    }
+    summaries.push({
+      mid: contact.mid,
+      displayName: name,
+      ...(contact.displayNameOverridden && contact.displayName
+        ? { profileName: contact.displayName }
+        : {}),
+    })
+  }
+  return summaries
+}
+
+/**
+ * Handle `search_contact` — pure read-only lookup by LINE ID, phone number,
+ * or invite ticket. No findAndAdd* endpoint is reachable from this handler.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleSearchContact(
+  service: LineProtocolService,
+  args: { by?: string; value?: unknown },
+) {
+  const by = args?.by
+  if (by && !['userid', 'phone', 'ticket'].includes(by)) {
+    return toolError(
+      `search_contact does not support "${by}". Use userid, phone, or ticket.`,
+    )
+  }
+  const error = validateIdentifier(by, args?.value)
+  if (error) {
+    return toolError(error)
+  }
+  const result = await service.searchContacts({
+    by: by as 'userid' | 'phone' | 'ticket',
+    value: args.value as string | string[],
+  })
+  return toonResult(contactSummaries(service, result))
+}
+
+/**
+ * Handle `add_contact` — explicitly adds friends by MID, LINE ID, or phone.
+ * Kept separate from search_contact so the side effect is visible in the tool
+ * name instead of being hidden behind a lookup.
+ *
+ * @param service - Resumed LineProtocolService.
+ * @param args - Tool arguments.
+ * @returns MCP tool result.
+ */
+export async function handleAddContact(
+  service: LineProtocolService,
+  args: { by?: string; value?: unknown; reference?: string },
+) {
+  const by = args?.by
+  if (by && !['mid', 'userid', 'phone'].includes(by)) {
+    return toolError(
+      `add_contact does not support "${by}". Use mid, userid, or phone.`,
+    )
+  }
+  const error = validateIdentifier(by, args?.value)
+  if (error) {
+    return toolError(error)
+  }
+  const result = await service.addContact({
+    by: by as 'mid' | 'userid' | 'phone',
+    value: args.value as string | string[],
+    ...(args.reference ? { reference: args.reference } : {}),
+  })
+  return toonResult(contactSummaries(service, result))
+}
+
+/**
  * Handle `block_contact` — REALLY blocks a contact for THIS account now
  * (TalkService blockContact). Reversible with unblock_contact.
  *

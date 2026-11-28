@@ -11,20 +11,62 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { createConnection, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import {
+  Client,
+  type JSONRPCMessage,
+  type Transport,
+} from '@modelcontextprotocol/client'
+import { YOMI_VERSION } from '../version.js'
 import {
   acquireDaemonLock,
   computeDistBuildId,
   type DaemonInfo,
   daemonInfoPath,
   daemonLockPath,
+  daemonSocketPath,
   isDaemonHealthy,
   readDaemonInfo,
   releaseDaemonLock,
   startDaemonServer,
   stopDaemon,
 } from './daemon.js'
+
+/** Minimal Transport over a Unix socket for the stdio-serving daemon test. */
+class SocketTransport implements Transport {
+  onclose?: () => void
+  onerror?: (error: Error) => void
+  onmessage?: (message: JSONRPCMessage) => void
+  private buffer = ''
+  constructor(private socket: Socket) {}
+
+  async start(): Promise<void> {
+    this.socket.setEncoding('utf8')
+    this.socket.on('data', (chunk: string) => {
+      this.buffer += chunk
+      while (true) {
+        const index = this.buffer.indexOf('\n')
+        if (index < 0) break
+        const line = this.buffer.slice(0, index)
+        this.buffer = this.buffer.slice(index + 1)
+        if (!line.trim()) continue
+        this.onmessage?.(JSON.parse(line) as JSONRPCMessage)
+      }
+    })
+    this.socket.on('close', () => this.onclose?.())
+    this.socket.on('error', (error) => this.onerror?.(error))
+  }
+
+  async send(message: JSONRPCMessage): Promise<void> {
+    this.socket.write(`${JSON.stringify(message)}\n`)
+  }
+
+  async close(): Promise<void> {
+    this.socket.destroy()
+  }
+}
 
 // Hermetic data dir: these tests start real daemons, locks and daemon.json —
 // they must never touch (or kill!) the machine's actual running daemon.
@@ -218,6 +260,55 @@ describe('Yomi MCP Daemon', () => {
       expect(toolsText).toContain('send_message')
     } finally {
       server.close()
+      try {
+        rmSync(daemonInfoPath())
+      } catch {}
+      try {
+        rmSync(daemonLockPath())
+      } catch {}
+    }
+  })
+
+  test('daemonSocketPath lives in the configured data dir', () => {
+    expect(daemonSocketPath()).toBe(join(daemonInfoPath(), '..', 'daemon.sock'))
+  })
+
+  test('daemon health advertises the stdio socket and the socket serves MCP', async () => {
+    process.env.YOMI_NO_KEYCHAIN = '1'
+    process.env.YOMI_NO_UPDATE_CHECK = '1'
+
+    const { server, port } = await startDaemonServer({ port: 0, quiet: true })
+    try {
+      const socketPath = daemonSocketPath()
+      expect(existsSync(socketPath)).toBe(true)
+      const health = (await (
+        await fetch(`http://127.0.0.1:${port}/health`)
+      ).json()) as any
+      expect(health.socketPath).toBe(socketPath)
+
+      const client = new Client(
+        { name: 'yomi-daemon-socket-test', version: '0' },
+        { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+      )
+      const socket = createConnection(socketPath)
+      await new Promise<void>((resolve, reject) => {
+        socket.once('connect', resolve)
+        socket.once('error', reject)
+      })
+      try {
+        await client.connect(new SocketTransport(socket))
+        expect(client.getServerVersion()?.version).toBe(YOMI_VERSION)
+        const tools = await client.listTools()
+        expect(tools.tools.map((tool) => tool.name)).toContain('search_contact')
+        expect(tools.tools.map((tool) => tool.name)).toContain('add_contact')
+      } finally {
+        await client.close()
+      }
+    } finally {
+      server.close()
+      try {
+        rmSync(daemonSocketPath())
+      } catch {}
       try {
         rmSync(daemonInfoPath())
       } catch {}

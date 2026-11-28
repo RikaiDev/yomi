@@ -12,6 +12,10 @@
  */
 
 import { isSquareChatMid } from '../client/square-service/client.js'
+import {
+  mapContactMap,
+  mapContactStruct,
+} from '../client/talk-service/contact-query.js'
 import { createMessageCommandService } from './message-command-service.js'
 import { createMessageQueryService } from './message-query-service.js'
 import { isOfficialAccountChatMid } from './official-account.js'
@@ -424,6 +428,66 @@ export function createChatRuntimeService(service: any) {
         reference,
       )
       return { added: true, mid, contact }
+    },
+
+    /**
+     * Pure read-only contact discovery. Never calls a findAndAdd* endpoint.
+     *
+     * @param args.by - Identifier type: userid, phone, or ticket.
+     * @param args.value - LINE ID string, phone array, or ticket string.
+     * @returns Normalized contact(s).
+     */
+    async searchContacts(args: {
+      by: 'userid' | 'phone' | 'ticket'
+      value: string | string[]
+    }): Promise<any> {
+      if (args.by === 'phone') {
+        const phones = Array.isArray(args.value)
+          ? args.value
+          : [args.value as string]
+        return mapContactMap(await service.client.findContactsByPhone(phones))
+      }
+      const value = args.value as string
+      const raw =
+        args.by === 'ticket'
+          ? await service.client.findContactByUserTicket(value)
+          : await service.client.findContactByUserid(value)
+      return mapContactStruct(raw)
+    },
+
+    /**
+     * Explicit add-by-identifier. Every path here has a side effect.
+     *
+     * @param args.by - Identifier type: mid, userid, or phone.
+     * @param args.value - MID string, LINE ID string, or phone array.
+     * @param args.reference - Optional LINE reference breadcrumb.
+     * @returns Normalized contact(s).
+     */
+    async addContact(args: {
+      by: 'mid' | 'userid' | 'phone'
+      value: string | string[]
+      reference?: string
+    }): Promise<any> {
+      if (args.by === 'phone') {
+        const phones = Array.isArray(args.value)
+          ? args.value
+          : [args.value as string]
+        return mapContactMap(
+          await service.client.findAndAddContactsByPhone(
+            phones,
+            args.reference,
+          ),
+        )
+      }
+      const value = args.value as string
+      const raw =
+        args.by === 'userid'
+          ? await service.client.findAndAddContactByUserid(
+              value,
+              args.reference,
+            )
+          : await service.client.findAndAddContactByMid(value, args.reference)
+      return mapContactMap(raw)
     },
 
     /**

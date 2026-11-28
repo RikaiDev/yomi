@@ -26,6 +26,7 @@ import { toCamelCaseKeys } from './case-convention.js'
 import { clientCapabilitiesOf } from './client-capabilities.js'
 import {
   handleAcceptInvitation,
+  handleAddContact,
   handleAddFriend,
   handleAddPersonaFact,
   handleAddStyleRule,
@@ -62,6 +63,7 @@ import {
   handlePreviewSticker,
   handleReactMessage,
   handleRenameGroup,
+  handleSearchContact,
   handleSearchMessages,
   handleSearchStickers,
   handleSendAudio,
@@ -426,6 +428,20 @@ export function createBuildServer(
               service,
               (args ?? {}) as { name: string },
             )
+          case 'search_contact':
+            return await handleSearchContact(
+              service,
+              (args ?? {}) as { by?: string; value?: unknown },
+            )
+          case 'add_contact':
+            return await handleAddContact(
+              service,
+              (args ?? {}) as {
+                by?: string
+                value?: unknown
+                reference?: string
+              },
+            )
           case 'list_contacts':
             return await handleListContacts(service)
           case 'get_group_members':
@@ -628,25 +644,41 @@ async function main(): Promise<void> {
   if (process.argv[2] === 'daemon') {
     return
   }
-  // Proxy to the shared daemon when one is running. When none is, fall
-  // through to the standalone runtime: the stdio proxy does not carry the
-  // full protocol surface (pinned 2026-07-28 negotiation, server-initiated
-  // elicitation), so auto-starting a daemon here would silently degrade the
-  // default install path — the install-smoke gate caught exactly that.
-  // Clients that want the shared runtime start it with `yomi daemon start`.
+  // The installed CLI shares one daemon by default. The CLI is only a byte
+  // pipe to the daemon's Unix socket, where the real serveStdio entry keeps
+  // era negotiation and server-initiated elicitation intact. If a daemon is
+  // not running yet, start one; any failure falls back to the standalone
+  // runtime so an unavailable port never breaks the CLI.
   const fromYomiCli = isYomiCliEntry(process.argv[1])
   if (process.env.YOMI_STANDALONE !== '1' && fromYomiCli) {
-    const { ensureDaemonUpToDate, getRunningDaemon, proxyStdioToDaemon } =
-      await import('./daemon.js')
+    const {
+      ensureDaemonUpToDate,
+      getRunningDaemon,
+      proxyStdioToDaemon,
+      startDaemonInBackground,
+    } = await import('./daemon.js')
     let daemon = await getRunningDaemon()
     if (daemon) {
       const updated = await ensureDaemonUpToDate()
       if (updated) {
         daemon = updated
       }
-      log.info('daemon.connected', { port: daemon.port, pid: daemon.pid })
-      await proxyStdioToDaemon(daemon)
-      return
+    } else {
+      log.info('daemon.auto_start', {})
+      daemon = await startDaemonInBackground()
+    }
+    if (daemon) {
+      try {
+        log.info('daemon.connected', { port: daemon.port, pid: daemon.pid })
+        await proxyStdioToDaemon(daemon)
+        return
+      } catch (error: any) {
+        log.warn('daemon.proxy_failed', {
+          error: error?.message ?? String(error),
+        })
+      }
+    } else {
+      log.warn('daemon.auto_start_failed', {})
     }
   }
 

@@ -10,6 +10,7 @@ import {
   stringField,
   structField,
 } from '../../core/thrift/index.js'
+import { THRIFT_TYPE } from '../../core/thrift/types.js'
 
 /**
  * Normalize sendMessage inputs into one consistent options object.
@@ -404,6 +405,71 @@ export function buildFindAndAddContactsByMidRequest(
     stringField(2, mid),
     i32Field(3, 0),
     stringField(4, reference),
+  ]
+}
+
+/**
+ * Build the findContactByUserid request fields (read-only LINE ID lookup).
+ * TalkService takes only field 2 — there is no reqSeq on this method.
+ *
+ * @param searchId - The person's LINE ID.
+ * @returns Thrift request fields.
+ */
+export function buildFindContactByUseridRequest(searchId) {
+  return [stringField(2, searchId)]
+}
+
+/**
+ * Build the findContactsByPhone request fields (read-only phone lookup).
+ *
+ * LINE requires a THRIFT SET here, not a LIST — a list reads back empty.
+ *
+ * @param phones - Phone numbers to look up.
+ * @returns Thrift request fields.
+ */
+export function buildFindContactsByPhoneRequest(phones) {
+  return [setField(2, THRIFT_TYPE.STRING, phones)]
+}
+
+/**
+ * Build the findContactByUserTicket request fields (read-only ticket lookup).
+ *
+ * @param ticket - Ticket ID from an invite link / QR code.
+ * @returns Thrift request fields.
+ */
+export function buildFindContactByUserTicketRequest(ticket) {
+  return [stringField(2, ticket)]
+}
+
+/**
+ * Build the findAndAddContactsByUserid request fields (add by LINE ID).
+ *
+ * @param searchId - The person's LINE ID.
+ * @param reference - JSON reference breadcrumb.
+ * @returns Thrift request fields.
+ */
+export function buildFindAndAddContactsByUseridRequest(
+  searchId,
+  reference = '{"screen":"chat","spec":"native"}',
+) {
+  return [i32Field(1, 0), stringField(2, searchId), stringField(3, reference)]
+}
+
+/**
+ * Build the findAndAddContactsByPhone request fields (add by phone number).
+ *
+ * @param phones - Phone numbers to add.
+ * @param reference - JSON reference breadcrumb.
+ * @returns Thrift request fields.
+ */
+export function buildFindAndAddContactsByPhoneRequest(
+  phones,
+  reference = '{"screen":"chat","spec":"native"}',
+) {
+  return [
+    i32Field(1, 0),
+    setField(2, THRIFT_TYPE.STRING, phones),
+    stringField(3, reference),
   ]
 }
 

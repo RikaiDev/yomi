@@ -594,6 +594,58 @@ export const TOOLS: Tool[] = [
   },
   {
     description:
+      'Pure read-only contact search on LINE TalkService. Looks up a person by LINE ID (`userid`), phone number(s) (`phone`), or an invite/QR ticket (`ticket`). Never adds a friend or sends a friend request — use add_contact for that. Returns mid + display_name.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        by: {
+          type: 'string',
+          enum: ['userid', 'phone', 'ticket'],
+          description: 'Identifier type to search by.',
+        },
+        value: {
+          description:
+            'LINE ID or ticket as a string; phone numbers as a non-empty string array.',
+          oneOf: [
+            { type: 'string' },
+            { type: 'array', items: { type: 'string' } },
+          ],
+        },
+      },
+      required: ['by', 'value'],
+    },
+    name: 'search_contact',
+  },
+  {
+    description:
+      'Explicitly adds people to your LINE friends by MID, LINE ID (`userid`), or phone number(s). This has a side effect — everyone found is added immediately. Use search_contact when you only want to look someone up.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        by: {
+          type: 'string',
+          enum: ['mid', 'userid', 'phone'],
+          description: 'Identifier type to add by.',
+        },
+        value: {
+          description:
+            'MID or LINE ID as a string; phone numbers as a non-empty string array.',
+          oneOf: [
+            { type: 'string' },
+            { type: 'array', items: { type: 'string' } },
+          ],
+        },
+        reference: {
+          type: 'string',
+          description: 'Optional JSON breadcrumb recorded by LINE.',
+        },
+      },
+      required: ['by', 'value'],
+    },
+    name: 'add_contact',
+  },
+  {
+    description:
       "List the authenticated user's full LINE friend list as-is (mid + display_name). No ranking, no interaction-frequency ordering.",
     inputSchema: {
       type: 'object' as const,

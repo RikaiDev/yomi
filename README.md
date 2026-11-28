@@ -103,25 +103,28 @@ Choose the client you actually use and follow only that section. Claude Code and
 Claude Desktop have separate MCP settings; configuring one does not configure the
 other.
 
-#### Several clients on one machine: start the shared daemon first
+#### Several clients on one machine: the shared daemon starts itself
 
 Every client that launches Yomi on its own starts a **separate process**. Each
 one holds its own LINE session, loads its own copy of the embedding model, and
 writes the same search index. On a laptop that means several copies of a model
 that does not fit in memory together, and several writers on one SQLite file.
 
-Run the shared daemon once instead:
+By default the first MCP connection starts one shared daemon and every later
+client connects to it over a local Unix socket. The CLI is a byte pipe; the
+daemon runs the real MCP server, so protocol negotiation and server-initiated
+elicitation are identical to the standalone path. No manual setup is needed.
+You can still manage it explicitly:
 
 ```bash
-npx @rikaidev/yomi daemon start    # one process for every client
 npx @rikaidev/yomi daemon status   # is it running, and on which port
-npx @rikaidev/yomi daemon stop     # stop it again
+npx @rikaidev/yomi daemon stop     # stop it; the next client starts a fresh one
+npx @rikaidev/yomi daemon start    # start it without waiting for a client
 ```
 
-Clients then proxy to that daemon over `127.0.0.1:3333` instead of running
-their own server, so the encoder is loaded once and the index has one writer.
-A client that finds no daemon falls back to its own process, so the daemon is
-an optimisation and a single-client setup works without it.
+Set `YOMI_STANDALONE=1` to bypass the daemon and run one server per client.
+If a daemon cannot start or its socket is unavailable, the client falls back
+to its own server instead of failing the connection.
 
 <details open>
 <summary><strong>Claude Desktop — one-click install (no terminal, no Node)</strong></summary>
@@ -522,7 +525,7 @@ neither probe could touch a real LINE session.
 
 ## What you can do
 
-Yomi exposes **49 tools** over MCP (the ones worth naming are in the tables
+Yomi exposes **51 tools** over MCP (the ones worth naming are in the tables
 below). Large read results use token-efficient
 [TOON](https://github.com/toon-format/toon); small status and write results use
 compact JSON. Errors remain plain text and media uses native MCP
@@ -540,6 +543,7 @@ fake success.
 | `get_chat_messages` | One conversation, decrypted. Paginate deeper with a `before` cursor. Each message carries any raw `MENTION` metadata so you can see who was @-mentioned (a literal `@name` in the text is *not* a mention). |
 | `get_message_media` / `get_message_image` | Any decrypted attachment (image/video/audio/file). Honest error on non-media. |
 | `find_contact` / `list_contacts` | Friend-list lookup by name substring, or the full list. Raw LINE data — no fuzzy scoring, no affinity ranking. |
+| `search_contact` | Pure read-only lookup on LINE TalkService by LINE ID (`userid`), phone number(s) (`phone`), or invite/QR ticket (`ticket`). Never adds a friend or sends a request. |
 | `get_group_members` | Members of a persistent group. Ad-hoc rooms without a group record fail honestly rather than returning a fake empty list. |
 
 ### Insight (read the situation, not just the messages)

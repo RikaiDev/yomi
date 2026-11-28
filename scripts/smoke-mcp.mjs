@@ -10,7 +10,8 @@
 
 import { Client } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -89,8 +90,8 @@ async function verifyEra(expectedEra, supportsApps = false) {
 
     const toolList = await client.listTools()
     const { tools } = toolList
-    if (tools.length !== 49) {
-      throw new Error(`tools/list returned ${tools.length} tools; expected 49`)
+    if (tools.length !== 51) {
+      throw new Error(`tools/list returned ${tools.length} tools; expected 51`)
     }
     if (new Set(tools.map((tool) => tool.name)).size !== tools.length) {
       throw new Error('tools/list returned duplicate tool names')
@@ -246,12 +247,132 @@ async function verifyMrtrLogin() {
   }
 }
 
+/**
+ * Reserve a free TCP port for the daemon-backed probe. The daemon's data dir
+ * is already isolated; an isolated port keeps this probe from touching a real
+ * daemon running on the developer's machine.
+ *
+ * @returns {Promise<number>} An available port number.
+ */
+async function freePort() {
+  const server = createServer()
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  await new Promise((resolve) => server.close(resolve))
+  return port
+}
+
+/**
+ * Certify the DEFAULT installed path: no daemon running, no YOMI_STANDALONE,
+ * and a modern pinned client. The CLI must auto-start a daemon and the daemon
+ * must serve the same login elicitation as the standalone artifact.
+ *
+ * @returns {Promise<string>} A one-line summary for the OK log.
+ */
+async function verifyDaemonAutoStart() {
+  const port = await freePort()
+  const daemonInfoPath = join(dataDir, 'daemon.json')
+  if (existsSync(daemonInfoPath)) {
+    throw new Error('daemon-backed probe started with a stale daemon.json')
+  }
+  const client = new Client(
+    { name: 'install-smoke-daemon', version: '0' },
+    {
+      capabilities: { elicitation: { form: {} } },
+      versionNegotiation: { mode: { pin: '2026-07-28' } },
+    },
+  )
+  const prompts = []
+  client.setRequestHandler('elicitation/create', async (request) => {
+    prompts.push(request.params)
+    return { action: 'accept', content: { primaryDeviceLogin: 'not_enabled' } }
+  })
+  const env = {
+    ...process.env,
+    YOMI_DATA_DIR: dataDir,
+    YOMI_INDEX_DB_PATH: dbPath,
+    YOMI_NO_KEYCHAIN: '1',
+    YOMI_NO_UPDATE_CHECK: '1',
+    YOMI_PORT: String(port),
+  }
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [entry, 'serve'],
+    env,
+    stderr: 'pipe',
+  })
+  let stderr = ''
+  transport.stderr?.on('data', (chunk) => {
+    stderr += chunk
+  })
+
+  try {
+    await client.connect(transport)
+    if (client.getProtocolEra() !== 'modern') {
+      throw new Error('daemon-backed client did not negotiate the modern era')
+    }
+    if (!existsSync(daemonInfoPath)) {
+      throw new Error('the default CLI path did not auto-start a daemon')
+    }
+    const daemon = JSON.parse(readFileSync(daemonInfoPath, 'utf8'))
+    if (!daemon.pid || daemon.pid <= 0) {
+      throw new Error(`daemon.json has no live pid: ${JSON.stringify(daemon)}`)
+    }
+    if (!daemon.socketPath || !existsSync(daemon.socketPath)) {
+      throw new Error(`daemon.json has no live socket: ${JSON.stringify(daemon)}`)
+    }
+    const tools = await client.listTools()
+    if (!tools.tools.some((tool) => tool.name === 'search_contact')) {
+      throw new Error('daemon-backed tools/list is missing search_contact')
+    }
+    const result = await client.callTool({ name: 'login', arguments: {} })
+    if (prompts.length !== 1) {
+      throw new Error(
+        `daemon-backed login asked for ${prompts.length} elicitations; expected 1`,
+      )
+    }
+    const text = result.content?.find((block) => block.type === 'text')?.text
+    if (result.isError || !text?.includes('Login was not started')) {
+      throw new Error(
+        `daemon-backed login failed: ${JSON.stringify(result)}`,
+      )
+    }
+    return `daemon auto-start on port ${port}, pid ${daemon.pid}, 1 elicitation`
+  } catch (error) {
+    const detail = stderr ? `\n--- server stderr ---\n${stderr}` : ''
+    throw new Error(`daemon smoke failed: ${error.message}${detail}`, {
+      cause: error,
+    })
+  } finally {
+    await client.close().catch(() => {})
+    await stopSmokeDaemon(port)
+  }
+}
+
+async function stopSmokeDaemon(port) {
+  const { spawn } = await import('node:child_process')
+  const child = spawn(process.execPath, [entry, 'daemon', 'stop'], {
+    env: {
+      ...process.env,
+      YOMI_DATA_DIR: dataDir,
+      YOMI_INDEX_DB_PATH: dbPath,
+      YOMI_NO_KEYCHAIN: '1',
+      YOMI_NO_UPDATE_CHECK: '1',
+      YOMI_PORT: String(port),
+    },
+    stdio: 'ignore',
+  })
+  await new Promise((resolve) => child.once('close', resolve))
+}
+
 try {
   const modern = await verifyEra('modern')
   const modernApps = await verifyEra('modern', true)
   const legacy = await verifyEra('legacy')
   const mrtr = await verifyMrtrLogin()
-  console.log(`OK: ${modern}; ${modernApps}; ${legacy}; ${mrtr}`)
+  const daemon = await verifyDaemonAutoStart()
+  console.log(`OK: ${modern}; ${modernApps}; ${legacy}; ${mrtr}; ${daemon}`)
 } catch (error) {
   console.error(`FAIL: ${error.message}`)
   process.exit(1)

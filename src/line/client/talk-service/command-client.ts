@@ -14,6 +14,11 @@ import {
   buildDeleteOtherFromChatRequest,
   buildDeleteSelfFromChatRequest,
   buildFindAndAddContactsByMidRequest,
+  buildFindAndAddContactsByPhoneRequest,
+  buildFindAndAddContactsByUseridRequest,
+  buildFindContactByUseridRequest,
+  buildFindContactByUserTicketRequest,
+  buildFindContactsByPhoneRequest,
   buildInviteIntoChatRequest,
   buildReactRequest,
   buildSendChatCheckedRequest,
@@ -270,6 +275,95 @@ export function createTalkCommandClient(runtime) {
       )
       if (result.error) {
         throw new Error(`findAndAddContactsByMid failed: ${result.error}`)
+      }
+      return result.fields?.[0] ?? null
+    },
+
+    /**
+     * Read-only LINE ID lookup via TalkService findContactByUserid. No contact
+     * is added and no friend request is sent.
+     *
+     * @param searchId - The person's LINE ID.
+     * @returns The matched Contact fields, or null when LINE finds nobody.
+     */
+    async findContactByUserid(searchId) {
+      const result = await runtime.sendTalk(
+        'findContactByUserid',
+        buildFindContactByUseridRequest(searchId),
+      )
+      if (result.error) {
+        throw new Error(`findContactByUserid failed: ${result.error}`)
+      }
+      return result.fields?.[0] ?? null
+    },
+
+    /**
+     * Read-only phone lookup via TalkService findContactsByPhone.
+     *
+     * @param phones - Phone numbers to look up.
+     * @returns Map of phone/MID to Contact fields.
+     */
+    async findContactsByPhone(phones) {
+      const result = await runtime.sendTalk(
+        'findContactsByPhone',
+        buildFindContactsByPhoneRequest(phones),
+      )
+      if (result.error) {
+        throw new Error(`findContactsByPhone failed: ${result.error}`)
+      }
+      return result.fields?.[0] ?? null
+    },
+
+    /**
+     * Read-only lookup by invite ticket via TalkService findContactByUserTicket.
+     *
+     * @param ticket - Ticket ID from an invite link or QR code.
+     * @returns The matched Contact fields, or null.
+     */
+    async findContactByUserTicket(ticket) {
+      const result = await runtime.sendTalk(
+        'findContactByUserTicket',
+        buildFindContactByUserTicketRequest(ticket),
+      )
+      if (result.error) {
+        throw new Error(`findContactByUserTicket failed: ${result.error}`)
+      }
+      return result.fields?.[0] ?? null
+    },
+
+    /**
+     * Add a friend by LINE ID via TalkService findAndAddContactsByUserid.
+     * Unlike findContactByUserid this has a side effect: the person is added.
+     *
+     * @param searchId - The person's LINE ID.
+     * @param reference - Optional JSON reference breadcrumb.
+     * @returns The added contact fields.
+     */
+    async findAndAddContactByUserid(searchId, reference) {
+      const result = await runtime.sendTalk(
+        'findAndAddContactsByUserid',
+        buildFindAndAddContactsByUseridRequest(searchId, reference),
+      )
+      if (result.error) {
+        throw new Error(`findAndAddContactsByUserid failed: ${result.error}`)
+      }
+      return result.fields?.[0] ?? null
+    },
+
+    /**
+     * Add friends by phone via TalkService findAndAddContactsByPhone.
+     *
+     * @param phones - Phone numbers to add.
+     * @param reference - Optional JSON reference breadcrumb.
+     * @returns Map of phone/MID to added contact fields.
+     */
+    async findAndAddContactsByPhone(phones, reference) {
+      const result = await runtime.sendTalk(
+        'findAndAddContactsByPhone',
+        buildFindAndAddContactsByPhoneRequest(phones, reference),
+      )
+      if (result.error) {
+        throw new Error(`findAndAddContactsByPhone failed: ${result.error}`)
       }
       return result.fields?.[0] ?? null
     },

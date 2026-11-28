@@ -78,7 +78,9 @@ function mapContactCapabilityFields(contact: Record<number, unknown>) {
  * @param contact - Raw contact thrift struct.
  * @returns Normalized contact or null.
  */
-function mapContactStruct(contact: Record<number, unknown> | null | undefined) {
+export function mapContactStruct(
+  contact: Record<number, unknown> | null | undefined,
+) {
   if (!contact || typeof contact !== 'object') {
     return null
   }
@@ -106,4 +108,24 @@ export function mapContactList(contacts: unknown): unknown[] {
         .map((contact) => mapContactStruct(contact as Record<number, unknown>))
         .filter(Boolean)
     : []
+}
+
+/**
+ * Map a `map<string, Contact>` response (used by findContactsByPhone and the
+ * findAndAddContactsBy* family) into the normalized contact shape. Accepts a
+ * plain list too, so callers do not need to care which wire shape LINE used.
+ *
+ * @param value - Raw map or list of contact structs.
+ * @returns Normalized contacts, invalid entries dropped.
+ */
+export function mapContactMap(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return mapContactList(value)
+  }
+  if (!value || typeof value !== 'object') {
+    return []
+  }
+  return Object.values(value as Record<string, unknown>)
+    .map((contact) => mapContactStruct(contact as Record<number, unknown>))
+    .filter(Boolean)
 }
